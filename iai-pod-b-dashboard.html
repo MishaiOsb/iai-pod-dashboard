@@ -1149,6 +1149,26 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .target-client-item .tcl-status.met { background: rgba(0,200,117,0.15); color: var(--rag-green); }
 .target-client-item .tcl-status.unmet { background: rgba(232,73,73,0.15); color: var(--rag-red); }
+.target-exclude-btn, .target-include-btn {
+    background: none; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 13px; width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all var(--transition-fast); flex-shrink: 0; margin-left: 8px;
+}
+.target-exclude-btn { color: var(--text-muted); }
+.target-exclude-btn:hover { color: var(--rag-red); border-color: var(--rag-red); background: rgba(232,73,73,0.1); }
+.target-include-btn { color: var(--text-muted); }
+.target-include-btn:hover { color: var(--rag-green); border-color: var(--rag-green); background: rgba(0,200,117,0.1); }
+.target-client-item.excluded {
+    opacity: 0.5; text-decoration: line-through;
+}
+.target-excluded-section {
+    margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-subtle);
+}
+.target-excluded-section .excluded-label {
+    font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 6px; font-weight: 600;
+}
 .target-detail-stats {
     display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
 }
@@ -3280,8 +3300,11 @@ const Router = {
    ================================================================ */
 const TargetsManager = {
     _key: 'iai_targets',
+    _exKey: 'iai_target_exclusions',
     _sk() { return UserSession.podKey(this._key); },
+    _exSk() { return UserSession.podKey(this._exKey); },
     _manualTargets: [],
+    _exclusions: {}, // { targetId: ['ClientName1', 'ClientName2'] }
 
     autoTargets: [
         { id: 'auto_billing', title: 'All Clients Billing Active', field: 'billing', matchValue: 'Yes', icon: '&#128179;' },
@@ -3294,23 +3317,57 @@ const TargetsManager = {
             const raw = localStorage.getItem(this._sk());
             this._manualTargets = raw ? JSON.parse(raw) : [];
         } catch { this._manualTargets = []; }
+        try {
+            const exRaw = localStorage.getItem(this._exSk());
+            this._exclusions = exRaw ? JSON.parse(exRaw) : {};
+        } catch { this._exclusions = {}; }
     },
 
     save() {
         localStorage.setItem(this._sk(), JSON.stringify(this._manualTargets));
     },
 
+    _saveExclusions() {
+        localStorage.setItem(this._exSk(), JSON.stringify(this._exclusions));
+    },
+
+    isExcluded(targetId, clientName) {
+        return (this._exclusions[targetId] || []).includes(clientName);
+    },
+
+    toggleExclusion(targetId, clientName) {
+        if (!this._exclusions[targetId]) this._exclusions[targetId] = [];
+        const idx = this._exclusions[targetId].indexOf(clientName);
+        if (idx >= 0) {
+            this._exclusions[targetId].splice(idx, 1);
+            showToast(`${clientName} included in target`, 'info');
+        } else {
+            this._exclusions[targetId].push(clientName);
+            showToast(`${clientName} excluded from target`, 'info');
+        }
+        this._saveExclusions();
+        this.render();
+    },
+
+    _getActiveClients(targetId) {
+        const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        const excluded = this._exclusions[targetId] || [];
+        return clients.filter(c => !excluded.includes(c.name));
+    },
+
     getAll() {
         const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
-        const total = clients.length || 7;
         const targets = [];
 
         // Auto targets
         this.autoTargets.forEach(at => {
-            const current = clients.filter(c => c[at.field] === at.matchValue).length;
+            const active = this._getActiveClients(at.id);
+            const excluded = (this._exclusions[at.id] || []).length;
+            const current = active.filter(c => c[at.field] === at.matchValue).length;
             targets.push({
-                id: at.id, title: at.title, current, goal: total,
+                id: at.id, title: at.title, current, goal: active.length,
                 type: 'auto', icon: at.icon, deadline: null,
+                excludedCount: excluded,
             });
         });
 
@@ -3342,12 +3399,15 @@ const TargetsManager = {
     },
 
     _buildAutoDetailPanel(target) {
-        const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        const allClients = typeof State !== 'undefined' && State.clients ? State.clients : [];
         const autoTarget = this.autoTargets.find(a => a.id === target.id);
-        if (!autoTarget || clients.length === 0) return '<p class="target-detail-description">No client data available.</p>';
+        if (!autoTarget || allClients.length === 0) return '<p class="target-detail-description">No client data available.</p>';
 
-        const met = clients.filter(c => c[autoTarget.field] === autoTarget.matchValue);
-        const unmet = clients.filter(c => c[autoTarget.field] !== autoTarget.matchValue);
+        const excludedNames = this._exclusions[target.id] || [];
+        const activeClients = allClients.filter(c => !excludedNames.includes(c.name));
+        const excludedClients = allClients.filter(c => excludedNames.includes(c.name));
+        const met = activeClients.filter(c => c[autoTarget.field] === autoTarget.matchValue);
+        const unmet = activeClients.filter(c => c[autoTarget.field] !== autoTarget.matchValue);
 
         let fieldLabel = autoTarget.field === 'billing' ? 'Billing' : autoTarget.field === 'rag' ? 'RAG Status' : 'Update Status';
         let description = '';
@@ -3370,29 +3430,49 @@ const TargetsManager = {
                     <span class="tds-label">Not Met</span>
                 </div>
                 <div class="target-detail-stat">
-                    <span class="tds-value">${clients.length}</span>
-                    <span class="tds-label">Total</span>
+                    <span class="tds-value">${activeClients.length}</span>
+                    <span class="tds-label">Active</span>
                 </div>
+                ${excludedClients.length > 0 ? `<div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--text-muted)">${excludedClients.length}</span>
+                    <span class="tds-label">Excluded</span>
+                </div>` : ''}
             </div>`;
 
-        const clientListHtml = clients.map(c => {
+        const clientListHtml = activeClients.map(c => {
             const isMet = c[autoTarget.field] === autoTarget.matchValue;
             const currentVal = c[autoTarget.field] || '--';
             return `<div class="target-client-item">
                 <span>${c.name}</span>
                 <span style="color:var(--text-muted);font-size:11px;">${fieldLabel}: ${currentVal}</span>
                 <span class="tcl-status ${isMet ? 'met' : 'unmet'}">${isMet ? '✓ Met' : '✗ Action Needed'}</span>
+                <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${c.name.replace(/'/g,"\\'")}')" title="Exclude from target">✕</button>
             </div>`;
         }).join('');
 
+        const excludedListHtml = excludedClients.length > 0 ? `
+            <div style="margin-top:12px;">
+                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Excluded Clients</div>
+                <div class="target-client-list">${excludedClients.map(c => {
+                    const currentVal = c[autoTarget.field] || '--';
+                    return `<div class="target-client-item target-client-excluded">
+                        <span style="text-decoration:line-through;opacity:0.6;">${c.name}</span>
+                        <span style="color:var(--text-muted);font-size:11px;">${fieldLabel}: ${currentVal}</span>
+                        <span class="tcl-status" style="background:rgba(255,255,255,0.05);color:var(--text-muted);">Excluded</span>
+                        <button class="target-include-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${c.name.replace(/'/g,"\\'")}')" title="Include in target">&#8634;</button>
+                    </div>`;
+                }).join('')}</div>
+            </div>` : '';
+
         const actionHint = unmet.length > 0 ?
             `<p class="target-detail-hint">💡 Action: Focus on ${unmet.map(c => c.name).join(', ')} to achieve this target.</p>` :
-            `<p class="target-detail-hint">🎉 All clients meet this target — great work!</p>`;
+            `<p class="target-detail-hint">🎉 All active clients meet this target — great work!</p>`;
 
         return `
             <p class="target-detail-description">${description}</p>
             ${statsHtml}
             <div class="target-client-list">${clientListHtml}</div>
+            ${excludedListHtml}
             ${actionHint}`;
     },
 
@@ -5074,7 +5154,7 @@ const UserSession = {
             'iai_targets', 'iai_todos', 'iai_email_overrides', 'iai_email_hidden',
             'iai_outlook_cache', 'iai_calendar_cache', 'iai_activity_feed', 'iai_cal_states',
             'iai_email_notes', 'iai_local_edits', 'iai_local_data',
-            'iai_kb_docs', 'iai_snapshot'
+            'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions'
         ];
         keys.forEach(key => {
             const oldData = localStorage.getItem(key);
