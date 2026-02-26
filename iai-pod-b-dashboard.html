@@ -205,6 +205,41 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 
 /* ========================================================
+   SETUP EXTRAS — Close Button, Mode Toggle, Offline Badge
+   ======================================================== */
+.setup-modal { position: relative; }
+.setup-close-btn {
+    position: absolute; top: 14px; right: 14px;
+    background: var(--bg-elevated); border: 1px solid var(--border-default);
+    color: var(--text-muted); font-size: 18px; width: 32px; height: 32px;
+    border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition-fast); z-index: 1;
+}
+.setup-close-btn:hover { color: var(--text-primary); border-color: var(--text-muted); background: var(--bg-hover); }
+.mode-toggle-group { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.mode-toggle-btn {
+    padding: 12px 14px; background: var(--bg-elevated); border: 2px solid var(--border-default);
+    border-radius: var(--radius-md); color: var(--text-secondary); font-size: 13px;
+    cursor: pointer; transition: all var(--transition-fast); text-align: left;
+}
+.mode-toggle-btn:hover { border-color: var(--accent-purple); background: var(--bg-hover); }
+.mode-toggle-btn.active { border-color: var(--accent-purple); background: rgba(107,48,255,0.1); color: var(--text-primary); }
+.btn-secondary {
+    width: 100%; padding: 10px; margin-top: 8px;
+    background: var(--bg-elevated); color: var(--text-secondary);
+    border: 1px solid var(--border-default); border-radius: var(--radius-md);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
+.nav-offline-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 8px;
+    background: rgba(255,203,0,0.15); color: var(--rag-amber);
+    border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ========================================================
    LOADING OVERLAY
    ======================================================== */
 .loading-overlay {
@@ -2668,6 +2703,9 @@ input, textarea, select { font-family: inherit; outline: none; }
     .snap-kpi-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .setup-overlay { padding: 12px 0; }
     .setup-modal { padding: 24px 16px; border-radius: var(--radius-lg); }
+    .setup-close-btn { top: 8px; right: 8px; width: 28px; height: 28px; font-size: 14px; }
+    .mode-toggle-btn { font-size: 12px; padding: 10px 12px; }
+    .btn-secondary { font-size: 12px; padding: 8px; }
     .setup-modal .logo { font-size: 22px; }
     .setup-modal h2 { font-size: 17px; }
     .setup-modal .subtitle { font-size: 12px; margin-bottom: 20px; }
@@ -2699,6 +2737,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 <!-- ======== SETUP MODAL ======== -->
 <div class="setup-overlay" id="setupOverlay">
     <div class="setup-modal">
+        <button class="setup-close-btn" id="setupCloseBtn" onclick="closeSetup()" title="Close" style="display:none;">&#10005;</button>
         <div class="logo">ImplementAI</div>
         <div class="subtitle" id="setupSubtitle">Client Productivity Dashboard</div>
         <h2>Connect to monday.com</h2>
@@ -2711,6 +2750,7 @@ input, textarea, select { font-family: inherit; outline: none; }
         <div class="setup-error" id="setupError"></div>
         <div class="setup-success" id="setupSuccess"></div>
         <button class="btn-primary" id="btnTestConnect" onclick="testConnection()">Test Connection &amp; Launch</button>
+        <button class="btn-secondary" onclick="launchOffline()">Launch Offline (Standalone)</button>
         <div class="setup-hint">
             Get your token: monday.com &#8594; Profile Picture &#8594; Developers &#8594; My Access Tokens<br>
             Your token is stored locally in your browser only.
@@ -2728,6 +2768,16 @@ input, textarea, select { font-family: inherit; outline: none; }
                 Get your token: <a href="https://developer.microsoft.com/en-us/graph/graph-explorer" target="_blank" style="color:var(--accent-purple-light);">Graph Explorer</a> &#8594; Sign in &#8594; Access token tab &#8594; Copy<br>
                 Requires <strong>Mail.Read</strong> and <strong>Calendars.Read</strong> scopes. Token expires after ~1 hour — dashboard falls back to cached data.
             </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
+            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#128225; Connection Mode</h3>
+            <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px;">Choose how the dashboard connects to data sources.</p>
+            <div class="mode-toggle-group" id="modeToggleGroup">
+                <button class="mode-toggle-btn active" data-mode="online" onclick="setConnectionMode('online')">&#9989; Online — Live sync with monday.com &amp; Outlook</button>
+                <button class="mode-toggle-btn" data-mode="offline" onclick="setConnectionMode('offline')">&#128268; Offline / Standalone — Use local &amp; snapshot data only</button>
+            </div>
+            <p class="setup-hint" id="modeHint" style="margin-top:4px;"></p>
         </div>
 
         <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
@@ -2921,6 +2971,7 @@ input, textarea, select { font-family: inherit; outline: none; }
             <button data-theme-btn="dark" onclick="setTheme('dark')" title="Dark mode">&#9790;</button>
             <button data-theme-btn="system" onclick="setTheme('system')" title="Match system">&#128187;</button>
         </div>
+        <span class="nav-offline-badge" id="navOfflineBadge" style="display:none;">Offline</span>
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
     </div>
 </nav>
@@ -5254,7 +5305,7 @@ const UserSession = {
             'iai_targets', 'iai_todos', 'iai_email_overrides', 'iai_email_hidden',
             'iai_outlook_cache', 'iai_calendar_cache', 'iai_activity_feed', 'iai_cal_states',
             'iai_email_notes', 'iai_local_edits', 'iai_local_data',
-            'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions', 'iai_target_overrides'
+            'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions', 'iai_target_overrides', 'iai_connection_mode'
         ];
         keys.forEach(key => {
             const oldData = localStorage.getItem(key);
@@ -9842,6 +9893,13 @@ function renderAll() {
    DATA LOADING
    ================================================================ */
 async function loadData(showOverlay = true) {
+    // Skip API calls in offline mode
+    if (getConnectionMode() === 'offline') {
+        renderAll();
+        document.getElementById('lastRefreshTime').textContent = 'Offline';
+        document.getElementById('refreshCountdown').textContent = '';
+        return;
+    }
     if (showOverlay) {
         document.getElementById('loadingOverlay').classList.remove('hidden');
         document.getElementById('loadingText').textContent = 'Connecting to monday.com...';
@@ -10000,7 +10058,7 @@ document.addEventListener('keydown', (e) => {
             if (document.getElementById('detailPanel').classList.contains('open')) {
                 closeDetail();
             } else if (!document.getElementById('setupOverlay').classList.contains('hidden')) {
-                // Don't close setup if it's showing
+                if (UserSession.hasSession()) closeSetup();
             } else {
                 resetFilters();
             }
@@ -10032,6 +10090,112 @@ function showSetup() {
             ? `Currently managing: ${RUNTIME.podName} (as ${RUNTIME.userName})`
             : 'No pod selected yet';
     }
+    // Show close button only for returning users (has session)
+    const closeBtn = document.getElementById('setupCloseBtn');
+    if (closeBtn) closeBtn.style.display = UserSession.hasSession() ? 'flex' : 'none';
+    // Update connection mode UI
+    updateModeUI();
+}
+
+function closeSetup() {
+    document.getElementById('setupOverlay').classList.add('hidden');
+}
+
+function getConnectionMode() {
+    return localStorage.getItem('iai_connection_mode') || 'online';
+}
+
+function setConnectionMode(mode) {
+    const prev = getConnectionMode();
+    localStorage.setItem('iai_connection_mode', mode);
+    updateModeUI();
+
+    if (mode === 'offline') {
+        // Stop auto-refresh
+        if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+        if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+        document.getElementById('refreshCountdown').textContent = '';
+        document.getElementById('lastRefreshTime').textContent = 'Offline';
+        showToast('Switched to Offline / Standalone mode', 'info');
+    } else if (mode === 'online' && prev === 'offline') {
+        // Restart auto-refresh
+        refreshInterval = setInterval(() => { loadData(false); }, CONFIG.AUTO_REFRESH_MS);
+        countdownInterval = setInterval(updateCountdown, 1000);
+        resetRefreshCountdown();
+        showToast('Switched to Online mode — syncing...', 'success');
+        if (MondayAPI.init()) loadData(false);
+    }
+}
+
+function updateModeUI() {
+    const mode = getConnectionMode();
+    // Update toggle buttons
+    document.querySelectorAll('.mode-toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    // Update hint text
+    const hint = document.getElementById('modeHint');
+    if (hint) {
+        hint.textContent = mode === 'offline'
+            ? 'Offline: No API calls. Dashboard uses local edits, cached data, and snapshots.'
+            : 'Online: Dashboard syncs live data from monday.com and Outlook.';
+    }
+    // Update navbar badge
+    const badge = document.getElementById('navOfflineBadge');
+    if (badge) badge.style.display = mode === 'offline' ? 'inline-block' : 'none';
+}
+
+function launchOffline() {
+    setConnectionMode('offline');
+    if (UserSession.hasSession()) {
+        // Returning user — just close overlay and render with existing data
+        document.getElementById('setupOverlay').classList.add('hidden');
+        renderEmailActivity();
+        TargetsManager.render();
+        renderAll();
+    } else {
+        // First-time user — need pod selection
+        document.getElementById('setupOverlay').classList.add('hidden');
+        showPodSelectionOffline();
+    }
+}
+
+function showPodSelectionOffline() {
+    const overlay = document.getElementById('podSelectOverlay');
+    overlay.classList.remove('hidden');
+    const greeting = document.getElementById('podSelectGreeting');
+    if (greeting) greeting.textContent = 'Offline Mode';
+    // Populate pod buttons with known pods (hardcoded for offline)
+    const container = document.getElementById('podSelectButtons');
+    const pods = [
+        { name: 'Pod A', slug: 'pod-a', icon: 'A', index: 0 },
+        { name: 'Pod B', slug: 'pod-b', icon: 'B', index: 1 },
+        { name: 'Pod C', slug: 'pod-c', icon: 'C', index: 2 },
+    ];
+    container.innerHTML = pods.map(p => `
+        <button class="pod-select-btn" onclick="selectPodOffline('${p.slug}','${p.name}',${p.index})">
+            <span class="pod-icon">${p.icon}</span>
+            <span>${p.name}</span>
+        </button>
+    `).join('');
+}
+
+function selectPodOffline(slug, name, index) {
+    RUNTIME.podSlug = slug;
+    RUNTIME.podName = name;
+    RUNTIME.podIndex = index;
+    RUNTIME.userName = 'Offline User';
+    UserSession.save();
+    document.getElementById('podSelectOverlay').classList.add('hidden');
+    // Reload namespaced modules for the selected pod
+    reloadNamespacedModules();
+    updateDynamicUI();
+    handleEmailDataForPod();
+    handleCalendarDataForPod();
+    renderEmailActivity();
+    TargetsManager.render();
+    renderAll();
+    showToast(`Launched in Offline mode as ${name}`, 'success');
 }
 
 async function testConnection() {
@@ -10265,7 +10429,17 @@ async function init() {
     // Initialise SPA router
     Router.init();
 
-    if (MondayAPI.init()) {
+    // Update offline badge on init
+    updateModeUI();
+
+    if (getConnectionMode() === 'offline' && UserSession.hasSession()) {
+        // Offline mode with existing session — skip API, render with local/snapshot data
+        document.getElementById('setupOverlay').classList.add('hidden');
+        document.getElementById('lastRefreshTime').textContent = 'Offline';
+        renderEmailActivity();
+        TargetsManager.render();
+        renderAll();
+    } else if (MondayAPI.init()) {
         if (UserSession.hasSession()) {
             // Returning user with stored pod — go straight to dashboard
             document.getElementById('setupOverlay').classList.add('hidden');
@@ -10289,14 +10463,14 @@ async function init() {
         TargetsManager.render();
     }
 
-    // Auto-refresh every 5 minutes
-    refreshInterval = setInterval(() => {
-        loadData(false);
-    }, CONFIG.AUTO_REFRESH_MS);
-
-    // Countdown display every second
-    countdownInterval = setInterval(updateCountdown, 1000);
-    resetRefreshCountdown();
+    // Auto-refresh (skip in offline mode)
+    if (getConnectionMode() !== 'offline') {
+        refreshInterval = setInterval(() => {
+            loadData(false);
+        }, CONFIG.AUTO_REFRESH_MS);
+        countdownInterval = setInterval(updateCountdown, 1000);
+        resetRefreshCountdown();
+    }
 }
 
 // Start
