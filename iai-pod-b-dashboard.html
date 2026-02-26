@@ -4324,6 +4324,17 @@ const OutlookSync = {
         const btn = document.getElementById('btnEmailSync');
         if (!textEl) return;
 
+        // Offline mode — show snapshot/local data status, hide sync button
+        if (typeof getConnectionMode === 'function' && getConnectionMode() === 'offline') {
+            if (btn) btn.style.display = 'none';
+            const snapshotDate = EMAIL_DATA?.snapshotDate ? new Date(EMAIL_DATA.snapshotDate) : null;
+            textEl.textContent = snapshotDate
+                ? `Offline — snapshot: ${snapshotDate.toLocaleDateString()} ${snapshotDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
+                : 'Offline — using local data';
+            textEl.className = 'email-sync-text';
+            return;
+        }
+
         if (this._syncing) {
             textEl.textContent = 'Syncing...';
             textEl.className = 'email-sync-text';
@@ -4543,6 +4554,17 @@ const CalendarSync = {
         const textEl = document.getElementById('calSyncText');
         const btn = document.getElementById('btnCalSync');
         if (!textEl) return;
+
+        // Offline mode — show snapshot/local data status, hide sync button
+        if (typeof getConnectionMode === 'function' && getConnectionMode() === 'offline') {
+            if (btn) btn.style.display = 'none';
+            const snapshotDate = CALENDAR_DATA?.snapshotDate ? new Date(CALENDAR_DATA.snapshotDate) : null;
+            textEl.textContent = snapshotDate
+                ? `Offline — snapshot: ${snapshotDate.toLocaleDateString()} ${snapshotDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
+                : 'Offline — using local data';
+            textEl.className = 'email-sync-text';
+            return;
+        }
 
         if (this._syncing) {
             textEl.textContent = 'Syncing...';
@@ -10144,6 +10166,9 @@ function setConnectionMode(mode) {
         if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
         document.getElementById('refreshCountdown').textContent = '';
         document.getElementById('lastRefreshTime').textContent = 'Offline';
+        // Refresh sync status UIs to show offline state
+        OutlookSync._updateSyncStatusUI();
+        CalendarSync._updateSyncStatusUI();
         showToast('Switched to Offline / Standalone mode', 'info');
     } else if (mode === 'online' && prev === 'offline') {
         // Restart auto-refresh
