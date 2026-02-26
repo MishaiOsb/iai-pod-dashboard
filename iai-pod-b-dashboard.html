@@ -233,11 +233,33 @@ input, textarea, select { font-family: inherit; outline: none; }
     transition: all var(--transition-fast);
 }
 .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--text-muted); }
-.nav-offline-badge {
-    font-size: 10px; font-weight: 600; padding: 2px 8px;
-    background: rgba(255,203,0,0.15); color: var(--rag-amber);
+.nav-connection-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 600; padding: 3px 10px;
     border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    transition: all var(--transition-fast);
+    cursor: default;
 }
+.nav-connection-status .conn-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0; transition: background 0.3s ease;
+}
+.nav-connection-status[data-status="online"] {
+    background: rgba(0,200,117,0.12); color: #00c875;
+}
+.nav-connection-status[data-status="online"] .conn-dot { background: #00c875; box-shadow: 0 0 4px rgba(0,200,117,0.6); }
+.nav-connection-status[data-status="issues"] {
+    background: rgba(255,203,0,0.15); color: var(--rag-amber);
+}
+.nav-connection-status[data-status="issues"] .conn-dot { background: var(--rag-amber); box-shadow: 0 0 4px rgba(255,203,0,0.6); }
+.nav-connection-status[data-status="disconnected"] {
+    background: rgba(226,68,92,0.15); color: var(--rag-red);
+}
+.nav-connection-status[data-status="disconnected"] .conn-dot { background: var(--rag-red); box-shadow: 0 0 4px rgba(226,68,92,0.6); }
+.nav-connection-status[data-status="offline"] {
+    background: rgba(255,203,0,0.15); color: var(--rag-amber);
+}
+.nav-connection-status[data-status="offline"] .conn-dot { background: var(--rag-amber); }
 
 /* ========================================================
    LOADING OVERLAY
@@ -2971,7 +2993,7 @@ input, textarea, select { font-family: inherit; outline: none; }
             <button data-theme-btn="dark" onclick="setTheme('dark')" title="Dark mode">&#9790;</button>
             <button data-theme-btn="system" onclick="setTheme('system')" title="Match system">&#128187;</button>
         </div>
-        <span class="nav-offline-badge" id="navOfflineBadge" style="display:none;">Offline</span>
+        <span class="nav-connection-status" id="navConnectionStatus" data-status="online" style="display:none;"><span class="conn-dot"></span><span id="connStatusText">Online</span></span>
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
     </div>
 </nav>
@@ -4246,6 +4268,7 @@ const OutlookSync = {
             this._saveCache(newData);
             this._lastSync = new Date();
             this._error = null;
+            ConnectionStatus.setOutlook('ok');
 
             const clientCount = Object.keys(newData.clients).length;
             const emailCount = Object.values(newData.clients).reduce((sum, c) => sum + c.emails.length, 0);
@@ -4258,6 +4281,7 @@ const OutlookSync = {
             if (manual) showToast(`Outlook synced — ${emailCount} emails, ${clientCount} clients`, 'success');
         } else {
             // Error occurred — try cached data
+            ConnectionStatus.setOutlook(this._error === 'token-expired' ? 'token-expired' : 'error');
             const cached = this._loadCache();
             if (cached) {
                 EMAIL_DATA = cached;
@@ -4464,6 +4488,7 @@ const CalendarSync = {
             this._saveCache(CALENDAR_DATA);
             this._lastSync = new Date();
             this._error = null;
+            ConnectionStatus.setCalendar('ok');
 
             ActivityFeed.log({
                 type: 'sync',
@@ -4473,6 +4498,7 @@ const CalendarSync = {
             });
             if (manual) showToast(`Calendar synced — ${transformed.length} events`, 'success');
         } else {
+            ConnectionStatus.setCalendar(this._error === 'token-expired' ? 'token-expired' : 'error');
             const cached = this._loadCache();
             if (cached) {
                 CALENDAR_DATA = cached;
@@ -9911,6 +9937,7 @@ async function loadData(showOverlay = true) {
         // Apply local edits on top of API data — local overrides survive refreshes
         LocalEditManager.applyToAll(State.clients);
         State.dataLoaded = true;
+        ConnectionStatus.setMonday('ok');
         ChangeTracker.detect(State.clients);
         State.applyFilters();
         renderAll();
@@ -9938,6 +9965,7 @@ async function loadData(showOverlay = true) {
         }
 
     } catch (err) {
+        ConnectionStatus.setMonday('error');
         showToast(`Data load failed: ${err.message}`, 'error');
         console.error('Load error:', err);
     } finally {
@@ -10127,6 +10155,71 @@ function setConnectionMode(mode) {
     }
 }
 
+// ── Connection Status Tracker ──
+const ConnectionStatus = {
+    monday: 'unknown',   // 'ok' | 'error' | 'unknown'
+    outlook: 'unknown',  // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+    calendar: 'unknown', // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+
+    setMonday(status) { this.monday = status; updateConnectionIndicator(); },
+    setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
+    setCalendar(status) { this.calendar = status; updateConnectionIndicator(); },
+
+    // Overall health: green if monday OK, amber if any issues, red if monday down
+    getOverall() {
+        if (getConnectionMode() === 'offline') return 'offline';
+        // Monday is the primary connection — if it's down, we're disconnected
+        if (this.monday === 'error') return 'disconnected';
+        if (this.monday === 'unknown') return 'online'; // haven't tried yet
+        // Monday is OK — check secondary services
+        const outlookIssue = this.outlook === 'error' || this.outlook === 'token-expired';
+        const calendarIssue = this.calendar === 'error' || this.calendar === 'token-expired';
+        // Only flag issues for services that have tokens configured
+        if ((outlookIssue && OutlookSync.hasToken()) || (calendarIssue && CalendarSync.hasToken())) {
+            return 'issues';
+        }
+        return 'online';
+    },
+
+    getTooltip() {
+        const mode = getConnectionMode();
+        if (mode === 'offline') return 'Offline / Standalone mode';
+        const parts = [];
+        parts.push(`monday.com: ${this.monday === 'ok' ? 'Connected' : this.monday === 'error' ? 'Failed' : 'Pending'}`);
+        if (OutlookSync.hasToken()) {
+            const oStatus = this.outlook === 'ok' ? 'Connected' : this.outlook === 'token-expired' ? 'Token expired' : this.outlook === 'error' ? 'Failed' : 'Pending';
+            parts.push(`Outlook: ${oStatus}`);
+        }
+        if (CalendarSync.hasToken()) {
+            const cStatus = this.calendar === 'ok' ? 'Connected' : this.calendar === 'token-expired' ? 'Token expired' : this.calendar === 'error' ? 'Failed' : 'Pending';
+            parts.push(`Calendar: ${cStatus}`);
+        }
+        return parts.join('\n');
+    }
+};
+
+function updateConnectionIndicator() {
+    const el = document.getElementById('navConnectionStatus');
+    const textEl = document.getElementById('connStatusText');
+    if (!el || !textEl) return;
+
+    const mode = getConnectionMode();
+    const overall = ConnectionStatus.getOverall();
+
+    if (mode === 'offline') {
+        el.style.display = 'inline-flex';
+        el.dataset.status = 'offline';
+        textEl.textContent = 'Offline';
+        el.title = 'Offline / Standalone mode';
+    } else {
+        el.style.display = 'inline-flex';
+        el.dataset.status = overall;
+        const labels = { online: 'Online', issues: 'Connection Issues', disconnected: 'Disconnected' };
+        textEl.textContent = labels[overall] || 'Online';
+        el.title = ConnectionStatus.getTooltip();
+    }
+}
+
 function updateModeUI() {
     const mode = getConnectionMode();
     // Update toggle buttons
@@ -10140,9 +10233,8 @@ function updateModeUI() {
             ? 'Offline: No API calls. Dashboard uses local edits, cached data, and snapshots.'
             : 'Online: Dashboard syncs live data from monday.com and Outlook.';
     }
-    // Update navbar badge
-    const badge = document.getElementById('navOfflineBadge');
-    if (badge) badge.style.display = mode === 'offline' ? 'inline-block' : 'none';
+    // Update connection indicator
+    updateConnectionIndicator();
 }
 
 function launchOffline() {
@@ -10449,16 +10541,19 @@ async function init() {
             document.getElementById('setupOverlay').classList.add('hidden');
             try {
                 const { name, email } = await MondayAPI.testConnection();
+                ConnectionStatus.setMonday('ok');
                 RUNTIME.userName = name;
                 RUNTIME.userEmail = email;
                 await showPodSelection(name);
             } catch {
                 // Token expired/invalid — show setup
+                ConnectionStatus.setMonday('error');
                 showSetup();
             }
         }
     } else {
         // No API token — show setup overlay, render static fallbacks
+        ConnectionStatus.setMonday('error');
         renderEmailActivity();
         TargetsManager.render();
     }
