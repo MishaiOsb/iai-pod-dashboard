@@ -125,9 +125,10 @@ input, textarea, select { font-family: inherit; outline: none; }
 .setup-overlay {
     position: fixed; inset: 0; z-index: 9999;
     background: rgba(0,0,0,0.85);
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: flex-start; justify-content: center;
     backdrop-filter: blur(8px);
     opacity: 1; transition: opacity 0.3s ease;
+    overflow-y: auto; padding: 40px 0;
 }
 .setup-overlay.hidden { opacity:0; pointer-events:none; }
 .setup-modal {
@@ -138,6 +139,7 @@ input, textarea, select { font-family: inherit; outline: none; }
     max-width: 480px; width: 90%;
     box-shadow: var(--shadow-elevated), var(--shadow-glow);
     text-align: center;
+    flex-shrink: 0;
 }
 .setup-modal .logo {
     font-size: 28px; font-weight: 800;
@@ -1140,10 +1142,12 @@ input, textarea, select { font-family: inherit; outline: none; }
 .target-detail-description strong { color: var(--text-primary); font-weight: 600; }
 .target-client-list { display: flex; flex-direction: column; gap: 6px; }
 .target-client-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 12px; background: var(--bg-elevated); border-radius: var(--radius-md);
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+    padding: 10px 12px; background: var(--bg-elevated); border-radius: var(--radius-md);
     font-size: 12px; color: var(--text-primary);
 }
+.target-client-item > span:first-child { font-weight: 500; min-width: 80px; }
+.target-client-item-actions { display: flex; gap: 4px; margin-left: auto; flex-shrink: 0; }
 .target-client-item .tcl-status {
     font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
 }
@@ -2616,6 +2620,13 @@ input, textarea, select { font-family: inherit; outline: none; }
     .change-popover { width: 92vw; max-width: 340px; }
     .todo-filters { flex-wrap: wrap; }
     .week-day-card { padding: 12px 14px; }
+    .setup-overlay { padding: 20px 0; }
+    .setup-modal { padding: 32px 24px; width: 95%; }
+    .target-client-item { padding: 8px 10px; gap: 4px 8px; }
+    .target-detail-stats { gap: 8px; }
+    .target-detail-stat { padding: 8px 12px; min-width: 60px; }
+    .target-detail-stat .tds-value { font-size: 16px; }
+    .targets-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 }
 /* Small phones (480px and below) */
 @media (max-width: 480px) {
@@ -2655,6 +2666,20 @@ input, textarea, select { font-family: inherit; outline: none; }
     .share-modal-body { padding: 16px; }
     .share-action-btn { flex: 1; justify-content: center; font-size: 11px; padding: 8px 10px; }
     .snap-kpi-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .setup-overlay { padding: 12px 0; }
+    .setup-modal { padding: 24px 16px; border-radius: var(--radius-lg); }
+    .setup-modal .logo { font-size: 22px; }
+    .setup-modal h2 { font-size: 17px; }
+    .setup-modal .subtitle { font-size: 12px; margin-bottom: 20px; }
+    .setup-hint { font-size: 11px; }
+    .target-client-item { font-size: 11px; padding: 8px; gap: 4px 6px; }
+    .target-client-item > span:first-child { min-width: 60px; }
+    .target-client-item-actions { gap: 3px; }
+    .target-exclude-btn, .target-include-btn, .target-override-btn { width: 24px; height: 24px; font-size: 11px; }
+    .tcl-status { font-size: 10px !important; padding: 2px 6px !important; }
+    .target-detail-stat { padding: 6px 10px; min-width: 50px; }
+    .target-detail-stat .tds-value { font-size: 14px; }
+    .target-detail-stat .tds-label { font-size: 9px; }
 }
     </style>
     <script>
@@ -3515,9 +3540,11 @@ const TargetsManager = {
             return `<div class="target-client-item${isManuallyMet && !isNaturallyMet ? ' manually-overridden' : ''}">
                 <span>${c.name}</span>
                 <span style="color:var(--text-muted);font-size:11px;">${fieldLabel}: ${currentVal}</span>
-                ${statusHtml}
-                ${overrideBtn}
-                <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${esc}')" title="Exclude from target">✕</button>
+                <div class="target-client-item-actions">
+                    ${statusHtml}
+                    ${overrideBtn}
+                    <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${esc}')" title="Exclude from target">✕</button>
+                </div>
             </div>`;
         }).join('');
 
@@ -3529,8 +3556,10 @@ const TargetsManager = {
                     return `<div class="target-client-item target-client-excluded">
                         <span style="text-decoration:line-through;opacity:0.6;">${c.name}</span>
                         <span style="color:var(--text-muted);font-size:11px;">${fieldLabel}: ${currentVal}</span>
-                        <span class="tcl-status" style="background:rgba(255,255,255,0.05);color:var(--text-muted);">Excluded</span>
-                        <button class="target-include-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${c.name.replace(/'/g,"\\'")}')" title="Include in target">&#8634;</button>
+                        <div class="target-client-item-actions">
+                            <span class="tcl-status" style="background:rgba(255,255,255,0.05);color:var(--text-muted);">Excluded</span>
+                            <button class="target-include-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${c.name.replace(/'/g,"\\'")}')" title="Include in target">&#8634;</button>
+                        </div>
                     </div>`;
                 }).join('')}</div>
             </div>` : '';
