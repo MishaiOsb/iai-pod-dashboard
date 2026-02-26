@@ -1159,6 +1159,18 @@ input, textarea, select { font-family: inherit; outline: none; }
 .target-exclude-btn:hover { color: var(--rag-red); border-color: var(--rag-red); background: rgba(232,73,73,0.1); }
 .target-include-btn { color: var(--text-muted); }
 .target-include-btn:hover { color: var(--rag-green); border-color: var(--rag-green); background: rgba(0,200,117,0.1); }
+.target-override-btn {
+    background: none; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    cursor: pointer; font-size: 13px; width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all var(--transition-fast); flex-shrink: 0; margin-left: 4px;
+    color: var(--text-muted);
+}
+.target-override-btn:hover { color: var(--rag-green); border-color: var(--rag-green); background: rgba(0,200,117,0.1); }
+.target-override-btn.revert { color: var(--rag-amber); }
+.target-override-btn.revert:hover { color: var(--rag-amber); border-color: var(--rag-amber); background: rgba(255,203,0,0.1); }
+.target-client-item .tcl-status.manual { background: rgba(255,203,0,0.15); color: var(--rag-amber); }
+.target-client-item.manually-overridden { border-left: 2px solid var(--rag-amber); }
 .target-client-item.excluded {
     opacity: 0.5; text-decoration: line-through;
 }
@@ -3305,6 +3317,9 @@ const TargetsManager = {
     _exSk() { return UserSession.podKey(this._exKey); },
     _manualTargets: [],
     _exclusions: {}, // { targetId: ['ClientName1', 'ClientName2'] }
+    _overrides: {}, // { targetId: ['ClientName1', 'ClientName2'] } — force-met
+    _ovKey: 'iai_target_overrides',
+    _ovSk() { return UserSession.podKey(this._ovKey); },
 
     autoTargets: [
         { id: 'auto_billing', title: 'All Clients Billing Active', field: 'billing', matchValue: 'Yes', icon: '&#128179;' },
@@ -3321,6 +3336,10 @@ const TargetsManager = {
             const exRaw = localStorage.getItem(this._exSk());
             this._exclusions = exRaw ? JSON.parse(exRaw) : {};
         } catch { this._exclusions = {}; }
+        try {
+            const ovRaw = localStorage.getItem(this._ovSk());
+            this._overrides = ovRaw ? JSON.parse(ovRaw) : {};
+        } catch { this._overrides = {}; }
     },
 
     save() {
@@ -3329,6 +3348,28 @@ const TargetsManager = {
 
     _saveExclusions() {
         localStorage.setItem(this._exSk(), JSON.stringify(this._exclusions));
+    },
+
+    _saveOverrides() {
+        localStorage.setItem(this._ovSk(), JSON.stringify(this._overrides));
+    },
+
+    isOverridden(targetId, clientName) {
+        return (this._overrides[targetId] || []).includes(clientName);
+    },
+
+    toggleOverride(targetId, clientName) {
+        if (!this._overrides[targetId]) this._overrides[targetId] = [];
+        const idx = this._overrides[targetId].indexOf(clientName);
+        if (idx >= 0) {
+            this._overrides[targetId].splice(idx, 1);
+            showToast(`${clientName} override removed`, 'info');
+        } else {
+            this._overrides[targetId].push(clientName);
+            showToast(`${clientName} manually marked as met`, 'success');
+        }
+        this._saveOverrides();
+        this.render();
     },
 
     isExcluded(targetId, clientName) {
@@ -3363,11 +3404,15 @@ const TargetsManager = {
         this.autoTargets.forEach(at => {
             const active = this._getActiveClients(at.id);
             const excluded = (this._exclusions[at.id] || []).length;
-            const current = active.filter(c => c[at.field] === at.matchValue).length;
+            const overrideNames = this._overrides[at.id] || [];
+            const current = active.filter(c =>
+                c[at.field] === at.matchValue || overrideNames.includes(c.name)
+            ).length;
+            const overridden = overrideNames.filter(name => active.some(c => c.name === name && c[at.field] !== at.matchValue)).length;
             targets.push({
                 id: at.id, title: at.title, current, goal: active.length,
                 type: 'auto', icon: at.icon, deadline: null,
-                excludedCount: excluded,
+                excludedCount: excluded, overriddenCount: overridden,
             });
         });
 
@@ -3404,10 +3449,11 @@ const TargetsManager = {
         if (!autoTarget || allClients.length === 0) return '<p class="target-detail-description">No client data available.</p>';
 
         const excludedNames = this._exclusions[target.id] || [];
+        const overriddenNames = this._overrides[target.id] || [];
         const activeClients = allClients.filter(c => !excludedNames.includes(c.name));
         const excludedClients = allClients.filter(c => excludedNames.includes(c.name));
-        const met = activeClients.filter(c => c[autoTarget.field] === autoTarget.matchValue);
-        const unmet = activeClients.filter(c => c[autoTarget.field] !== autoTarget.matchValue);
+        const met = activeClients.filter(c => c[autoTarget.field] === autoTarget.matchValue || overriddenNames.includes(c.name));
+        const unmet = activeClients.filter(c => c[autoTarget.field] !== autoTarget.matchValue && !overriddenNames.includes(c.name));
 
         let fieldLabel = autoTarget.field === 'billing' ? 'Billing' : autoTarget.field === 'rag' ? 'RAG Status' : 'Update Status';
         let description = '';
@@ -3437,16 +3483,41 @@ const TargetsManager = {
                     <span class="tds-value" style="color:var(--text-muted)">${excludedClients.length}</span>
                     <span class="tds-label">Excluded</span>
                 </div>` : ''}
+                ${overriddenNames.filter(n => activeClients.some(c => c.name === n && c[autoTarget.field] !== autoTarget.matchValue)).length > 0 ? `<div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-amber)">${overriddenNames.filter(n => activeClients.some(c => c.name === n && c[autoTarget.field] !== autoTarget.matchValue)).length}</span>
+                    <span class="tds-label">Overridden</span>
+                </div>` : ''}
             </div>`;
 
         const clientListHtml = activeClients.map(c => {
-            const isMet = c[autoTarget.field] === autoTarget.matchValue;
+            const esc = c.name.replace(/'/g, "\\'");
+            const isNaturallyMet = c[autoTarget.field] === autoTarget.matchValue;
+            const isManuallyMet = overriddenNames.includes(c.name);
+            const isMet = isNaturallyMet || isManuallyMet;
             const currentVal = c[autoTarget.field] || '--';
-            return `<div class="target-client-item">
+
+            let statusHtml;
+            if (isManuallyMet && !isNaturallyMet) {
+                statusHtml = `<span class="tcl-status met manual">✓ Met (Manual)</span>`;
+            } else if (isMet) {
+                statusHtml = `<span class="tcl-status met">✓ Met</span>`;
+            } else {
+                statusHtml = `<span class="tcl-status unmet">✗ Action Needed</span>`;
+            }
+
+            let overrideBtn = '';
+            if (isManuallyMet && !isNaturallyMet) {
+                overrideBtn = `<button class="target-override-btn revert" onclick="event.stopPropagation();TargetsManager.toggleOverride('${target.id}','${esc}')" title="Remove manual override">↩</button>`;
+            } else if (!isMet) {
+                overrideBtn = `<button class="target-override-btn" onclick="event.stopPropagation();TargetsManager.toggleOverride('${target.id}','${esc}')" title="Manually mark as met">✓</button>`;
+            }
+
+            return `<div class="target-client-item${isManuallyMet && !isNaturallyMet ? ' manually-overridden' : ''}">
                 <span>${c.name}</span>
                 <span style="color:var(--text-muted);font-size:11px;">${fieldLabel}: ${currentVal}</span>
-                <span class="tcl-status ${isMet ? 'met' : 'unmet'}">${isMet ? '✓ Met' : '✗ Action Needed'}</span>
-                <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${c.name.replace(/'/g,"\\'")}')" title="Exclude from target">✕</button>
+                ${statusHtml}
+                ${overrideBtn}
+                <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('${target.id}','${esc}')" title="Exclude from target">✕</button>
             </div>`;
         }).join('');
 
@@ -5154,7 +5225,7 @@ const UserSession = {
             'iai_targets', 'iai_todos', 'iai_email_overrides', 'iai_email_hidden',
             'iai_outlook_cache', 'iai_calendar_cache', 'iai_activity_feed', 'iai_cal_states',
             'iai_email_notes', 'iai_local_edits', 'iai_local_data',
-            'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions'
+            'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions', 'iai_target_overrides'
         ];
         keys.forEach(key => {
             const oldData = localStorage.getItem(key);
