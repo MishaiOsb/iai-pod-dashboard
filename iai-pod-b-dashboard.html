@@ -1517,6 +1517,37 @@ input, textarea, select { font-family: inherit; outline: none; }
 .overview-chart-container { max-width: 350px; margin: 0 auto; }
 
 /* ========================================================
+   OVERVIEW TARGETS BAR
+   ======================================================== */
+.overview-targets-section { margin-bottom: 20px; }
+.overview-targets-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 0 0 10px; padding: 0 4px;
+}
+.overview-targets-header h3 { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.overview-targets-link {
+    font-size: 12px; padding: 6px 12px; border-radius: var(--radius-md);
+    background: rgba(107,48,255,0.08); color: var(--accent-purple-light);
+    border: 1px solid rgba(107,48,255,0.2); cursor: pointer; font-weight: 600;
+    transition: all var(--transition-fast); text-decoration: none;
+}
+.overview-targets-link:hover { background: rgba(107,48,255,0.16); border-color: rgba(107,48,255,0.35); }
+.overview-targets-list { display: flex; flex-direction: column; gap: 8px; }
+.overview-target-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    background: var(--card-bg); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.overview-target-row:hover { border-color: var(--accent-purple); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.overview-target-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+.overview-target-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.overview-target-label { font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.overview-target-bar { height: 8px; border-radius: 4px; background: var(--bg-elevated); overflow: hidden; width: 100%; }
+.overview-target-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.overview-target-fraction { font-size: 12px; font-weight: 700; flex-shrink: 0; min-width: 48px; text-align: right; }
+
+/* ========================================================
    ACTIVITY LOG / RECENT UPDATES
    ======================================================== */
 .activity-log-section { margin-top: 24px; }
@@ -1558,6 +1589,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 .activity-log-dot.system { background: var(--text-muted); }
 .activity-log-dot.target { background: var(--accent-gold); }
 .activity-log-dot.note { background: #9d50dd; }
+.activity-log-dot.todo { background: #579bfc; }
 .activity-log-dot.status-change { background: var(--accent-orange); }
 .activity-log-dot.override { background: #ff5ac4; }
 .activity-log-body { flex: 1; min-width: 0; }
@@ -2668,6 +2700,8 @@ input, textarea, select { font-family: inherit; outline: none; }
     .snap-client-metrics { grid-template-columns: 1fr; }
     .email-cards { grid-template-columns: 1fr; }
     .overview-quick-grid { grid-template-columns: 1fr; }
+    .overview-target-row { padding: 8px 10px; gap: 8px; }
+    .overview-target-label { font-size: 12px; }
     .client-detail-metrics { grid-template-columns: repeat(2, 1fr); }
     .client-detail-charts { grid-template-columns: 1fr; }
     .compare-table { font-size: 12px; }
@@ -3461,6 +3495,7 @@ const TargetsManager = {
     toggleOverride(targetId, clientName) {
         if (!this._overrides[targetId]) this._overrides[targetId] = [];
         const idx = this._overrides[targetId].indexOf(clientName);
+        const isNowOverridden = idx < 0;
         if (idx >= 0) {
             this._overrides[targetId].splice(idx, 1);
             showToast(`${clientName} override removed`, 'info');
@@ -3470,6 +3505,9 @@ const TargetsManager = {
         }
         this._saveOverrides();
         this.render();
+        const tgt = this.getAll().find(t => t.id === targetId);
+        const tgtTitle = tgt ? tgt.title : targetId;
+        ActivityFeed.log({ type: 'target', dotClass: 'target', title: isNowOverridden ? 'Target: client marked as met' : 'Target: override removed', desc: `${clientName} — ${tgtTitle}`, source: 'user-action' });
     },
 
     isExcluded(targetId, clientName) {
@@ -3479,6 +3517,7 @@ const TargetsManager = {
     toggleExclusion(targetId, clientName) {
         if (!this._exclusions[targetId]) this._exclusions[targetId] = [];
         const idx = this._exclusions[targetId].indexOf(clientName);
+        const isNowExcluded = idx < 0;
         if (idx >= 0) {
             this._exclusions[targetId].splice(idx, 1);
             showToast(`${clientName} included in target`, 'info');
@@ -3488,6 +3527,9 @@ const TargetsManager = {
         }
         this._saveExclusions();
         this.render();
+        const tgt = this.getAll().find(t => t.id === targetId);
+        const tgtTitle = tgt ? tgt.title : targetId;
+        ActivityFeed.log({ type: 'target', dotClass: 'target', title: isNowExcluded ? 'Target: client excluded' : 'Target: client included', desc: `${clientName} — ${tgtTitle}`, source: 'user-action' });
     },
 
     _getActiveClients(targetId) {
@@ -3803,13 +3845,18 @@ const TargetsManager = {
         this.render();
         this.closeModal();
         showToast(editId ? 'Target updated' : 'Target added', 'success');
+        ActivityFeed.log({ type: 'target', dotClass: 'target', title: editId ? 'Target updated' : 'Target created', desc: `${title} (${current}/${goal})`, source: 'user-action' });
     },
 
     deleteTarget(id) {
+        const deleted = this._manualTargets.find(m => m.id === id);
         this._manualTargets = this._manualTargets.filter(m => m.id !== id);
         this.save();
         this.render();
         showToast('Target removed', 'info');
+        if (deleted) {
+            ActivityFeed.log({ type: 'target', dotClass: 'target', title: 'Target deleted', desc: deleted.title, source: 'user-action' });
+        }
     },
 };
 
@@ -3848,6 +3895,9 @@ const DashTodo = {
             ...opts, // autoGenerated, sourceEventId, matchedClient, meetingType
         });
         this.save();
+        if (!opts.autoGenerated) {
+            ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: 'Todo added', desc: text.trim(), source: 'user-action' });
+        }
     },
 
     toggle(id) {
@@ -3856,6 +3906,7 @@ const DashTodo = {
             item.completed = !item.completed;
             item.completedAt = item.completed ? new Date().toISOString() : null;
             this.save();
+            ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: item.completed ? 'Todo completed' : 'Todo uncompleted', desc: item.text, source: 'user-action' });
         }
     },
 
@@ -3866,6 +3917,9 @@ const DashTodo = {
         }
         this._items = this._items.filter(t => t.id !== id);
         this.save();
+        if (item) {
+            ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: 'Todo removed', desc: item.text, source: 'user-action' });
+        }
     },
 
     getToday() {
@@ -4845,7 +4899,7 @@ const ActivityFeed = {
             'email': ['email-in', 'email-out'],
             'calendar': ['calendar'],
             'data': ['data-change', 'status-change'],
-            'system': ['system', 'target', 'note', 'override'],
+            'system': ['system', 'target', 'note', 'override', 'todo'],
         };
         const types = typeMap[f] || [f];
         return this._events.filter(e => types.includes(e.type));
@@ -4920,20 +4974,36 @@ const ActivityFeed = {
             if (typeof ChangeTracker !== 'undefined') {
                 Object.entries(ChangeTracker._changes).forEach(([clientId, changes]) => {
                     const client = State.clients.find(cl => cl.id === clientId);
-                    if (!client) return;
+                    const clientName = client ? client.name : (changes[0]?.newVal || changes[0]?.oldVal || 'Unknown');
                     changes.forEach(ch => {
                         const seedId = 'seed_change_' + clientId + '_' + ch.field;
                         if (existingIds.has(seedId)) return;
-                        newEvents.push({
-                            id: seedId,
-                            date: new Date().toISOString(),
-                            type: ch.direction === 'declined' ? 'alert' : ch.direction === 'improved' ? 'status-change' : 'data-change',
-                            dotClass: ch.direction === 'declined' ? 'alert' : ch.direction === 'improved' ? 'email-in' : 'data-change',
-                            title: `🔄 ${client.name} — ${ch.field}`,
-                            desc: `${ch.oldVal} → ${ch.newVal}`,
-                            source: 'monday',
-                            clientName: client.name,
-                        });
+                        if (ch.field === 'New Client') {
+                            newEvents.push({
+                                id: seedId, date: new Date().toISOString(),
+                                type: 'data-change', dotClass: 'email-in',
+                                title: `🆕 ${ch.newVal} — New client added`,
+                                desc: 'Client appeared in monday.com data',
+                                source: 'monday', clientName: ch.newVal,
+                            });
+                        } else if (ch.field === 'Client Removed') {
+                            newEvents.push({
+                                id: seedId, date: new Date().toISOString(),
+                                type: 'alert', dotClass: 'alert',
+                                title: `🗑️ ${ch.oldVal} — Client removed`,
+                                desc: 'Client no longer in monday.com data',
+                                source: 'monday', clientName: ch.oldVal,
+                            });
+                        } else {
+                            newEvents.push({
+                                id: seedId, date: new Date().toISOString(),
+                                type: ch.direction === 'declined' ? 'alert' : ch.direction === 'improved' ? 'status-change' : 'data-change',
+                                dotClass: ch.direction === 'declined' ? 'alert' : ch.direction === 'improved' ? 'email-in' : 'data-change',
+                                title: `🔄 ${clientName} — ${ch.field}`,
+                                desc: `${ch.oldVal} → ${ch.newVal}`,
+                                source: 'monday', clientName: clientName,
+                            });
+                        }
                     });
                 });
             }
@@ -7756,7 +7826,39 @@ function renderOverviewPage() {
     const changeCount = ChangeTracker.totalCount();
     const changeBanner = changeCount > 0 ? `<button onclick="ChangeTracker.dismissAll()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-md);background:rgba(107,48,255,0.12);color:var(--accent-purple-light);border:1px solid rgba(107,48,255,0.25);cursor:pointer;font-weight:600;transition:all var(--transition-fast);" onmouseover="this.style.background='rgba(107,48,255,0.22)'" onmouseout="this.style.background='rgba(107,48,255,0.12)'">&#10003; Clear ${changeCount} Change${changeCount !== 1 ? 's' : ''}</button>` : '';
 
+    // === Targets overview bar ===
+    const allTargets = TargetsManager.getAll();
+    const targetsBarHTML = allTargets.length > 0 ? `
+        <div class="overview-targets-section">
+            <div class="overview-targets-header">
+                <h3>&#127919; Targets Overview</h3>
+                <button class="overview-targets-link" onclick="Router.navigate('targets')">View All &#8594;</button>
+            </div>
+            <div class="overview-targets-list">
+                ${allTargets.map(t => {
+                    const pct = t.goal > 0 ? Math.round((t.current / t.goal) * 100) : 0;
+                    const clampPct = Math.min(100, Math.max(0, pct));
+                    const barColor = clampPct >= 100 ? 'var(--rag-green)' :
+                                     clampPct >= 66 ? 'var(--rag-green)' :
+                                     clampPct >= 33 ? 'var(--rag-amber)' : 'var(--rag-red)';
+                    const isComplete = clampPct >= 100;
+                    return `
+                    <div class="overview-target-row" onclick="Router.navigate('targets')">
+                        <span class="overview-target-icon">${t.icon}</span>
+                        <div class="overview-target-info">
+                            <span class="overview-target-label">${t.title}</span>
+                            <div class="overview-target-bar">
+                                <div class="overview-target-fill" style="width:${clampPct}%;background:${barColor}"></div>
+                            </div>
+                        </div>
+                        <span class="overview-target-fraction" style="color:${barColor}">${t.current}/${t.goal}</span>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>` : '';
+
     container.innerHTML = `
+        ${targetsBarHTML}
         <div class="overview-clients-header">
             <h3>&#128101; Quick Client View ${changeCount > 0 ? `<span style="font-size:12px;font-weight:600;color:var(--accent-purple-light);margin-left:8px;">&#9889; ${changeCount} updated</span>` : ''}</h3>
             <div style="display:flex;gap:8px;align-items:center;">
