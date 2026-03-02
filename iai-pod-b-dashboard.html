@@ -3122,12 +3122,12 @@ input, textarea, select { font-family: inherit; outline: none; }
         <div class="task-prompt-modal">
             <h3>&#128221; Add Tasks</h3>
             <div class="prompt-subtitle">
-                Paste your tasks below — one per line. You can include priority and dates:<br>
-                <span style="color:var(--text-primary);">Format: </span>
-                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Task text [!high/!medium/!low] [@date]</code><br>
-                <span style="color:var(--text-muted);font-size:11px;">e.g. "Follow up with Townhouse !high @2026-02-24" or just "Update client notes"</span>
+                Type naturally or paste tasks — one per line, or comma-separated. Priority is auto-detected from keywords.<br>
+                <span style="color:var(--text-primary);">Supports: </span>
+                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, !high/!low tags, @date</code><br>
+                <span style="color:var(--text-muted);font-size:11px;">e.g. "Chase Townhouse on booking, send QDP update, review Orbital system" or "Follow up with client !high @monday"</span>
             </div>
-            <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="Follow up with Townhouse on booking agent !high @2026-02-24&#10;Send QDP recall campaign update&#10;Review Orbital email notification system !medium&#10;Prepare weekly pod report !low @2026-02-28&#10;Update GANESHA project board"></textarea>
+            <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report !low @friday"></textarea>
             <div class="task-prompt-options">
                 <label>Default priority:</label>
                 <select id="taskPromptDefaultPriority">
@@ -3925,7 +3925,7 @@ const DashTodo = {
     getToday() {
         const n = new Date();
         const today = n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
-        return this._items.filter(t => t.dueDate === today);
+        return this._items.filter(t => t.dueDate === today && !t.completed);
     },
 
     getThisWeek() {
@@ -3939,7 +3939,7 @@ const DashTodo = {
 
         return this._items.filter(t => {
             const d = new Date(t.dueDate);
-            return d >= startOfWeek && d <= endOfWeek;
+            return d >= startOfWeek && d <= endOfWeek && !t.completed;
         });
     },
 
@@ -8999,14 +8999,96 @@ function closeTaskPrompt() {
 }
 
 /**
+ * Smart-split natural language into individual task lines.
+ * "I have 3 tasks: A, B and C" → ["A", "B", "C"]
+ * "Today I need to: chase EzyClean, send the proposal and update notes" → 3 tasks
+ * Falls back to newline splitting for structured input.
+ */
+function smartSplitTasks(text) {
+    const raw = text.trim();
+    if (!raw) return [];
+
+    // If input already has multiple lines, respect that structure
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length > 1) return lines;
+
+    // Single line — try smart parsing
+    const single = lines[0];
+
+    // Detect preamble patterns: "I have X tasks:", "today I need to:", "tasks for today:", etc.
+    const preambleRe = /^(?:(?:i\s+(?:have|need|got|want)\s+(?:to\s+)?(?:do\s+)?(?:\d+\s+)?(?:tasks?|things?|items?|jobs?)?\s*(?:today|this\s+week|for\s+today|for\s+this\s+week)?\s*[:—–-]?\s*)|(?:(?:my\s+)?(?:tasks?|things?|items?|jobs?)\s+(?:for\s+)?(?:today|this\s+week)\s*[:—–-]\s*)|(?:today(?:'s)?\s+(?:tasks?|things?|items?|jobs?)\s*[:—–-]\s*)|(?:(?:i\s+)?(?:need|want|have)\s+to\s*[:—–-]\s*))/i;
+    const preambleMatch = single.match(preambleRe);
+    const body = preambleMatch ? single.slice(preambleMatch[0].length).trim() : null;
+
+    if (body && body.length > 0) {
+        // Split by commas, "and", semicolons, numbered lists
+        const parts = body
+            .replace(/\band\b/gi, ',')
+            .replace(/;/g, ',')
+            .replace(/\d+\)\s*/g, ',')  // "1) task" patterns
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+        if (parts.length >= 2) return parts;
+    }
+
+    // No preamble detected — check for comma/and lists that look like tasks
+    // "Chase EzyClean, send the report and update notes"
+    if (/,/.test(single) || /\band\b/i.test(single)) {
+        const parts = single
+            .replace(/\band\b/gi, ',')
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+        // Only split if each part looks like a task (starts with a verb or is short enough)
+        const verbRe = /^(chase|send|call|email|follow|update|review|prepare|check|write|create|finish|complete|submit|schedule|book|contact|draft|organise|organize|fix|build|set\s?up|meet|plan|arrange|confirm|cancel|order|research|look\s?into|sort|clean|test|deploy|upload|download|share|notify|remind|discuss|present|sign|approve|request)/i;
+        const looksLikeTasks = parts.every(p => verbRe.test(p) || p.split(/\s+/).length <= 8);
+        if (parts.length >= 2 && looksLikeTasks) return parts;
+    }
+
+    return [single];
+}
+
+/**
+ * Infer priority from task text based on keywords and context.
+ */
+function inferTaskPriority(text, defaultPriority) {
+    const lower = text.toLowerCase();
+    // High priority signals (word-stem matching — no trailing \b so "urgent" matches "urgently", "escalat" matches "escalate" etc)
+    if (/\b(urgent|asap|critical|important|deadline|overdue|immediate|eod|end\s+of\s+day)/i.test(lower)) return 'high';
+    if (/\b(chase|escalat|follow\s*up|remind|blocker)/i.test(lower)) return 'high';
+    // Low priority signals
+    if (/\b(when\s+you\s+can|nice\s+to\s+have|eventual|backlog|optional|later|someday)/i.test(lower)) return 'low';
+    if (/\b(tidy|clean\s*up|organis|reorganis|sort\s+out)/i.test(lower)) return 'low';
+    return defaultPriority;
+}
+
+/**
+ * Clean up a task line — capitalise first letter, remove trailing punctuation, trim filler words.
+ */
+function cleanTaskText(text) {
+    let t = text.trim();
+    // Remove leading bullets/dashes/numbers
+    t = t.replace(/^[\-\*•→]\s*/, '').replace(/^\d+[\.\)]\s*/, '');
+    // Remove filler starts like "I need to", "I have to", "then"
+    t = t.replace(/^(?:i\s+(?:need|have|want|should|must)\s+to\s+|then\s+|also\s+|and\s+)/i, '');
+    // Capitalise first letter
+    if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
+    // Remove trailing comma/semicolon
+    t = t.replace(/[,;]+$/, '').trim();
+    return t;
+}
+
+/**
  * Parse bulk text into task objects.
  * Supports:   "Task text !high @2026-02-25"
  *             "Task text !low"
  *             "Task text @tomorrow"
  *             "Task text" (uses defaults)
+ *             "I have 3 tasks today: A, B and C" (smart split)
  */
 function parseTaskLines(text, defaultPriority, dateMode, customDate) {
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const lines = smartSplitTasks(text);
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     const tasks = [];
@@ -9016,12 +9098,14 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
         let dueDate = todayStr;
         let taskText = line;
 
-        // Extract priority: !high, !medium, !low, !urgent (→high), !important (→high)
+        // Extract explicit priority: !high, !medium, !low, !urgent (→high), !important (→high)
+        let explicitPriority = false;
         const prioMatch = taskText.match(/\s*!(high|medium|low|urgent|important)\s*/i);
         if (prioMatch) {
             const p = prioMatch[1].toLowerCase();
             priority = (p === 'urgent' || p === 'important') ? 'high' : p;
             taskText = taskText.replace(prioMatch[0], ' ').trim();
+            explicitPriority = true;
         }
 
         // Extract date: @2026-02-25 or @tomorrow or @monday etc
@@ -9069,8 +9153,16 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
             }
         }
 
+        // Clean up filler words and capitalise
+        taskText = cleanTaskText(taskText);
+
+        // Infer priority from keywords if no explicit !tag was given
+        if (!explicitPriority) {
+            priority = inferTaskPriority(taskText, priority);
+        }
+
         if (taskText.length > 0) {
-            tasks.push({ text: taskText, priority, dueDate });
+            tasks.push({ text: taskText, priority, dueDate, inferred: !explicitPriority && priority !== defaultPriority });
         }
     });
 
@@ -9098,8 +9190,9 @@ function updateTaskPreview() {
 
     list.innerHTML = tasks.map(t => {
         const dateLabel = new Date(t.dueDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+        const inferBadge = t.inferred ? ' <span style="font-size:9px;opacity:.6;font-style:italic;">auto</span>' : '';
         return `<div class="task-preview-item">
-            <span class="tpi-priority ${t.priority}">${t.priority}</span>
+            <span class="tpi-priority ${t.priority}">${t.priority}${inferBadge}</span>
             <span>${t.text}</span>
             <span class="tpi-date">${dateLabel}</span>
         </div>`;
@@ -9114,7 +9207,7 @@ function submitTaskPrompt() {
 
     const tasks = parseTaskLines(text, defaultPriority, dateMode, customDate);
     if (tasks.length === 0) {
-        showToast('No tasks found — enter one task per line', 'error');
+        showToast('No tasks found — type naturally or enter one per line', 'error');
         return;
     }
 
