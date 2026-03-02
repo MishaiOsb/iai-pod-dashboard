@@ -6,6 +6,7 @@
     <title>IAI Pod B Dashboard — Mishai | ImplementAI</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
     <style>
 /* ========================================================
    CSS CUSTOM PROPERTIES & THEME
@@ -2132,6 +2133,48 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .ai-mode-indicator.visible { opacity: 1; }
 
+/* File Upload — Drop Zone, Chips, Parsing */
+.file-upload-zone {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin: 10px 0 0 0; padding: 14px;
+    border: 2px dashed var(--border-default); border-radius: var(--radius-md);
+    background: var(--bg-input); color: var(--text-muted);
+    font-size: 12px; cursor: pointer; transition: all var(--transition-fast);
+    position: relative;
+}
+.file-upload-zone:hover { border-color: var(--accent-purple); color: var(--text-secondary); background: rgba(107,48,255,0.04); }
+.file-upload-zone.drag-over { border-color: var(--accent-purple); background: rgba(107,48,255,0.08); color: var(--accent-purple-light); }
+.file-upload-zone .upload-icon { font-size: 18px; pointer-events: none; }
+.file-upload-zone .upload-text { pointer-events: none; text-align: center; }
+.file-upload-zone .upload-browse { color: var(--accent-purple-light); text-decoration: underline; font-weight: 600; }
+.file-upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-chips { display: none; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.file-chips.visible { display: flex; }
+.file-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 12px;
+    background: rgba(107,48,255,0.08); border: 1px solid rgba(107,48,255,0.2);
+    font-size: 11px; color: var(--accent-purple-light); max-width: 260px;
+}
+.file-chip .chip-icon { font-size: 12px; flex-shrink: 0; }
+.file-chip .chip-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip .chip-size { color: var(--text-muted); font-size: 10px; flex-shrink: 0; }
+.file-chip .chip-remove {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 14px; padding: 0 2px; line-height: 1; flex-shrink: 0;
+    transition: color var(--transition-fast);
+}
+.file-chip .chip-remove:hover { color: var(--rag-red); }
+.file-parsing-state { text-align: center; padding: 16px; color: var(--text-muted); font-size: 12px; display: none; }
+.file-parsing-state.visible { display: block; }
+.file-parsing-state .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid var(--border-default); border-top-color: var(--accent-purple);
+    border-radius: 50%; animation: aiSpin 0.8s linear infinite; margin-bottom: 6px;
+}
+.file-parsing-state .parse-detail { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.task-prompt-textarea.file-drag-over { border-color: var(--accent-purple) !important; background: rgba(107,48,255,0.04); }
+
 .task-prompt-actions {
     display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end;
 }
@@ -3277,12 +3320,26 @@ input, textarea, select { font-family: inherit; outline: none; }
         <div class="task-prompt-modal">
             <h3>&#128221; Add Tasks <span class="ai-mode-indicator" id="aiModeIndicator">&#129302; AI Mode</span></h3>
             <div class="prompt-subtitle">
-                Type naturally, paste tasks, or paste a meeting transcript for AI extraction.<br>
+                Type naturally, paste tasks, drop files, or paste a meeting transcript for AI extraction.<br>
                 <span style="color:var(--text-primary);">Supports: </span>
-                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, !high/!low tags, @date, transcripts, meeting notes</code><br>
+                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, files (.txt .md .csv .docx .pdf), !high/!low tags, @date, transcripts</code><br>
                 <span style="color:var(--text-muted);font-size:10px;">Client names are recognised automatically. Email status, RAG, and upcoming meetings inform priority.</span>
             </div>
             <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report !low @friday&#10;&#10;Or paste a meeting transcript / notes and AI will extract tasks automatically"></textarea>
+            <!-- File upload: chips + drop zone + parsing -->
+            <div class="file-chips" id="fileChips"></div>
+            <div class="file-upload-zone" id="fileUploadZone">
+                <span class="upload-icon">&#128194;</span>
+                <span class="upload-text">Drop files here or <span class="upload-browse">browse</span>
+                    <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px;">.txt, .md, .csv, .docx, .pdf &mdash; max 10 MB each</span>
+                </span>
+                <input type="file" id="fileUploadInput" accept=".txt,.md,.csv,.docx,.pdf" multiple onchange="FileUpload.handleFiles(this.files)">
+            </div>
+            <div class="file-parsing-state" id="fileParsingState">
+                <div class="spinner"></div>
+                <div id="fileParsingMsg">Reading file...</div>
+                <div class="parse-detail" id="fileParsingDetail"></div>
+            </div>
             <div class="task-prompt-options">
                 <label>Default priority:</label>
                 <select id="taskPromptDefaultPriority">
@@ -9803,6 +9860,202 @@ const KnowledgeBase = {
 };
 
 /* ================================================================
+   FILE UPLOAD — parse .txt/.md/.csv/.docx/.pdf into text for AI
+   ================================================================ */
+const FileUpload = {
+    MAX_FILE_SIZE: 10 * 1024 * 1024,
+    ALLOWED_EXT: ['.txt', '.md', '.csv', '.docx', '.pdf'],
+    _pdfJsLoaded: false,
+    _files: [],
+    _initialized: false,
+
+    init() {
+        if (this._initialized) return;
+        this._initialized = true;
+        const zone = document.getElementById('fileUploadZone');
+        const textarea = document.getElementById('taskPromptText');
+        if (!zone) return;
+
+        zone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); zone.classList.remove('drag-over'); });
+        zone.addEventListener('drop', (e) => {
+            e.preventDefault(); e.stopPropagation(); zone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) this.handleFiles(e.dataTransfer.files);
+        });
+
+        textarea.addEventListener('dragover', (e) => {
+            if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); textarea.classList.add('file-drag-over'); }
+        });
+        textarea.addEventListener('dragleave', (e) => { e.preventDefault(); textarea.classList.remove('file-drag-over'); });
+        textarea.addEventListener('drop', (e) => {
+            if (e.dataTransfer.types.includes('Files') && e.dataTransfer.files.length) {
+                e.preventDefault(); e.stopPropagation(); textarea.classList.remove('file-drag-over');
+                this.handleFiles(e.dataTransfer.files);
+            }
+        });
+    },
+
+    async handleFiles(fileList) {
+        if (!fileList || fileList.length === 0) return;
+        const files = Array.from(fileList);
+        let added = 0;
+        for (const file of files) {
+            const result = await this._processFile(file);
+            if (result) { this._files.push(result); this._renderChips(); added++; }
+        }
+        this._hideParsing();
+        if (added > 0) { this._rebuildTextarea(); this._triggerAI(); }
+        document.getElementById('fileUploadInput').value = '';
+    },
+
+    async _processFile(file) {
+        const ext = this._getExt(file.name);
+        if (!this.ALLOWED_EXT.includes(ext)) {
+            showToast(`Skipped ${file.name} — unsupported format. Use: ${this.ALLOWED_EXT.join(', ')}`, 'error');
+            return null;
+        }
+        if (file.size > this.MAX_FILE_SIZE) {
+            const mb = (file.size / (1024 * 1024)).toFixed(1);
+            showToast(`${file.name} too large (${mb} MB). Max: 10 MB per file`, 'error');
+            return null;
+        }
+        if (file.size === 0) { showToast(`Skipped ${file.name} — file is empty`, 'error'); return null; }
+        if (this._files.some(f => f.name === file.name)) { showToast(`${file.name} already added`, 'info'); return null; }
+
+        this._showParsing(file.name, ext);
+        try {
+            let text;
+            if (ext === '.txt' || ext === '.md' || ext === '.csv') { text = await this._readAsText(file); }
+            else if (ext === '.docx') { text = await this._readDocx(file); }
+            else if (ext === '.pdf') { text = await this._readPdf(file); }
+            text = (text || '').trim();
+            if (!text) { showToast(`No text found in ${file.name}`, 'error'); return null; }
+            return { name: file.name, size: file.size, ext, text };
+        } catch (err) {
+            console.error('File parse error:', err);
+            showToast(`Failed to read ${file.name}: ${err.message}`, 'error');
+            return null;
+        }
+    },
+
+    _getExt(name) { const d = name.lastIndexOf('.'); return d >= 0 ? name.slice(d).toLowerCase() : ''; },
+
+    _readAsText(file) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(new Error('Failed to read text file'));
+            r.readAsText(file);
+        });
+    },
+
+    async _readDocx(file) {
+        if (typeof mammoth === 'undefined') throw new Error('DOCX library not loaded. Please reload the page.');
+        const ab = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer: ab });
+        return result.value;
+    },
+
+    async _readPdf(file) {
+        await this._ensurePdfJs();
+        this._updateParsing('Loading PDF...');
+        const ab = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            this._updateParsing(`Extracting page ${i} of ${pdf.numPages}...`);
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            text += content.items.map(it => it.str).join(' ') + '\n';
+        }
+        return text;
+    },
+
+    _ensurePdfJs() {
+        if (this._pdfJsLoaded && typeof pdfjsLib !== 'undefined') return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+            s.onload = () => {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+                this._pdfJsLoaded = true;
+                resolve();
+            };
+            s.onerror = () => reject(new Error('Failed to load PDF library'));
+            document.head.appendChild(s);
+        });
+    },
+
+    _rebuildTextarea() {
+        const textarea = document.getElementById('taskPromptText');
+        if (this._files.length === 0) { textarea.value = ''; return; }
+        if (this._files.length === 1) {
+            textarea.value = this._files[0].text;
+        } else {
+            textarea.value = this._files.map(f => `--- ${f.name} ---\n${f.text}`).join('\n\n');
+        }
+        // Show AI mode indicator
+        document.getElementById('aiModeIndicator').classList.add('visible');
+        const lbl = document.getElementById('aiProviderLabel');
+        const sel = document.getElementById('taskPromptAIProvider');
+        if (lbl) lbl.style.display = '';
+        if (sel) sel.style.display = '';
+    },
+
+    _renderChips() {
+        const container = document.getElementById('fileChips');
+        container.innerHTML = this._files.map((f, i) => {
+            const sz = f.size < 1024 ? f.size + ' B' : f.size < 1048576 ? (f.size / 1024).toFixed(1) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB';
+            const icon = f.ext === '.pdf' ? '&#128196;' : f.ext === '.docx' ? '&#128195;' : '&#128196;';
+            return `<div class="file-chip"><span class="chip-icon">${icon}</span><span class="chip-name">${f.name}</span><span class="chip-size">${sz}</span><button class="chip-remove" onclick="FileUpload.removeFile(${i})" title="Remove">&times;</button></div>`;
+        }).join('');
+        container.classList.toggle('visible', this._files.length > 0);
+    },
+
+    removeFile(idx) {
+        this._files.splice(idx, 1);
+        this._renderChips();
+        if (this._files.length === 0) { this.clear(); return; }
+        this._rebuildTextarea();
+        this._triggerAI();
+    },
+
+    _triggerAI() {
+        const text = document.getElementById('taskPromptText').value;
+        if (!text.trim()) return;
+        if (AI_CONFIG.hasKey()) {
+            triggerAIExtraction(text);
+        } else {
+            updateTaskPreview();
+            showToast('No AI key configured — using smart parser. Add a key in Settings for better results.', 'info');
+        }
+    },
+
+    _showParsing(name, ext) {
+        const el = document.getElementById('fileParsingState');
+        document.getElementById('fileParsingMsg').textContent = `Reading ${name}...`;
+        document.getElementById('fileParsingDetail').textContent =
+            ext === '.pdf' ? 'Loading PDF engine...' : ext === '.docx' ? 'Extracting text from Word document...' : 'Reading text...';
+        el.classList.add('visible');
+        document.getElementById('taskPromptPreview').classList.remove('visible');
+        AIReview.hide();
+    },
+    _updateParsing(msg) { document.getElementById('fileParsingDetail').textContent = msg; },
+    _hideParsing() { document.getElementById('fileParsingState').classList.remove('visible'); },
+
+    clear() {
+        this._files = [];
+        document.getElementById('fileChips').innerHTML = '';
+        document.getElementById('fileChips').classList.remove('visible');
+        document.getElementById('taskPromptText').value = '';
+        document.getElementById('fileUploadInput').value = '';
+        document.getElementById('aiModeIndicator').classList.remove('visible');
+        document.getElementById('taskPromptPreview').classList.remove('visible');
+        AIReview.hide();
+    },
+};
+
+/* ================================================================
    TASK PROMPT MODAL — Open / Parse / Preview / Submit
    ================================================================ */
 function openTaskPrompt() {
@@ -9823,6 +10076,11 @@ function openTaskPrompt() {
     const aiProvSel = document.getElementById('taskPromptAIProvider');
     if (aiProvLabel) aiProvLabel.style.display = 'none';
     if (aiProvSel) { aiProvSel.style.display = 'none'; aiProvSel.value = AI_CONFIG.getProvider(); }
+
+    // Reset file upload state
+    FileUpload.clear();
+    document.getElementById('fileParsingState').classList.remove('visible');
+    FileUpload.init();
 
     // Listen for typing — debounced preview + AI mode detection
     const textarea = document.getElementById('taskPromptText');
