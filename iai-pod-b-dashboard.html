@@ -4605,7 +4605,9 @@ const OutlookSync = {
     init() {
         this._token = localStorage.getItem(this._tokenKey) || null;
         const cached = this._loadCache();
-        if (cached && this.hasToken()) {
+        if (cached) {
+            // Always load cached email data — even if the token has expired,
+            // the cache is still the most recent snapshot of real email activity
             EMAIL_DATA = cached;
             this._lastSync = new Date(cached.snapshotDate);
         }
@@ -4837,7 +4839,9 @@ const CalendarSync = {
     // ── Init ──
     init() {
         const cached = this._loadCache();
-        if (cached && this.hasToken()) {
+        if (cached) {
+            // Always load cached calendar data — even if the token has expired,
+            // the cache is still the most recent snapshot of real calendar activity
             CALENDAR_DATA = cached;
             this._lastSync = new Date(cached.snapshotDate);
         }
