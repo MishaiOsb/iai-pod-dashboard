@@ -8603,7 +8603,7 @@ function renderPlannerPage() {
 
     emailFollowUps.sort((a, b) => a.urgency - b.urgency);
 
-    // Today's follow-ups: needs-response + within-grace expiring today + stale
+    // Today's follow-ups: all actionable statuses (needs-response, within-grace, stale, no-recent, awaiting)
     // Excludes items manually overridden as "done"
     const todayFollowUps = emailFollowUps.filter(f => {
         const manual = EmailActionOverrides.getStatus(f.name);
@@ -8611,7 +8611,8 @@ function renderPlannerPage() {
         return f.effectiveStatus === 'needs-response' ||
             f.effectiveStatus === 'within-grace' ||
             f.effectiveStatus === 'stale' ||
-            f.effectiveStatus === 'no-recent';
+            f.effectiveStatus === 'no-recent' ||
+            f.effectiveStatus === 'awaiting';
     });
 
     const todayEmailHTML = todayFollowUps.length > 0 ? todayFollowUps.map(f => `
