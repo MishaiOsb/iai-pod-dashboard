@@ -2048,6 +2048,90 @@ input, textarea, select { font-family: inherit; outline: none; }
 .tpi-reason { font-size: 9px; color: var(--text-muted); font-style: italic; padding: 0 0 3px 54px; }
 .tpi-dup-warn { font-size: 9px; color: var(--rag-amber); padding: 1px 0 4px 54px; font-style: italic; }
 .tpi-dup-warn::before { content: '\26A0\0020'; }
+
+/* AI Review Panel */
+.ai-review-panel {
+    margin-top: 14px; padding: 14px; background: var(--bg-elevated);
+    border-radius: var(--radius-md); border: 1px solid var(--border-subtle);
+    max-height: 400px; overflow-y: auto; display: none;
+}
+.ai-review-panel.visible { display: block; }
+.ai-review-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px;
+}
+.ai-review-header .title {
+    font-size: 11px; font-weight: 700; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.ai-review-header .ai-badge {
+    font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 8px;
+    background: rgba(107,48,255,0.15); color: var(--accent-purple-light);
+}
+.ai-review-card {
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px;
+}
+.ai-review-card .card-top {
+    display: flex; align-items: center; gap: 8px;
+}
+.ai-review-card .card-checkbox { width: 16px; height: 16px; accent-color: var(--accent-purple); cursor: pointer; flex-shrink: 0; }
+.ai-review-card .card-text {
+    flex: 1; background: transparent; border: 1px solid transparent;
+    border-radius: 4px; color: var(--text-primary); font-size: 12px;
+    padding: 3px 6px; font-family: inherit; line-height: 1.5;
+    transition: border-color 0.15s ease;
+}
+.ai-review-card .card-text:focus { border-color: var(--accent-purple); outline: none; background: var(--bg-input); }
+.ai-review-card .card-remove {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 14px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+}
+.ai-review-card .card-remove:hover { color: var(--rag-red); background: rgba(232,73,73,0.1); }
+.ai-review-card .card-meta {
+    display: flex; gap: 8px; margin-top: 6px; padding-left: 24px; align-items: center; flex-wrap: wrap;
+}
+.ai-review-card .card-meta select,
+.ai-review-card .card-meta input[type="date"] {
+    padding: 3px 6px; font-size: 10px; background: var(--bg-input);
+    border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-primary);
+}
+.ai-review-card .card-client {
+    font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px;
+    background: rgba(87,155,252,0.15); color: #579bfc;
+}
+.ai-review-card .card-reasoning {
+    font-size: 9px; color: var(--text-muted); font-style: italic;
+    padding: 4px 0 0 24px;
+}
+.ai-review-actions {
+    display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; flex-wrap: wrap;
+}
+.ai-review-actions button {
+    padding: 7px 16px; border-radius: var(--radius-md); font-size: 12px;
+    font-weight: 600; cursor: pointer; border: none; transition: all var(--transition-fast);
+}
+.ai-review-actions .btn-add-all { background: var(--accent-purple); color: #fff; }
+.ai-review-actions .btn-add-all:hover { background: var(--accent-purple-light); }
+.ai-review-actions .btn-add-selected { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-default); }
+.ai-review-actions .btn-reanalyse { background: transparent; color: var(--accent-purple-light); border: 1px solid var(--accent-purple); font-size: 11px; }
+.ai-loading-state {
+    text-align: center; padding: 24px; color: var(--text-muted); font-size: 12px;
+}
+.ai-loading-state .spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 2px solid var(--border-default); border-top-color: var(--accent-purple);
+    border-radius: 50%; animation: aiSpin 0.8s linear infinite; margin-bottom: 8px;
+}
+@keyframes aiSpin { to { transform: rotate(360deg); } }
+.ai-mode-indicator {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 9px;
+    font-weight: 600; color: var(--accent-purple-light); padding: 2px 8px;
+    border-radius: 8px; background: rgba(107,48,255,0.1);
+    margin-left: 8px; vertical-align: middle; opacity: 0; transition: opacity 0.3s ease;
+}
+.ai-mode-indicator.visible { opacity: 1; }
+
 .task-prompt-actions {
     display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end;
 }
@@ -2873,6 +2957,46 @@ input, textarea, select { font-family: inherit; outline: none; }
             <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;" id="currentPodInfo">No pod selected yet</p>
             <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:13px;padding:8px 16px;" onclick="switchPod()">Change Pod</button>
         </div>
+
+        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
+            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">
+                &#129302; AI Task Extraction
+                <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span>
+            </h3>
+            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">
+                Paste transcripts or meeting notes and AI will extract tasks with priorities and client matching.
+            </p>
+            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+                <label style="font-size:12px;font-weight:600;color:var(--text-secondary);">Provider:</label>
+                <select id="aiProviderSelect" onchange="AISettings.onProviderChange()"
+                    style="padding:6px 10px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;">
+                    <option value="anthropic">Claude (Anthropic)</option>
+                    <option value="openai">GPT (OpenAI)</option>
+                </select>
+            </div>
+            <div class="setup-input-group" id="aiKeyGroup-anthropic">
+                <label>Anthropic API Key</label>
+                <input type="password" id="aiAnthropicKeyInput" placeholder="sk-ant-...">
+                <button class="toggle-vis" onclick="const i=document.getElementById('aiAnthropicKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+            </div>
+            <div class="setup-input-group" id="aiKeyGroup-openai" style="display:none;">
+                <label>OpenAI API Key</label>
+                <input type="password" id="aiOpenAIKeyInput" placeholder="sk-...">
+                <button class="toggle-vis" onclick="const i=document.getElementById('aiOpenAIKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+            </div>
+            <div id="aiKeyStatus" style="font-size:11px;margin:6px 0;min-height:16px;"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;"
+                    onclick="AISettings.saveAndValidate()">Save &amp; Validate Key</button>
+                <button class="btn-primary" style="background:transparent;color:var(--rag-red);border:1px solid var(--rag-red);font-size:12px;padding:6px 14px;"
+                    onclick="AISettings.removeKey()">Remove Key</button>
+            </div>
+            <div class="setup-hint" style="margin-top:8px;">
+                Get your key: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> |
+                <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-purple-light);">OpenAI Platform</a><br>
+                Keys are stored locally in your browser only. Without a key, the task prompt uses fast regex parsing.
+            </div>
+        </div>
     </div>
 </div>
 
@@ -3151,14 +3275,14 @@ input, textarea, select { font-family: inherit; outline: none; }
     <!-- ====== TASK PROMPT MODAL ====== -->
     <div class="task-prompt-overlay" id="taskPromptOverlay" onclick="if(event.target===this)closeTaskPrompt();">
         <div class="task-prompt-modal">
-            <h3>&#128221; Add Tasks</h3>
+            <h3>&#128221; Add Tasks <span class="ai-mode-indicator" id="aiModeIndicator">&#129302; AI Mode</span></h3>
             <div class="prompt-subtitle">
-                Type naturally or paste tasks. Priority is auto-detected from keywords, client status, and calendar.<br>
+                Type naturally, paste tasks, or paste a meeting transcript for AI extraction.<br>
                 <span style="color:var(--text-primary);">Supports: </span>
-                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, !high/!low tags, @date</code><br>
+                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, !high/!low tags, @date, transcripts, meeting notes</code><br>
                 <span style="color:var(--text-muted);font-size:10px;">Client names are recognised automatically. Email status, RAG, and upcoming meetings inform priority.</span>
             </div>
-            <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report !low @friday"></textarea>
+            <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report !low @friday&#10;&#10;Or paste a meeting transcript / notes and AI will extract tasks automatically"></textarea>
             <div class="task-prompt-options">
                 <label>Default priority:</label>
                 <select id="taskPromptDefaultPriority">
@@ -3173,10 +3297,32 @@ input, textarea, select { font-family: inherit; outline: none; }
                     <option value="custom">Custom date</option>
                 </select>
                 <input type="date" id="taskPromptCustomDate" style="display:none;" value="">
+                <label id="aiProviderLabel" style="display:none;margin-left:auto;">AI:</label>
+                <select id="taskPromptAIProvider" style="display:none;" onchange="AI_CONFIG.setProvider(this.value)">
+                    <option value="anthropic">Claude</option>
+                    <option value="openai">GPT</option>
+                </select>
             </div>
             <div class="task-prompt-preview" id="taskPromptPreview">
                 <div class="task-prompt-preview-title">Preview (<span id="taskPromptPreviewCount">0</span> tasks)</div>
                 <div id="taskPromptPreviewList"></div>
+            </div>
+            <div id="aiLoadingState" class="ai-loading-state" style="display:none;">
+                <div class="spinner"></div>
+                <div>Extracting tasks with AI...</div>
+                <div style="font-size:10px;margin-top:4px;" id="aiLoadingProvider"></div>
+            </div>
+            <div class="ai-review-panel" id="aiReviewPanel">
+                <div class="ai-review-header">
+                    <span class="title">AI-Extracted Tasks (<span id="aiReviewCount">0</span>)</span>
+                    <span class="ai-badge" id="aiReviewBadge">Claude</span>
+                </div>
+                <div id="aiReviewList"></div>
+                <div class="ai-review-actions">
+                    <button class="btn-reanalyse" onclick="AIReview.reanalyse()">&#8635; Re-analyse</button>
+                    <button class="btn-add-selected" onclick="AIReview.addSelected()">Add Selected</button>
+                    <button class="btn-add-all" onclick="AIReview.addAll()">Add All</button>
+                </div>
             </div>
             <div class="task-prompt-actions">
                 <button class="btn-cancel" onclick="closeTaskPrompt()">Cancel</button>
@@ -5894,6 +6040,300 @@ const RUNTIME = {
 };
 
 /* ================================================================
+   AI CONFIG — API keys, provider selection, detection thresholds
+   ================================================================ */
+const AI_CONFIG = {
+    _keyProvider: 'iai_ai_provider',
+    _keyAnthropicKey: 'iai_ai_anthropic_key',
+    _keyOpenAIKey: 'iai_ai_openai_key',
+
+    ANTHROPIC_URL: 'https://api.anthropic.com/v1/messages',
+    OPENAI_URL: 'https://api.openai.com/v1/chat/completions',
+    ANTHROPIC_MODEL: 'claude-sonnet-4-20250514',
+    OPENAI_MODEL: 'gpt-4o',
+
+    MIN_CHARS_FOR_AI: 200,
+    MIN_LINES_FOR_AI: 5,
+
+    _pk(k) {
+        // Pod-namespaced key (falls back to raw key before session is loaded)
+        try { return typeof UserSession !== 'undefined' ? UserSession.podKey(k) : k; }
+        catch { return k; }
+    },
+    getProvider()     { return localStorage.getItem(this._pk(this._keyProvider)) || 'anthropic'; },
+    setProvider(p)    { localStorage.setItem(this._pk(this._keyProvider), p); },
+    getKey(provider)  { const k = (provider || this.getProvider()) === 'openai' ? this._keyOpenAIKey : this._keyAnthropicKey; return localStorage.getItem(this._pk(k)) || ''; },
+    setKey(provider, value) { const k = provider === 'openai' ? this._keyOpenAIKey : this._keyAnthropicKey; if (value) localStorage.setItem(this._pk(k), value); else localStorage.removeItem(this._pk(k)); },
+    hasKey(provider)  { return !!this.getKey(provider || this.getProvider()); },
+    hasAnyKey()       { return !!this.getKey('anthropic') || !!this.getKey('openai'); },
+};
+
+/* ================================================================
+   AI SERVICE — provider abstraction, prompt building, task extraction
+   ================================================================ */
+const AIService = {
+    async validateKey(provider, key) {
+        try {
+            if (provider === 'openai') {
+                const resp = await fetch(AI_CONFIG.OPENAI_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+                    body: JSON.stringify({ model: AI_CONFIG.OPENAI_MODEL, messages: [{ role: 'user', content: 'Say OK' }], max_tokens: 5 }),
+                });
+                return resp.ok;
+            } else {
+                const resp = await fetch(AI_CONFIG.ANTHROPIC_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': key,
+                        'anthropic-version': '2023-06-01',
+                        'anthropic-dangerous-direct-browser-access': 'true',
+                    },
+                    body: JSON.stringify({ model: AI_CONFIG.ANTHROPIC_MODEL, max_tokens: 10, messages: [{ role: 'user', content: 'Say OK' }] }),
+                });
+                return resp.ok;
+            }
+        } catch { return false; }
+    },
+
+    buildSystemPrompt() {
+        const now = new Date();
+        const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        const today = now.toISOString().split('T')[0];
+        const dayOfWeek = dayNames[now.getDay()];
+
+        // Client list with statuses
+        let clientCtx = '';
+        const clients = (typeof State !== 'undefined' && State.clients) ? State.clients : [];
+        if (clients.length) {
+            const lines = clients.map(c => {
+                const email = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : 'n/a';
+                return `- ${c.name} | RAG: ${c.rag || '?'} | Email: ${email} | Plan: ${c.plan || '?'}${c.deadline ? ' | Deadline: ' + c.deadline : ''}`;
+            });
+            clientCtx = `\n\nCLIENT LIST (${clients.length} active):\n${lines.join('\n')}`;
+        } else if (typeof EMAIL_DATA !== 'undefined' && EMAIL_DATA?.clients) {
+            const lines = Object.keys(EMAIL_DATA.clients).map(name => {
+                const email = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(name) : 'n/a';
+                return `- ${name} | Email: ${email}`;
+            });
+            clientCtx = `\n\nCLIENT LIST:\n${lines.join('\n')}`;
+        }
+
+        // Today's calendar
+        let calCtx = '';
+        if (typeof CALENDAR_DATA !== 'undefined' && CALENDAR_DATA?.events?.length) {
+            const todayStart = new Date(today + 'T00:00:00');
+            const todayEnd = new Date(today + 'T23:59:59');
+            const evts = CALENDAR_DATA.events.filter(e => { const s = new Date(e.start); return s >= todayStart && s <= todayEnd; });
+            if (evts.length) {
+                calCtx = `\n\nTODAY'S CALENDAR (${evts.length} events):\n` +
+                    evts.map(e => `- ${new Date(e.start).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}: ${e.subject}`).join('\n');
+            }
+        }
+
+        // Existing tasks
+        let taskCtx = '';
+        const incomplete = (typeof DashTodo !== 'undefined' && DashTodo._items) ? DashTodo._items.filter(t => !t.completed) : [];
+        if (incomplete.length) {
+            const lines = incomplete.slice(0, 20).map(t => `- [${t.priority}] ${t.text}${t.matchedClient ? ' (' + t.matchedClient + ')' : ''}`);
+            taskCtx = `\n\nEXISTING TASKS (${incomplete.length} incomplete — avoid duplicates):\n${lines.join('\n')}`;
+        }
+
+        return `You are a task extraction assistant for a client success pod lead at ImplementAI.
+Today is ${dayOfWeek}, ${today}.
+User: ${RUNTIME.userName || 'Unknown'} (${RUNTIME.userEmail || ''})
+
+Your job:
+1. Extract clear, actionable tasks from the user's input (transcript, meeting notes, email dump, or free text).
+2. For each task, provide: task text, priority (high/medium/low), suggested due date (YYYY-MM-DD), matched client name (if any), and brief reasoning.
+3. Match client names from the list below. If the text mentions a client, use the exact name from the list.
+4. Set priority based on: urgency words, client RAG status (Red = high priority), email status (needs-response = high), upcoming meetings, and deadlines.
+5. Suggest due dates based on urgency: urgent/ASAP = today, follow-ups = within 2-3 days, general = this week.
+6. Skip non-actionable content (greetings, small talk, status updates without actions).
+7. Do NOT duplicate tasks that already exist.
+
+Respond ONLY with a JSON array. No markdown, no code fences, no explanation outside the array.
+Each element: {"text": "...", "priority": "high|medium|low", "dueDate": "YYYY-MM-DD", "clientName": "..." or null, "reasoning": "..."}
+${clientCtx}${calCtx}${taskCtx}`;
+    },
+
+    async extractTasks(userText) {
+        const provider = AI_CONFIG.getProvider();
+        const key = AI_CONFIG.getKey(provider);
+        if (!key) throw new Error('No API key configured — add one in Settings');
+
+        const systemPrompt = this.buildSystemPrompt();
+        let responseText;
+
+        if (provider === 'openai') {
+            const resp = await fetch(AI_CONFIG.OPENAI_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+                body: JSON.stringify({
+                    model: AI_CONFIG.OPENAI_MODEL,
+                    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+                    max_tokens: 2000, temperature: 0.3,
+                }),
+            });
+            if (!resp.ok) {
+                if (resp.status === 401) throw new Error('Invalid API key — update in Settings');
+                if (resp.status === 429) throw new Error('Rate limited — wait a moment and retry');
+                throw new Error(`OpenAI error ${resp.status}`);
+            }
+            const data = await resp.json();
+            responseText = data.choices?.[0]?.message?.content || '';
+        } else {
+            const resp = await fetch(AI_CONFIG.ANTHROPIC_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': key,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({
+                    model: AI_CONFIG.ANTHROPIC_MODEL,
+                    system: systemPrompt,
+                    messages: [{ role: 'user', content: userText }],
+                    max_tokens: 2000, temperature: 0.3,
+                }),
+            });
+            if (!resp.ok) {
+                if (resp.status === 401) throw new Error('Invalid API key — update in Settings');
+                if (resp.status === 429) throw new Error('Rate limited — wait a moment and retry');
+                throw new Error(`Anthropic error ${resp.status}`);
+            }
+            const data = await resp.json();
+            responseText = data.content?.[0]?.text || '';
+        }
+
+        return this._parseResponse(responseText);
+    },
+
+    _parseResponse(text) {
+        let cleaned = text.trim().replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
+        if (!arrayMatch) throw new Error('No task array found in AI response');
+        let tasks;
+        try { tasks = JSON.parse(arrayMatch[0]); } catch { throw new Error('Failed to parse AI response as JSON'); }
+        if (!Array.isArray(tasks)) throw new Error('AI response is not an array');
+        const today = new Date().toISOString().split('T')[0];
+        return tasks.map(t => ({
+            text: String(t.text || '').trim(),
+            priority: ['high','medium','low'].includes(t.priority) ? t.priority : 'medium',
+            dueDate: /^\d{4}-\d{2}-\d{2}$/.test(t.dueDate) ? t.dueDate : today,
+            clientName: t.clientName || null,
+            reasoning: String(t.reasoning || ''),
+        })).filter(t => t.text.length > 0);
+    },
+};
+
+/* ================================================================
+   AI REVIEW — interactive task review panel before committing
+   ================================================================ */
+const AIReview = {
+    _tasks: [],
+    _original: '',
+
+    show(tasks) {
+        this._tasks = tasks;
+        const panel = document.getElementById('aiReviewPanel');
+        const list = document.getElementById('aiReviewList');
+        document.getElementById('aiReviewCount').textContent = tasks.length;
+        document.getElementById('aiReviewBadge').textContent = AI_CONFIG.getProvider() === 'openai' ? 'GPT' : 'Claude';
+        document.getElementById('taskPromptPreview').classList.remove('visible');
+
+        list.innerHTML = tasks.map((t, i) => {
+            const clientBadge = t.clientName ? `<span class="card-client">${t.clientName}</span>` : '';
+            return `<div class="ai-review-card" data-idx="${i}">
+                <div class="card-top">
+                    <input type="checkbox" class="card-checkbox" checked data-idx="${i}">
+                    <input type="text" class="card-text" value="${(t.text || '').replace(/"/g, '&quot;')}" data-idx="${i}">
+                    <button class="card-remove" onclick="AIReview.remove(${i})" title="Remove">&times;</button>
+                </div>
+                <div class="card-meta">
+                    <select data-idx="${i}" data-field="priority">
+                        <option value="high" ${t.priority==='high'?'selected':''}>High</option>
+                        <option value="medium" ${t.priority==='medium'?'selected':''}>Medium</option>
+                        <option value="low" ${t.priority==='low'?'selected':''}>Low</option>
+                    </select>
+                    <input type="date" value="${t.dueDate}" data-idx="${i}" data-field="dueDate">
+                    ${clientBadge}
+                </div>
+                ${t.reasoning ? `<div class="card-reasoning">${t.reasoning}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        panel.classList.add('visible');
+        document.getElementById('taskPromptSubmit').style.display = 'none';
+    },
+
+    remove(idx) {
+        this._tasks.splice(idx, 1);
+        if (this._tasks.length === 0) { this.hide(); return; }
+        this.show(this._tasks);
+    },
+
+    _readEdits() {
+        document.querySelectorAll('.ai-review-card').forEach(card => {
+            const idx = parseInt(card.dataset.idx);
+            if (idx >= this._tasks.length) return;
+            const text = card.querySelector('.card-text');
+            const prio = card.querySelector('select[data-field="priority"]');
+            const date = card.querySelector('input[type="date"]');
+            if (text) this._tasks[idx].text = text.value.trim();
+            if (prio) this._tasks[idx].priority = prio.value;
+            if (date) this._tasks[idx].dueDate = date.value;
+        });
+    },
+
+    addAll() {
+        this._readEdits();
+        this._commitTasks(this._tasks);
+    },
+
+    addSelected() {
+        this._readEdits();
+        const selected = [];
+        document.querySelectorAll('.ai-review-card .card-checkbox').forEach(cb => {
+            if (cb.checked) {
+                const idx = parseInt(cb.dataset.idx);
+                if (this._tasks[idx]) selected.push(this._tasks[idx]);
+            }
+        });
+        if (selected.length === 0) { showToast('No tasks selected', 'error'); return; }
+        this._commitTasks(selected);
+    },
+
+    _commitTasks(tasks) {
+        tasks.forEach(t => {
+            const opts = { aiGenerated: true };
+            if (t.clientName) opts.matchedClient = t.clientName;
+            DashTodo.add(t.text, t.priority, t.dueDate, opts);
+        });
+        this.hide();
+        closeTaskPrompt();
+        showToast(`${tasks.length} AI-extracted task${tasks.length !== 1 ? 's' : ''} added`, 'success');
+        renderPlannerPage();
+    },
+
+    async reanalyse() {
+        if (!this._original) return;
+        this.hide();
+        await triggerAIExtraction(this._original);
+    },
+
+    hide() {
+        const panel = document.getElementById('aiReviewPanel');
+        if (panel) panel.classList.remove('visible');
+        const btn = document.getElementById('taskPromptSubmit');
+        if (btn) { btn.style.display = ''; btn.disabled = false; btn.textContent = 'Add Tasks'; }
+        this._tasks = [];
+    },
+};
+
+/* ================================================================
    USER SESSION — pod selection, identity, localStorage namespacing
    ================================================================ */
 const UserSession = {
@@ -5956,7 +6396,7 @@ const UserSession = {
             'iai_outlook_cache', 'iai_calendar_cache', 'iai_activity_feed', 'iai_cal_states',
             'iai_email_notes', 'iai_local_edits', 'iai_local_data',
             'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions', 'iai_target_overrides', 'iai_connection_mode',
-            'iai_auto_todo_dismissed'
+            'iai_auto_todo_dismissed', 'iai_ai_provider', 'iai_ai_anthropic_key', 'iai_ai_openai_key'
         ];
         keys.forEach(key => {
             const oldData = localStorage.getItem(key);
@@ -9375,11 +9815,30 @@ function openTaskPrompt() {
     // Set default custom date to today
     document.getElementById('taskPromptCustomDate').value = new Date().toISOString().split('T')[0];
 
-    // Listen for typing to live-preview (debounced — context analysis does more work now)
+    // Reset AI state
+    AIReview.hide();
+    document.getElementById('aiLoadingState').style.display = 'none';
+    document.getElementById('aiModeIndicator').classList.remove('visible');
+    const aiProvLabel = document.getElementById('aiProviderLabel');
+    const aiProvSel = document.getElementById('taskPromptAIProvider');
+    if (aiProvLabel) aiProvLabel.style.display = 'none';
+    if (aiProvSel) { aiProvSel.style.display = 'none'; aiProvSel.value = AI_CONFIG.getProvider(); }
+
+    // Listen for typing — debounced preview + AI mode detection
     const textarea = document.getElementById('taskPromptText');
     textarea.focus();
     let _tpTimer = null;
-    textarea.oninput = () => { clearTimeout(_tpTimer); _tpTimer = setTimeout(updateTaskPreview, 200); };
+    textarea.oninput = () => {
+        clearTimeout(_tpTimer);
+        _tpTimer = setTimeout(() => {
+            updateTaskPreview();
+            // AI mode indicator
+            const isAI = shouldUseAI(textarea.value);
+            document.getElementById('aiModeIndicator').classList.toggle('visible', isAI);
+            if (aiProvLabel) aiProvLabel.style.display = isAI ? '' : 'none';
+            if (aiProvSel) aiProvSel.style.display = isAI ? '' : 'none';
+        }, 200);
+    };
 
     // Date mode toggle
     document.getElementById('taskPromptDateMode').onchange = function() {
@@ -9392,6 +9851,24 @@ function openTaskPrompt() {
 
 function closeTaskPrompt() {
     document.getElementById('taskPromptOverlay').classList.remove('open');
+}
+
+/**
+ * Determine whether input should route to AI extraction vs fast regex pipeline.
+ * Returns false if no API key is configured — zero degradation for non-AI users.
+ */
+function shouldUseAI(text) {
+    if (!AI_CONFIG.hasKey()) return false;
+    const trimmed = text.trim();
+    const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
+    // Explicit AI trigger phrases
+    if (/\b(analy[sz]e|extract\s+tasks?\s+from|what\s+tasks|what\s+should\s+i|summari[sz]e\s+actions|parse\s+this|meeting\s+notes?|transcript)\b/i.test(trimmed)) return true;
+    // Transcript markers: "Speaker:", timestamps, "Q:", "A:"
+    if (/(?:^|\n)\s*(?:Speaker\s*\d*\s*:|Q:|A:|\[\d{1,2}:\d{2}(?::\d{2})?\])/m.test(trimmed)) return true;
+    // Length thresholds
+    if (trimmed.length > AI_CONFIG.MIN_CHARS_FOR_AI) return true;
+    if (lines.length > AI_CONFIG.MIN_LINES_FOR_AI) return true;
+    return false;
 }
 
 /**
@@ -9624,6 +10101,8 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
 }
 
 function updateTaskPreview() {
+    // Skip regex preview when AI review panel is active
+    if (document.getElementById('aiReviewPanel')?.classList.contains('visible')) return;
     const text = document.getElementById('taskPromptText').value;
     const defaultPriority = document.getElementById('taskPromptDefaultPriority').value;
     const dateMode = document.getElementById('taskPromptDateMode').value;
@@ -9694,26 +10173,71 @@ function updateTaskPreview() {
     }).join('');
 }
 
-function submitTaskPrompt() {
+async function submitTaskPrompt() {
     const text = document.getElementById('taskPromptText').value;
-    const defaultPriority = document.getElementById('taskPromptDefaultPriority').value;
-    const dateMode = document.getElementById('taskPromptDateMode').value;
-    const customDate = document.getElementById('taskPromptCustomDate').value;
+    if (!text.trim()) { showToast('Type or paste your tasks first', 'error'); return; }
 
-    const tasks = parseTaskLines(text, defaultPriority, dateMode, customDate);
-    if (tasks.length === 0) {
-        showToast('No tasks found — type naturally or enter one per line', 'error');
-        return;
+    // Route: AI extraction for long/complex input, else fast regex pipeline
+    if (shouldUseAI(text)) {
+        await triggerAIExtraction(text);
+    } else {
+        const defaultPriority = document.getElementById('taskPromptDefaultPriority').value;
+        const dateMode = document.getElementById('taskPromptDateMode').value;
+        const customDate = document.getElementById('taskPromptCustomDate').value;
+
+        const tasks = parseTaskLines(text, defaultPriority, dateMode, customDate);
+        if (tasks.length === 0) {
+            showToast('No tasks found — type naturally or enter one per line', 'error');
+            return;
+        }
+
+        tasks.forEach(t => {
+            const opts = {};
+            if (t.context?.clientName) opts.matchedClient = t.context.clientName;
+            DashTodo.add(t.text, t.priority, t.dueDate, opts);
+        });
+        closeTaskPrompt();
+        showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} added`, 'success');
+        renderPlannerPage();
     }
+}
 
-    tasks.forEach(t => {
-        const opts = {};
-        if (t.context?.clientName) opts.matchedClient = t.context.clientName;
-        DashTodo.add(t.text, t.priority, t.dueDate, opts);
-    });
-    closeTaskPrompt();
-    showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} added`, 'success');
-    renderPlannerPage();
+async function triggerAIExtraction(text) {
+    const loadingEl = document.getElementById('aiLoadingState');
+    const providerLabel = document.getElementById('aiLoadingProvider');
+    const submitBtn = document.getElementById('taskPromptSubmit');
+
+    loadingEl.style.display = 'block';
+    providerLabel.textContent = 'Using ' + (AI_CONFIG.getProvider() === 'openai' ? 'GPT' : 'Claude') + '...';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Extracting...';
+    document.getElementById('taskPromptPreview').classList.remove('visible');
+    AIReview.hide();
+    AIReview._original = text;
+
+    try {
+        const tasks = await AIService.extractTasks(text);
+        loadingEl.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Tasks';
+
+        if (tasks.length === 0) {
+            showToast('AI found no actionable tasks — falling back to smart parser', 'info');
+            updateTaskPreview();
+            submitBtn.style.display = '';
+            return;
+        }
+
+        AIReview.show(tasks);
+    } catch (err) {
+        loadingEl.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Tasks';
+        submitBtn.style.display = '';
+        console.error('AI extraction failed:', err);
+        showToast('AI: ' + err.message + '. Using smart parser.', 'error');
+        updateTaskPreview();
+    }
 }
 
 /* ================================================================
@@ -11003,6 +11527,56 @@ function toggleTokenVis() {
     inp.type = inp.type === 'password' ? 'text' : 'password';
 }
 
+const AISettings = {
+    init() {
+        const sel = document.getElementById('aiProviderSelect');
+        if (sel) sel.value = AI_CONFIG.getProvider();
+        this.onProviderChange();
+        const aInp = document.getElementById('aiAnthropicKeyInput');
+        const oInp = document.getElementById('aiOpenAIKeyInput');
+        if (aInp) aInp.value = AI_CONFIG.getKey('anthropic') ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
+        if (oInp) oInp.value = AI_CONFIG.getKey('openai') ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
+    },
+    onProviderChange() {
+        const provider = document.getElementById('aiProviderSelect')?.value || 'anthropic';
+        const aGrp = document.getElementById('aiKeyGroup-anthropic');
+        const oGrp = document.getElementById('aiKeyGroup-openai');
+        if (aGrp) aGrp.style.display = provider === 'anthropic' ? 'flex' : 'none';
+        if (oGrp) oGrp.style.display = provider === 'openai' ? 'flex' : 'none';
+        AI_CONFIG.setProvider(provider);
+    },
+    async saveAndValidate() {
+        const provider = AI_CONFIG.getProvider();
+        const inputId = provider === 'openai' ? 'aiOpenAIKeyInput' : 'aiAnthropicKeyInput';
+        const key = document.getElementById(inputId)?.value?.trim();
+        if (!key || /^\u2022+$/.test(key)) { this._setStatus('Enter your API key first', 'error'); return; }
+        this._setStatus('Validating...', 'info');
+        try {
+            const ok = await AIService.validateKey(provider, key);
+            if (ok) {
+                AI_CONFIG.setKey(provider, key);
+                document.getElementById(inputId).value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+                this._setStatus('Key validated and saved', 'success');
+            } else {
+                this._setStatus('Invalid key — check and try again', 'error');
+            }
+        } catch (e) { this._setStatus('Validation failed: ' + e.message, 'error'); }
+    },
+    removeKey() {
+        const provider = AI_CONFIG.getProvider();
+        AI_CONFIG.setKey(provider, '');
+        const inputId = provider === 'openai' ? 'aiOpenAIKeyInput' : 'aiAnthropicKeyInput';
+        document.getElementById(inputId).value = '';
+        this._setStatus('Key removed', 'info');
+    },
+    _setStatus(msg, type) {
+        const el = document.getElementById('aiKeyStatus');
+        if (!el) return;
+        el.style.color = type === 'success' ? 'var(--rag-green)' : type === 'error' ? 'var(--rag-red)' : 'var(--text-muted)';
+        el.textContent = msg;
+    },
+};
+
 function showSetup() {
     document.getElementById('setupOverlay').classList.remove('hidden');
     document.getElementById('tokenInput').value = MondayAPI._token || '';
@@ -11020,6 +11594,8 @@ function showSetup() {
     if (closeBtn) closeBtn.style.display = UserSession.hasSession() ? 'flex' : 'none';
     // Update connection mode UI
     updateModeUI();
+    // Init AI settings
+    AISettings.init();
 }
 
 function closeSetup() {
