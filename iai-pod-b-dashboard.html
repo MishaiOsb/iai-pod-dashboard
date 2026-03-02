@@ -902,6 +902,13 @@ input, textarea, select { font-family: inherit; outline: none; }
 .toast.error { background: #2e0a14; color: var(--rag-red); border: 1px solid rgba(223,47,74,0.3); }
 .toast.info { background: #0a1a2e; color: #579bfc; border: 1px solid rgba(87,155,252,0.3); }
 .toast.warning { background: #2e1a0a; color: var(--rag-amber); border: 1px solid rgba(253,171,61,0.3); }
+.toast .toast-undo-btn {
+    margin-left: auto; padding: 2px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    background: rgba(255,255,255,0.15); color: inherit; border: 1px solid rgba(255,255,255,0.2);
+    transition: background 0.15s, border-color 0.15s;
+}
+.toast .toast-undo-btn:hover { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.4); }
 @keyframes toastIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
 
 /* ========================================================
@@ -1148,6 +1155,8 @@ input, textarea, select { font-family: inherit; outline: none; }
 [data-theme="light"] .toast.error { background: #fff0f0; color: #bf2600; border-color: rgba(223,47,74,0.3); }
 [data-theme="light"] .toast.info { background: #e9ecff; color: #6B30FF; border-color: rgba(107,48,255,0.3); }
 [data-theme="light"] .toast.warning { background: #fff8e6; color: #ff8b00; border-color: rgba(253,171,61,0.3); }
+[data-theme="light"] .toast .toast-undo-btn { background: rgba(0,0,0,0.08); color: inherit; border-color: rgba(0,0,0,0.15); }
+[data-theme="light"] .toast .toast-undo-btn:hover { background: rgba(0,0,0,0.15); border-color: rgba(0,0,0,0.25); }
 [data-theme="light"] .filter-pill .pill-count { background: rgba(0,0,0,0.1); }
 
 /* ========================================================
@@ -2984,6 +2993,7 @@ input, textarea, select { font-family: inherit; outline: none; }
     <div class="shortcut-row"><span>Filter Green</span><span class="shortcut-key">1</span></div>
     <div class="shortcut-row"><span>Filter Amber</span><span class="shortcut-key">2</span></div>
     <div class="shortcut-row"><span>Filter Red</span><span class="shortcut-key">3</span></div>
+    <div class="shortcut-row"><span>Undo last action</span><span class="shortcut-key">Ctrl+Z</span></div>
     <div class="shortcut-row"><span>Close panel / ESC</span><span class="shortcut-key">Esc</span></div>
     <div class="shortcut-row"><span>Toggle this panel</span><span class="shortcut-key">?</span></div>
 </div>
@@ -3882,6 +3892,62 @@ const TargetsManager = {
 };
 
 /* ================================================================
+   UNIVERSAL UNDO MANAGER
+   Provides undo capability across all dashboard actions.
+   Shows toast with Undo button; supports stacking up to 10 actions.
+   ================================================================ */
+const UndoManager = {
+    _stack: [],   // [{ label, undo: Function, timestamp }]
+    _maxStack: 10,
+
+    /** Push an undoable action onto the stack and show toast */
+    push(action) {
+        this._stack.push({ ...action, timestamp: Date.now() });
+        if (this._stack.length > this._maxStack) this._stack.shift();
+        this._showUndoToast(action.label);
+    },
+
+    /** Execute the most recent undo */
+    undoLast() {
+        const action = this._stack.pop();
+        if (!action) return;
+        try {
+            action.undo();
+            showToast('Undone', 'info');
+        } catch (e) {
+            console.error('Undo failed:', e);
+            showToast('Undo failed', 'error');
+        }
+    },
+
+    /** Show a toast with an Undo button */
+    _showUndoToast(label) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+        const icons = { success: '&#10003;' };
+        const el = document.createElement('div');
+        el.className = 'toast success';
+        el.innerHTML = `<span>${icons.success}</span> <span style="flex:1;">${label}</span><button class="toast-undo-btn" onclick="event.stopPropagation();UndoManager.undoLast();this.closest('.toast').remove();">Undo</button>`;
+        container.appendChild(el);
+        // Auto-dismiss after 6s (longer than normal to give time to undo)
+        const timer = setTimeout(() => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateX(40px)';
+            el.style.transition = 'all 0.3s ease';
+            setTimeout(() => el.remove(), 300);
+        }, 6000);
+        // Clear timer if manually dismissed via Undo
+        el._undoTimer = timer;
+    },
+
+    /** Check if there's anything to undo */
+    canUndo() { return this._stack.length > 0; },
+
+    /** Peek at the last action label */
+    peekLabel() { return this._stack.length > 0 ? this._stack[this._stack.length - 1].label : null; },
+};
+
+/* ================================================================
    PLANNER / TO-DO MANAGER
    ================================================================ */
 const DashTodo = {
@@ -3889,16 +3955,37 @@ const DashTodo = {
     _sk() { return UserSession.podKey(this._key); },
     _items: [],
     _filter: 'all', // all | today | week | completed
+    _idCounter: 0,   // monotonic counter to guarantee unique IDs
 
     load() {
         try {
             const raw = localStorage.getItem(this._sk());
             this._items = raw ? JSON.parse(raw) : [];
         } catch { this._items = []; }
+        // Repair any duplicate IDs from earlier bug
+        this._repairDuplicateIds();
+    },
+
+    /** Fix duplicate IDs created by the Date.now()-only bug */
+    _repairDuplicateIds() {
+        const seen = new Set();
+        let repaired = false;
+        this._items.forEach(item => {
+            if (seen.has(item.id)) {
+                item.id = 'todo_' + Date.now() + '_' + (++this._idCounter);
+                repaired = true;
+            }
+            seen.add(item.id);
+        });
+        if (repaired) this.save();
     },
 
     save() {
         localStorage.setItem(this._sk(), JSON.stringify(this._items));
+    },
+
+    _nextId() {
+        return 'todo_' + Date.now() + '_' + (++this._idCounter);
     },
 
     add(text, priority = 'medium', dueDate = null, opts = {}) {
@@ -3906,7 +3993,7 @@ const DashTodo = {
         const n = new Date();
         const localToday = n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
         this._items.push({
-            id: 'todo_' + Date.now(),
+            id: this._nextId(),
             text: text.trim(),
             priority, // high, medium, low
             dueDate: dueDate || localToday, // default today
@@ -3924,15 +4011,34 @@ const DashTodo = {
     toggle(id) {
         const item = this._items.find(t => t.id === id);
         if (item) {
+            const wasCompleted = item.completed;
             item.completed = !item.completed;
             item.completedAt = item.completed ? new Date().toISOString() : null;
             this.save();
             ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: item.completed ? 'Todo completed' : 'Todo uncompleted', desc: item.text, source: 'user-action' });
+            // Show undo toast — capture ID, not object ref (renderPlannerPage calls load() which replaces _items)
+            if (item.completed) {
+                const undoId = item.id;
+                const undoLabel = item.text.length > 35 ? item.text.slice(0,35) + '…' : item.text;
+                UndoManager.push({
+                    label: `"${undoLabel}" completed`,
+                    undo: () => {
+                        const fresh = this._items.find(t => t.id === undoId);
+                        if (fresh) {
+                            fresh.completed = false;
+                            fresh.completedAt = null;
+                            this.save();
+                        }
+                        renderPlannerPage();
+                    }
+                });
+            }
         }
     },
 
     remove(id) {
         const item = this._items.find(t => t.id === id);
+        const idx = this._items.findIndex(t => t.id === id);
         if (item && item.autoGenerated && item.sourceEventId) {
             AutoTodoGen.dismiss(item.sourceEventId, item.dueDate);
         }
@@ -3940,6 +4046,18 @@ const DashTodo = {
         this.save();
         if (item) {
             ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: 'Todo removed', desc: item.text, source: 'user-action' });
+            // Capture a deep copy — renderPlannerPage calls load() which replaces _items
+            const removedCopy = JSON.parse(JSON.stringify(item));
+            const removedIdx = idx;
+            UndoManager.push({
+                label: `"${item.text.length > 35 ? item.text.slice(0,35) + '…' : item.text}" removed`,
+                undo: () => {
+                    // Restore item at original position
+                    this._items.splice(Math.min(removedIdx, this._items.length), 0, removedCopy);
+                    this.save();
+                    renderPlannerPage();
+                }
+            });
         }
     },
 
@@ -4347,6 +4465,7 @@ const EmailActionOverrides = {
 
     /** Set manual override for a client's email action status */
     setOverride(clientName, status) {
+        const prevOverride = this._overrides[clientName] ? { ...this._overrides[clientName] } : null;
         if (status === 'auto') {
             delete this._overrides[clientName];
         } else {
@@ -4362,6 +4481,19 @@ const EmailActionOverrides = {
             title: `Manual override: ${clientName}`,
             desc: status === 'auto' ? 'Reverted to automatic detection' : `Status set to "${status}"`,
             source: 'user-action'
+        });
+        // Undo support
+        UndoManager.push({
+            label: `${clientName} → ${status === 'auto' ? 'auto' : status}`,
+            undo: () => {
+                if (prevOverride) {
+                    this._overrides[clientName] = prevOverride;
+                } else {
+                    delete this._overrides[clientName];
+                }
+                this.save();
+                renderPlannerPage();
+            }
         });
     },
 
@@ -4421,14 +4553,23 @@ const EmailHiddenCards = {
         };
         this.save();
         ActivityFeed.log({ type: 'email-hide', title: `Hidden: ${clientName}`, desc: 'Card dismissed from email activity view', source: 'user-action' });
-        showToast(`${clientName} hidden from email view`, 'info');
+        UndoManager.push({
+            label: `${clientName} hidden`,
+            undo: () => { delete this._hidden[clientName]; this.save(); renderEmailActivity(); }
+        });
     },
 
     unhide(clientName) {
+        const prev = this._hidden[clientName] ? { ...this._hidden[clientName] } : null;
         delete this._hidden[clientName];
         this.save();
         ActivityFeed.log({ type: 'email-unhide', title: `Restored: ${clientName}`, desc: 'Card restored to email activity view', source: 'user-action' });
-        showToast(`${clientName} restored`, 'success');
+        if (prev) {
+            UndoManager.push({
+                label: `${clientName} restored`,
+                undo: () => { this._hidden[clientName] = prev; this.save(); renderEmailActivity(); }
+            });
+        }
     },
 
     isHidden(clientName) { return !!this._hidden[clientName]; },
@@ -5298,21 +5439,40 @@ const CalendarState = {
     },
 
     markComplete(eventId) {
+        const prev = this._states[eventId] || null;
         this._states[eventId] = 'completed';
         this.save();
         renderPlannerPage();
+        const event = CALENDAR_DATA.events?.find(e => e.id === eventId);
+        UndoManager.push({
+            label: `"${(event?.subject || 'Event').substring(0, 30)}" marked complete`,
+            undo: () => { if (prev) this._states[eventId] = prev; else delete this._states[eventId]; this.save(); renderPlannerPage(); }
+        });
     },
 
     markCancelled(eventId) {
+        const prev = this._states[eventId] || null;
         this._states[eventId] = 'cancelled';
         this.save();
         renderPlannerPage();
+        const event = CALENDAR_DATA.events?.find(e => e.id === eventId);
+        UndoManager.push({
+            label: `"${(event?.subject || 'Event').substring(0, 30)}" marked cancelled`,
+            undo: () => { if (prev) this._states[eventId] = prev; else delete this._states[eventId]; this.save(); renderPlannerPage(); }
+        });
     },
 
     resetState(eventId) {
+        const prev = this._states[eventId] || null;
         delete this._states[eventId];
         this.save();
         renderPlannerPage();
+        if (prev) {
+            UndoManager.push({
+                label: 'Event reset to active',
+                undo: () => { this._states[eventId] = prev; this.save(); renderPlannerPage(); }
+            });
+        }
     }
 };
 
@@ -10764,6 +10924,19 @@ document.addEventListener('keydown', (e) => {
             closeTaskPrompt();
             return;
         }
+    }
+
+    // Ctrl+Z / Cmd+Z — universal undo (works even in inputs)
+    if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        const tag = e.target.tagName.toLowerCase();
+        // Only intercept if NOT in an input field (let native undo work there)
+        if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
+            if (UndoManager.canUndo()) {
+                e.preventDefault();
+                UndoManager.undoLast();
+            }
+        }
+        return;
     }
 
     // Don't trigger shortcuts when typing in inputs
