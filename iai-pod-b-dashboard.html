@@ -1998,7 +1998,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 .task-prompt-preview {
     margin-top: 14px; padding: 14px; background: var(--bg-elevated);
     border-radius: var(--radius-md); border: 1px solid var(--border-subtle);
-    max-height: 200px; overflow-y: auto; display: none;
+    max-height: 320px; overflow-y: auto; display: none;
 }
 .task-prompt-preview.visible { display: block; }
 .task-prompt-preview-title {
@@ -2017,7 +2017,28 @@ input, textarea, select { font-family: inherit; outline: none; }
 .task-preview-item .tpi-priority.high { background: rgba(232,73,73,0.15); color: var(--rag-red); }
 .task-preview-item .tpi-priority.medium { background: rgba(253,171,61,0.15); color: var(--rag-amber); }
 .task-preview-item .tpi-priority.low { background: rgba(0,200,117,0.15); color: var(--rag-green); }
-.task-preview-item .tpi-date { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+.task-preview-item .tpi-date { font-size: 10px; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+.tpi-client-badge {
+    display: inline-block; font-size: 9px; font-weight: 600; padding: 1px 6px;
+    border-radius: 8px; background: rgba(87,155,252,0.15); color: var(--accent-primary);
+    margin-left: 6px; vertical-align: middle;
+}
+.tpi-context-row { display: flex; gap: 4px; padding: 2px 0 4px 54px; flex-wrap: wrap; }
+.tpi-ctx-tag {
+    font-size: 9px; padding: 1px 5px; border-radius: 6px; font-weight: 600; white-space: nowrap;
+}
+.tpi-ctx-tag.needs-response { background: rgba(232,73,73,0.12); color: var(--rag-red); }
+.tpi-ctx-tag.stale-email { background: rgba(232,73,73,0.12); color: var(--rag-red); }
+.tpi-ctx-tag.within-grace { background: rgba(0,200,117,0.12); color: var(--rag-green); }
+.tpi-ctx-tag.awaiting { background: rgba(253,171,61,0.12); color: var(--rag-amber); }
+.tpi-ctx-tag.no-recent { background: rgba(196,196,196,0.15); color: var(--text-muted); }
+.tpi-ctx-tag.rag-red { background: rgba(232,73,73,0.12); color: var(--rag-red); }
+.tpi-ctx-tag.rag-amber { background: rgba(253,171,61,0.12); color: var(--rag-amber); }
+.tpi-ctx-tag.meeting { background: rgba(87,155,252,0.12); color: var(--accent-primary); }
+.tpi-ctx-tag.deadline { background: rgba(232,73,73,0.12); color: var(--rag-red); }
+.tpi-reason { font-size: 9px; color: var(--text-muted); font-style: italic; padding: 0 0 3px 54px; }
+.tpi-dup-warn { font-size: 9px; color: var(--rag-amber); padding: 1px 0 4px 54px; font-style: italic; }
+.tpi-dup-warn::before { content: '\26A0\0020'; }
 .task-prompt-actions {
     display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end;
 }
@@ -3122,10 +3143,10 @@ input, textarea, select { font-family: inherit; outline: none; }
         <div class="task-prompt-modal">
             <h3>&#128221; Add Tasks</h3>
             <div class="prompt-subtitle">
-                Type naturally or paste tasks — one per line, or comma-separated. Priority is auto-detected from keywords.<br>
+                Type naturally or paste tasks. Priority is auto-detected from keywords, client status, and calendar.<br>
                 <span style="color:var(--text-primary);">Supports: </span>
                 <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, !high/!low tags, @date</code><br>
-                <span style="color:var(--text-muted);font-size:11px;">e.g. "Chase Townhouse on booking, send QDP update, review Orbital system" or "Follow up with client !high @monday"</span>
+                <span style="color:var(--text-muted);font-size:10px;">Client names are recognised automatically. Email status, RAG, and upcoming meetings inform priority.</span>
             </div>
             <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report !low @friday"></textarea>
             <div class="task-prompt-options">
@@ -4119,6 +4140,184 @@ const AutoTodoGen = {
             showToast(`${generated} meeting prep task${generated > 1 ? 's' : ''} auto-generated`, 'success');
         }
     },
+};
+
+/* ================================================================
+   TASK CONTEXT ENGINE — Context-aware task analysis
+   Enriches parsed tasks with dashboard data: client email status,
+   RAG, calendar meetings, duplicate detection, and priority scoring.
+   ================================================================ */
+const TaskContextEngine = {
+    _sortedClients: null,
+
+    _ensureSortedClients() {
+        const clients = State.clients || [];
+        // If Monday data is loaded, use it; otherwise fall back to EMAIL_DATA client names
+        let names;
+        if (clients.length) {
+            names = clients.map(c => c.name).filter(Boolean);
+        } else {
+            names = Object.keys(EMAIL_DATA?.clients || {});
+        }
+        if (!this._sortedClients || this._sortedClients.length !== names.length) {
+            this._sortedClients = [...names].sort((a, b) => b.length - a.length);
+        }
+        return this._sortedClients;
+    },
+
+    /** Match a client name in freetext (longest match first, case-insensitive) */
+    matchClient(text) {
+        const sorted = this._ensureSortedClients();
+        if (!sorted.length) return null;
+        const lower = text.toLowerCase();
+        for (const name of sorted) {
+            if (lower.includes(name.toLowerCase())) return name;
+        }
+        return null;
+    },
+
+    /** Get upcoming meetings for a client within the next 48 hours */
+    getUpcomingClientMeetings(clientName) {
+        if (!CALENDAR_DATA || !CALENDAR_DATA.events || !clientName) return [];
+        const now = Date.now();
+        const cutoff = now + 48 * 60 * 60 * 1000;
+        const nameLower = clientName.toLowerCase();
+        return CALENDAR_DATA.events
+            .filter(e => {
+                const start = new Date(e.start).getTime();
+                return start > now && start < cutoff && e.subject.toLowerCase().includes(nameLower);
+            })
+            .map(e => ({
+                subject: e.subject,
+                start: e.start,
+                hoursUntil: Math.round((new Date(e.start).getTime() - now) / 3600000),
+            }))
+            .sort((a, b) => a.hoursUntil - b.hoursUntil);
+    },
+
+    /** Find potential duplicate tasks in existing non-completed items */
+    findDuplicates(taskText) {
+        const existing = (DashTodo._items || []).filter(t => !t.completed);
+        if (!existing.length) return [];
+
+        const normalise = (str) => str.toLowerCase()
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\b(chase|follow\s*up|send|email|call|check|update|review|prepare|contact|remind|draft|write|arrange|confirm|discuss|organise|organize)\b/g, '')
+            .replace(/\s+/g, ' ').trim();
+
+        const taskNorm = normalise(taskText);
+        const taskWords = new Set(taskNorm.split(' ').filter(w => w.length > 2));
+        if (!taskWords.size) return [];
+        const taskClient = this.matchClient(taskText);
+
+        const matches = [];
+        existing.forEach(item => {
+            const itemNorm = normalise(item.text);
+            const itemWords = new Set(itemNorm.split(' ').filter(w => w.length > 2));
+            if (!itemWords.size) return;
+            const shared = [...taskWords].filter(w => itemWords.has(w)).length;
+            const maxW = Math.max(taskWords.size, itemWords.size);
+            const similarity = shared / maxW;
+
+            const itemClient = item.matchedClient || this.matchClient(item.text);
+            const sameClient = taskClient && itemClient && taskClient === itemClient;
+
+            if (similarity > 0.5 || (sameClient && similarity > 0.3)) {
+                matches.push({ id: item.id, text: item.text, similarity });
+            }
+        });
+
+        return matches.sort((a, b) => b.similarity - a.similarity).slice(0, 2);
+    },
+
+    /** Core context gatherer — returns full analysis for a task */
+    analyseTask(taskText) {
+        const ctx = {
+            clientName: null, clientObj: null,
+            emailStatus: null, ragStatus: null,
+            hasMeetingToday: false, hasMeetingTomorrow: false,
+            upcomingMeetings: [],
+            deadlineDays: null,
+            duplicates: [],
+            reasons: [],
+            priorityBoost: 0,
+        };
+
+        // Detect client
+        ctx.clientName = this.matchClient(taskText);
+        if (ctx.clientName) {
+            ctx.clientObj = (State.clients || []).find(c => c.name === ctx.clientName) || null;
+
+            // Email status
+            if (typeof getEffectiveEmailStatus === 'function') {
+                ctx.emailStatus = getEffectiveEmailStatus(ctx.clientName);
+            }
+
+            // RAG status
+            if (ctx.clientObj) {
+                ctx.ragStatus = ctx.clientObj.rag || null;
+
+                // Check deadline / go-live proximity
+                const deadlineStr = ctx.clientObj.deadline || ctx.clientObj.goLive;
+                if (deadlineStr) {
+                    const dl = new Date(deadlineStr);
+                    const daysUntil = Math.ceil((dl.getTime() - Date.now()) / 86400000);
+                    if (daysUntil > 0 && daysUntil <= 7) {
+                        ctx.deadlineDays = daysUntil;
+                    }
+                }
+            }
+
+            // Calendar meetings
+            ctx.upcomingMeetings = this.getUpcomingClientMeetings(ctx.clientName);
+            ctx.hasMeetingToday = ctx.upcomingMeetings.some(m => m.hoursUntil < 24);
+            ctx.hasMeetingTomorrow = ctx.upcomingMeetings.some(m => m.hoursUntil >= 24 && m.hoursUntil < 48);
+        }
+
+        // Duplicate detection (always, even without client)
+        ctx.duplicates = this.findDuplicates(taskText);
+
+        return ctx;
+    },
+
+    /** Additive priority scoring based on context signals */
+    computePriorityScore(ctx, basePriority) {
+        const prioMap = { low: 1, medium: 2, high: 3 };
+        let score = prioMap[basePriority] || 2;
+        const baseScore = score;
+        const reasons = [];
+
+        // Email signals
+        if (ctx.emailStatus === 'needs-response') { score += 2; reasons.push('Client needs email response'); }
+        else if (ctx.emailStatus === 'stale')      { score += 2; reasons.push('Email thread stale'); }
+        else if (ctx.emailStatus === 'no-recent')   { score += 1; reasons.push('No recent email contact'); }
+        else if (ctx.emailStatus === 'within-grace') { score -= 1; reasons.push('Email within grace period'); }
+
+        // RAG signals
+        if (ctx.ragStatus === 'Red')   { score += 2; reasons.push('Client RAG is Red'); }
+        else if (ctx.ragStatus === 'Amber') { score += 1; reasons.push('Client RAG is Amber'); }
+
+        // Calendar signals
+        if (ctx.hasMeetingToday)    { score += 2; reasons.push('Meeting with client today'); }
+        else if (ctx.hasMeetingTomorrow) { score += 1; reasons.push('Meeting tomorrow'); }
+
+        // Deadline proximity
+        if (ctx.deadlineDays !== null) { score += 1; reasons.push(`Deadline in ${ctx.deadlineDays} day${ctx.deadlineDays !== 1 ? 's' : ''}`); }
+
+        // Never downgrade below keyword-inferred base
+        if (score < baseScore) score = baseScore;
+
+        // Map back to priority string
+        let finalPriority;
+        if (score >= 3) finalPriority = 'high';
+        else if (score >= 2) finalPriority = 'medium';
+        else finalPriority = 'low';
+
+        return { finalPriority, boost: score - baseScore, reasons };
+    },
+
+    /** Invalidate cached client sort (call when clients change) */
+    invalidateCache() { this._sortedClients = null; },
 };
 
 /* ================================================================
@@ -8985,10 +9184,11 @@ function openTaskPrompt() {
     // Set default custom date to today
     document.getElementById('taskPromptCustomDate').value = new Date().toISOString().split('T')[0];
 
-    // Listen for typing to live-preview
+    // Listen for typing to live-preview (debounced — context analysis does more work now)
     const textarea = document.getElementById('taskPromptText');
     textarea.focus();
-    textarea.oninput = () => updateTaskPreview();
+    let _tpTimer = null;
+    textarea.oninput = () => { clearTimeout(_tpTimer); _tpTimer = setTimeout(updateTaskPreview, 200); };
 
     // Date mode toggle
     document.getElementById('taskPromptDateMode').onchange = function() {
@@ -9020,8 +9220,8 @@ function smartSplitTasks(text) {
     // Single line — try smart parsing
     const single = lines[0];
 
-    // Detect preamble patterns: "I have X tasks:", "today I need to:", "tasks for today:", etc.
-    const preambleRe = /^(?:(?:i\s+(?:have|need|got|want)\s+(?:to\s+)?(?:do\s+)?(?:\d+\s+)?(?:tasks?|things?|items?|jobs?)?\s*(?:today|this\s+week|for\s+today|for\s+this\s+week)?\s*[:—–-]?\s*)|(?:(?:my\s+)?(?:tasks?|things?|items?|jobs?)\s+(?:for\s+)?(?:today|this\s+week)\s*[:—–-]\s*)|(?:today(?:'s)?\s+(?:tasks?|things?|items?|jobs?)\s*[:—–-]\s*)|(?:(?:i\s+)?(?:need|want|have)\s+to\s*[:—–-]\s*))/i;
+    // Detect preamble patterns: "I have X tasks:", "today I need to:", "tasks for today:", "here's what I need to do:", etc.
+    const preambleRe = /^(?:(?:(?:today\s+)?(?:i\s+)?(?:need|want|have|got)\s+to\s*[:—–-]\s*)|(?:(?:here(?:'s|\s+is)\s+)?(?:what\s+)?i\s+need\s+to\s+(?:do|get\s+done)\s*(?:today|this\s+week)?\s*[:—–-]?\s*)|(?:(?:today|this\s+(?:week|morning|afternoon))\s+)?(?:i\s+(?:have|need|got|want)\s+(?:to\s+)?(?:do\s+)?(?:\d+\s+)?(?:tasks?|things?|items?|jobs?)?\s*(?:today|this\s+week|for\s+today|for\s+this\s+week)?\s*[:—–-]?\s*)|(?:(?:my\s+)?(?:tasks?|things?|items?|jobs?|to[ -]?do(?:\s+list)?)\s+(?:for\s+)?(?:today|this\s+week|this\s+morning|this\s+afternoon)?\s*[:—–-]\s*)|(?:today(?:'s)?\s+(?:tasks?|things?|items?|jobs?|to[ -]?do)\s*[:—–-]\s*)|(?:(?:for\s+)?today\s*[:—–-]\s*))/i;
     const preambleMatch = single.match(preambleRe);
     const body = preambleMatch ? single.slice(preambleMatch[0].length).trim() : null;
 
@@ -9075,13 +9275,54 @@ function cleanTaskText(text) {
     let t = text.trim();
     // Remove leading bullets/dashes/numbers
     t = t.replace(/^[\-\*•→]\s*/, '').replace(/^\d+[\.\)]\s*/, '');
-    // Remove filler starts like "I need to", "I have to", "then"
-    t = t.replace(/^(?:i\s+(?:need|have|want|should|must)\s+to\s+|then\s+|also\s+|and\s+)/i, '');
+    // Remove filler starts: "I need to", "I have to", "then", "also", "and", "so", "basically"
+    t = t.replace(/^(?:i\s+(?:need|have|want|should|must|got)\s+to\s+|then\s+|also\s+|and\s+|so\s+|basically\s+|probably\s+|maybe\s+|just\s+)/i, '');
+    // Remove hedging mid-phrases: "I think I need to", "I should probably"
+    t = t.replace(/^(?:i\s+think\s+(?:i\s+)?(?:need|have|should)\s+to\s+)/i, '');
+    // Remove time context filler: "at some point today", "before end of day", "when I get a chance"
+    t = t.replace(/\s+(?:at\s+some\s+point(?:\s+today)?|before\s+(?:end\s+of\s+(?:day|the\s+day)|eod)|when\s+(?:i\s+get\s+(?:a\s+)?chance|possible|i\s+can))\s*$/i, '');
+    // Remove trailing filler: "if possible", "if I can", "or something"
+    t = t.replace(/\s+(?:if\s+(?:possible|i\s+can)|or\s+something|as\s+well|too)\s*$/i, '');
     // Capitalise first letter
     if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
-    // Remove trailing comma/semicolon
-    t = t.replace(/[,;]+$/, '').trim();
+    // Remove trailing comma/semicolon/period
+    t = t.replace(/[,;.]+$/, '').trim();
     return t;
+}
+
+/**
+ * Determine if a text line is an actionable task vs narrative/commentary.
+ * Returns false for non-actionable content like "things went well", "had a good meeting", etc.
+ */
+function isActionableTask(text) {
+    const t = text.trim().toLowerCase();
+    if (t.length < 3) return false;
+
+    // Narrative/commentary patterns — these are NOT tasks
+    const narrativePatterns = [
+        /^(?:i\s+)?(?:had|have\s+had|just\s+had)\s+(?:a\s+)?(?:good|great|nice|quick|long|short|brief)?\s*(?:meeting|call|chat|conversation|catch[ -]?up|sync|discussion)\b/,
+        /^(?:things?|it|everything|that)\s+(?:went|is\s+going|has\s+been|was|were)\s+(?:well|good|great|fine|ok|okay|smoothly|badly|rough)/,
+        /^(?:i\s+)?(?:spoke|talked|chatted|caught\s+up)\s+(?:to|with)\b/,
+        /^(?:just\s+)?(?:a\s+)?(?:quick\s+)?(?:note|reminder|fyi|heads?\s*up|update)\s*(?:that|:|-|—)?\s*$/,
+        /^(?:i\s+)?(?:already|have\s+already)\s+(?:done|finished|completed|sent|submitted|handled)/,
+        /^(?:no\s+(?:need|worries|rush)|all\s+(?:good|done|sorted)|nothing\s+(?:else|more|urgent))/,
+        /^(?:i\s+)?(?:forgot|remembered|noticed|realised|realized)\s+(?:that\s+)?/,
+        /^(?:btw|by\s+the\s+way|also\s+worth\s+noting|on\s+another\s+note|separately)/,
+        /^(?:yesterday|last\s+(?:week|monday|tuesday|wednesday|thursday|friday))\s+(?:i\s+)?(?:had|went|did|was|met|spoke)/,
+        /^(?:the\s+)?(?:meeting|call|session|review)\s+(?:went|was|is\s+scheduled|has\s+been)/,
+    ];
+    for (const re of narrativePatterns) {
+        if (re.test(t)) return false;
+    }
+
+    // Very short fragments with no verb — likely not a task
+    const words = t.split(/\s+/);
+    if (words.length <= 2) {
+        const actionVerbs = /^(chase|send|call|email|follow|update|review|prepare|check|write|create|finish|complete|submit|schedule|book|contact|draft|organise|organize|fix|build|set|meet|plan|arrange|confirm|cancel|order|research|look|sort|clean|test|deploy|upload|download|share|notify|remind|discuss|present|sign|approve|request|escalate|respond|reply|forward|ask|get|do|make|find|pay|buy|print|file|add|move|copy|open|close)/;
+        if (!actionVerbs.test(words[0])) return false;
+    }
+
+    return true;
 }
 
 /**
@@ -9161,13 +9402,30 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
         // Clean up filler words and capitalise
         taskText = cleanTaskText(taskText);
 
+        // Filter out non-actionable content (narrative, commentary, status updates)
+        if (!isActionableTask(taskText)) return;
+
         // Infer priority from keywords if no explicit !tag was given
         if (!explicitPriority) {
             priority = inferTaskPriority(taskText, priority);
         }
 
+        // Context-aware enrichment from dashboard data
+        const context = TaskContextEngine.analyseTask(taskText);
+        if (!explicitPriority && context.clientName) {
+            const scored = TaskContextEngine.computePriorityScore(context, priority);
+            if (scored.boost > 0) {
+                priority = scored.finalPriority;
+                context.reasons = scored.reasons;
+            }
+        }
+
         if (taskText.length > 0) {
-            tasks.push({ text: taskText, priority, dueDate, inferred: !explicitPriority && priority !== defaultPriority });
+            tasks.push({
+                text: taskText, priority, dueDate,
+                inferred: !explicitPriority && priority !== defaultPriority,
+                context,
+            });
         }
     });
 
@@ -9196,11 +9454,52 @@ function updateTaskPreview() {
     list.innerHTML = tasks.map(t => {
         const dateLabel = new Date(t.dueDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
         const inferBadge = t.inferred ? ' <span style="font-size:9px;opacity:.6;font-style:italic;">auto</span>' : '';
+
+        // Client badge
+        const clientBadge = t.context?.clientName
+            ? `<span class="tpi-client-badge">${t.context.clientName}</span>` : '';
+
+        // Context tags (email status, RAG, meetings, deadline)
+        let contextRow = '';
+        if (t.context?.clientName) {
+            const tags = [];
+            if (t.context.emailStatus && t.context.emailStatus !== 'discontinued') {
+                const lbl = typeof emailStatusLabel === 'function' ? emailStatusLabel(t.context.emailStatus) : null;
+                if (lbl) tags.push(`<span class="tpi-ctx-tag ${lbl.class}">${lbl.text}</span>`);
+            }
+            if (t.context.ragStatus && t.context.ragStatus !== 'Green') {
+                tags.push(`<span class="tpi-ctx-tag rag-${t.context.ragStatus.toLowerCase()}">RAG: ${t.context.ragStatus}</span>`);
+            }
+            if (t.context.hasMeetingToday) {
+                tags.push(`<span class="tpi-ctx-tag meeting">Meeting today</span>`);
+            } else if (t.context.hasMeetingTomorrow) {
+                tags.push(`<span class="tpi-ctx-tag meeting">Meeting tomorrow</span>`);
+            }
+            if (t.context.deadlineDays !== null) {
+                tags.push(`<span class="tpi-ctx-tag deadline">Deadline in ${t.context.deadlineDays}d</span>`);
+            }
+            if (tags.length) contextRow = `<div class="tpi-context-row">${tags.join('')}</div>`;
+        }
+
+        // Reason line (why priority was boosted)
+        let reasonLine = '';
+        if (t.context?.reasons?.length && t.inferred) {
+            reasonLine = `<div class="tpi-reason">${t.priority.toUpperCase()} \u2014 ${t.context.reasons.join(' + ')}</div>`;
+        }
+
+        // Duplicate warning
+        let dupWarn = '';
+        if (t.context?.duplicates?.length) {
+            const d = t.context.duplicates[0];
+            const truncText = d.text.length > 50 ? d.text.slice(0, 50) + '\u2026' : d.text;
+            dupWarn = `<div class="tpi-dup-warn">Similar task exists: \u201C${truncText}\u201D</div>`;
+        }
+
         return `<div class="task-preview-item">
             <span class="tpi-priority ${t.priority}">${t.priority}${inferBadge}</span>
-            <span>${t.text}</span>
+            <span>${t.text}${clientBadge}</span>
             <span class="tpi-date">${dateLabel}</span>
-        </div>`;
+        </div>${contextRow}${reasonLine}${dupWarn}`;
     }).join('');
 }
 
@@ -9216,7 +9515,11 @@ function submitTaskPrompt() {
         return;
     }
 
-    tasks.forEach(t => DashTodo.add(t.text, t.priority, t.dueDate));
+    tasks.forEach(t => {
+        const opts = {};
+        if (t.context?.clientName) opts.matchedClient = t.context.clientName;
+        DashTodo.add(t.text, t.priority, t.dueDate, opts);
+    });
     closeTaskPrompt();
     showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} added`, 'success');
     renderPlannerPage();
