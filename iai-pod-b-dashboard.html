@@ -4290,8 +4290,10 @@ const TaskContextEngine = {
         // Email signals
         if (ctx.emailStatus === 'needs-response') { score += 2; reasons.push('Client needs email response'); }
         else if (ctx.emailStatus === 'stale')      { score += 2; reasons.push('Email thread stale'); }
+        else if (ctx.emailStatus === 'awaiting')   { score += 1; reasons.push('Awaiting reply > 3 working days'); }
         else if (ctx.emailStatus === 'no-recent')   { score += 1; reasons.push('No recent email contact'); }
         else if (ctx.emailStatus === 'within-grace') { score -= 1; reasons.push('Email within grace period'); }
+        else if (ctx.emailStatus === 'awaiting-grace') { score -= 1; reasons.push('Awaiting reply (within 3 days)'); }
 
         // RAG signals
         if (ctx.ragStatus === 'Red')   { score += 2; reasons.push('Client RAG is Red'); }
@@ -5715,6 +5717,7 @@ const CONFIG = Object.freeze({
     STALE_WARNING_DAYS: 7,
     STALE_CRITICAL_DAYS: 14,
     RESPONSE_GRACE_HOURS: 48, // hours before a client email becomes "needs response"
+    AWAITING_GRACE_WORKING_DAYS: 3, // working days before an "awaiting reply" becomes actionable again
     USER_EMAIL: 'mishai@implementai.io', // Fallback Pod Lead email — overridden by RUNTIME.userEmail after login
 });
 
@@ -7695,7 +7698,25 @@ function getHoursSinceMyLastEmail(emailEntry) {
  *  - If only I sent, never client → 'awaiting'
  *  - If only client sent, never me → 'needs-response' (with grace check)
  *  - If last exchange is very old (>14d) → 'stale'
+ *  - If awaiting ≤3 working days → 'awaiting-grace' (considered done, no action needed)
+ *  - If awaiting >3 working days → 'awaiting' (actionable, may need chasing)
  */
+
+/** Count working days (Mon–Fri) between two dates, excluding both endpoints */
+function countWorkingDaysSince(fromDate) {
+    const start = new Date(fromDate);
+    const now = new Date();
+    let count = 0;
+    const d = new Date(start);
+    d.setDate(d.getDate() + 1); // start from day after
+    while (d < now) {
+        const day = d.getDay();
+        if (day !== 0 && day !== 6) count++; // Mon=1 … Fri=5
+        d.setDate(d.getDate() + 1);
+    }
+    return count;
+}
+
 function getEffectiveEmailStatus(clientName) {
     const ed = EMAIL_DATA.clients[clientName];
     if (!ed) return null;
@@ -7714,7 +7735,9 @@ function getEffectiveEmailStatus(clientName) {
     if (myDate && !clientDate) {
         const hoursSinceMe = getHoursSinceMyLastEmail(ed);
         if (hoursSinceMe !== null && hoursSinceMe > CONFIG.STALE_CRITICAL_DAYS * 24) return 'stale';
-        return 'awaiting';
+        // Awaiting: within 3 working days = done (no action), beyond = actionable
+        const workingDays = countWorkingDaysSince(myDate);
+        return workingDays > CONFIG.AWAITING_GRACE_WORKING_DAYS ? 'awaiting' : 'awaiting-grace';
     }
 
     // Only client has sent — I need to respond
@@ -7734,7 +7757,9 @@ function getEffectiveEmailStatus(clientName) {
         // I sent more recently — awaiting client
         const hoursSinceMe = getHoursSinceMyLastEmail(ed);
         if (hoursSinceMe !== null && hoursSinceMe > CONFIG.STALE_CRITICAL_DAYS * 24) return 'stale';
-        return 'awaiting';
+        // Awaiting: within 3 working days = done (no action), beyond = actionable
+        const workingDays = countWorkingDaysSince(myDate);
+        return workingDays > CONFIG.AWAITING_GRACE_WORKING_DAYS ? 'awaiting' : 'awaiting-grace';
     }
 }
 
@@ -7742,7 +7767,8 @@ function emailStatusLabel(status) {
     switch(status) {
         case 'needs-response': return { text: 'Needs Response', class: 'needs-response' };
         case 'within-grace': return { text: 'Received — Within 48h', class: 'within-grace' };
-        case 'awaiting': return { text: 'Awaiting Reply', class: 'awaiting' };
+        case 'awaiting': return { text: 'Awaiting Reply — Chase Up', class: 'awaiting' };
+        case 'awaiting-grace': return { text: 'Awaiting Reply', class: 'within-grace' };
         case 'stale': return { text: 'Stale - Outreach Needed', class: 'stale-email' };
         case 'no-recent': return { text: 'No Recent Email', class: 'stale-email' };
         case 'discontinued': return { text: 'Discontinued', class: 'discontinued' };
@@ -7779,7 +7805,7 @@ function renderEmailActivity() {
     EmailHiddenCards.autoUnhideCheck();
 
     // Match email data to loaded clients, using effective status (48h grace period)
-    const statusOrder = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'within-grace': 3, 'awaiting': 4, 'discontinued': 5 };
+    const statusOrder = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'within-grace': 3, 'awaiting': 4, 'awaiting-grace': 5, 'discontinued': 6 };
     const clientEmails = [];
 
     // If clients are loaded, use them; otherwise use EMAIL_DATA keys
@@ -7812,6 +7838,7 @@ function renderEmailActivity() {
                           ce.effectiveStatus === 'within-grace' ? 'within-grace' :
                           ce.effectiveStatus === 'stale' || ce.effectiveStatus === 'no-recent' ? 'stale-email' :
                           ce.effectiveStatus === 'awaiting' ? 'awaiting' :
+                          ce.effectiveStatus === 'awaiting-grace' ? 'within-grace' :
                           ce.effectiveStatus === 'discontinued' ? 'discontinued' : '';
 
         let graceNote = '';
@@ -8622,9 +8649,13 @@ function renderPlannerPage() {
             actionLabel = 'Done'; statusClass = 'done'; icon = '✅'; isDone = true;
             detail = isOverridden ? 'Manually marked as done' : 'Completed';
         } else if (effectiveStatus === 'awaiting') {
-            actionLabel = 'Awaiting Reply'; statusClass = 'awaiting'; icon = '📤';
+            actionLabel = 'Chase Up — No Reply'; statusClass = 'needs-action'; icon = '📤';
             const myLast = lastFromMe ? new Date(lastFromMe.date) : null;
-            detail = myLast ? `You sent on ${myLast.toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : 'Awaiting client response';
+            detail = myLast ? `You sent on ${myLast.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — over 3 working days ago` : 'No reply received';
+        } else if (effectiveStatus === 'awaiting-grace') {
+            actionLabel = 'Awaiting Reply'; statusClass = 'done'; icon = '✅'; isDone = true;
+            const myLast = lastFromMe ? new Date(lastFromMe.date) : null;
+            detail = myLast ? `You sent on ${myLast.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — within 3 working days` : 'Awaiting client response';
         } else if (effectiveStatus === 'needs-response') {
             actionLabel = 'Needs Response'; statusClass = 'needs-action'; icon = '⚠️';
             const hrs = getHoursSinceLastClientEmail(ed);
@@ -8722,7 +8753,7 @@ function renderPlannerPage() {
         filteredEmailActions = emailActions.filter(ea => ea.isDone);
     }
     // Sort: urgent first
-    const statusOrder = { 'needs-response': 0, 'within-grace': 1, 'stale': 2, 'no-recent': 3, 'awaiting': 4, 'done': 5 };
+    const statusOrder = { 'needs-response': 0, 'within-grace': 1, 'stale': 2, 'no-recent': 3, 'awaiting': 4, 'awaiting-grace': 5, 'done': 6 };
     filteredEmailActions.sort((a, b) => (statusOrder[a.effectiveStatus] ?? 9) - (statusOrder[b.effectiveStatus] ?? 9));
 
     const emailActionsHTML = filteredEmailActions.length > 0
@@ -8790,10 +8821,10 @@ function renderPlannerPage() {
             detail = lastEmailDate ? `Last email: ${lastEmailDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : 'No email history';
         } else if (effectiveStatus === 'awaiting') {
             urgency = 3;
-            tag = 'Awaiting Reply'; tagClass = 'awaiting'; icon = '&#128228;'; iconClass = 'awaiting';
-            detail = lastEmailDate ? `You sent last on ${lastEmailDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : 'Awaiting client response';
+            tag = 'Chase Up — No Reply'; tagClass = 'awaiting'; icon = '&#128228;'; iconClass = 'awaiting';
+            detail = lastEmailDate ? `You sent on ${lastEmailDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — over 3 working days ago` : 'No reply received';
         } else {
-            return; // up-to-date or other — skip
+            return; // awaiting-grace (within 3 working days), up-to-date, or other — skip
         }
 
         emailFollowUps.push({
