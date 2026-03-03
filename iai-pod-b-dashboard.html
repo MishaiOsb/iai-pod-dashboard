@@ -10020,11 +10020,37 @@ const FileUpload = {
         this._triggerAI();
     },
 
+    _isTranscript(text) {
+        const t = text.trim();
+        // Speaker labels: "Name 0 minutes N seconds", "Speaker N:", timestamps
+        const speakerPattern = /\d+\s*minutes?\s*\d+\s*seconds?/gi;
+        const speakerMatches = (t.match(speakerPattern) || []).length;
+        const timestampPattern = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
+        const timestampMatches = (t.match(timestampPattern) || []).length;
+        const speakerLabelPattern = /^[A-Z][a-zA-Z\s''\-]+\d+\s*\d*:?\d*/m;
+        const hasSpeakerLabels = speakerLabelPattern.test(t);
+        // If we see multiple timestamps/speaker markers, it's a transcript
+        return (speakerMatches >= 3) || (timestampMatches >= 5) || (speakerMatches >= 2 && hasSpeakerLabels);
+    },
+
     _triggerAI() {
         const text = document.getElementById('taskPromptText').value;
         if (!text.trim()) return;
         if (AI_CONFIG.hasKey()) {
             triggerAIExtraction(text);
+        } else if (this._isTranscript(text)) {
+            // Transcript detected but no AI key — don't run regex parser on transcript content
+            document.getElementById('taskPromptPreview').classList.remove('visible');
+            const parsingEl = document.getElementById('fileParsingState');
+            parsingEl.classList.add('visible');
+            document.getElementById('fileParsingMsg').textContent = 'AI key required for transcript analysis';
+            document.getElementById('fileParsingDetail').innerHTML =
+                'This looks like a meeting transcript. The smart parser can\'t extract tasks from conversations.<br>' +
+                '<button onclick="document.getElementById(\'taskPromptOverlay\').classList.remove(\'open\');showSetup();" ' +
+                'style="margin-top:8px;padding:6px 14px;border-radius:6px;border:1px solid var(--accent-purple);' +
+                'background:transparent;color:var(--accent-purple-light);cursor:pointer;font-size:11px;font-weight:600;">' +
+                'Add AI Key in Settings</button>';
+            showToast('Transcript detected — add an AI key in Settings to extract tasks from meeting recordings.', 'info');
         } else {
             updateTaskPreview();
             showToast('No AI key configured — using smart parser. Add a key in Settings for better results.', 'info');
