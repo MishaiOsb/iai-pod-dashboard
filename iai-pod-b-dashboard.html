@@ -5271,6 +5271,13 @@ const OutlookSync = {
         this._syncing = false;
         renderEmailActivity();
         this._updateSyncStatusUI();
+        // Refresh overview charts if currently on overview page (contact recency uses EMAIL_DATA)
+        if (typeof Router !== 'undefined' && Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
+            const clients = State.clients.length > 0 ? State.clients : [];
+            if (clients.length > 0) {
+                OverviewCharts.renderContactRecency(clients);
+            }
+        }
     },
 
     // ── Cache (localStorage persistence) ──
@@ -7508,15 +7515,25 @@ const OverviewCharts = {
         this.destroy('ovContact');
         const data = clients
             .map(c => {
-                // Use monday.com lastContact first, fall back to most recent email date
-                let contactDate = c.lastContact;
-                if (!contactDate) {
-                    const ed = EMAIL_DATA.clients?.[c.name];
-                    if (ed?.emails?.length) {
-                        const sorted = ed.emails.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
-                        contactDate = sorted[0].date?.split('T')[0] || '';
-                    }
+                // Collect all possible contact dates and pick the most recent
+                const candidates = [];
+                // 1. monday.com lastContact field
+                if (c.lastContact) candidates.push(new Date(c.lastContact));
+                // 2. EMAIL_DATA lastEmailDate (set by OutlookSync or snapshot)
+                const ed = EMAIL_DATA.clients?.[c.name];
+                if (ed?.lastEmailDate) candidates.push(new Date(ed.lastEmailDate));
+                // 3. Most recent email from emails array
+                if (ed?.emails?.length) {
+                    const sorted = ed.emails.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+                    if (sorted[0]?.date) candidates.push(new Date(sorted[0].date));
                 }
+                // 4. lastClientEmail date (when client emailed us)
+                if (ed?.lastClientEmail) candidates.push(new Date(ed.lastClientEmail));
+                // Pick the most recent valid date
+                const validDates = candidates.filter(d => !isNaN(d.getTime()));
+                const contactDate = validDates.length > 0
+                    ? validDates.sort((a, b) => b - a)[0].toISOString().split('T')[0]
+                    : null;
                 return { name: c.name, days: getDaysSinceContact(contactDate) };
             })
             .filter(d => d.days !== null && d.days >= 0)
