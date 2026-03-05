@@ -11841,6 +11841,7 @@ const AISettings = {
                 AI_CONFIG.setKey(provider, key);
                 document.getElementById(inputId).value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
                 this._setStatus('Key validated and saved', 'success');
+                ConnectionStatus.refreshAiStatus();
             } else {
                 this._setStatus('Invalid key — check and try again', 'error');
             }
@@ -11852,6 +11853,7 @@ const AISettings = {
         const inputId = provider === 'openai' ? 'aiOpenAIKeyInput' : 'aiAnthropicKeyInput';
         document.getElementById(inputId).value = '';
         this._setStatus('Key removed', 'info');
+        ConnectionStatus.refreshAiStatus();
     },
     _setStatus(msg, type) {
         const el = document.getElementById('aiKeyStatus');
@@ -11917,13 +11919,19 @@ function setConnectionMode(mode) {
 
 // ── Connection Status Tracker ──
 const ConnectionStatus = {
-    monday: 'unknown',   // 'ok' | 'error' | 'unknown'
-    outlook: 'unknown',  // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
-    calendar: 'unknown', // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+    monday: 'unknown',       // 'ok' | 'error' | 'unknown'
+    outlook: 'unknown',      // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+    calendar: 'unknown',     // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+    aiAssistant: 'unknown',  // 'ok' | 'no-key' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
     setCalendar(status) { this.calendar = status; updateConnectionIndicator(); },
+    setAiAssistant(status) { this.aiAssistant = status; updateConnectionIndicator(); },
+
+    refreshAiStatus() {
+        this.setAiAssistant(AI_CONFIG.hasAnyKey() ? 'ok' : 'no-key');
+    },
 
     // Overall health: green if monday OK, amber if any issues, red if monday down
     getOverall() {
@@ -11954,6 +11962,8 @@ const ConnectionStatus = {
             const cStatus = this.calendar === 'ok' ? 'Connected' : this.calendar === 'token-expired' ? 'Token expired' : this.calendar === 'error' ? 'Failed' : 'Pending';
             parts.push(`Calendar: ${cStatus}`);
         }
+        const aiLabel = this.aiAssistant === 'ok' ? 'Connected' : this.aiAssistant === 'no-key' ? 'No key' : 'Pending';
+        parts.push(`AI Assistant: ${aiLabel}`);
         return parts.join('\n');
     }
 };
@@ -12286,6 +12296,9 @@ async function init() {
 
     // Update offline badge on init
     updateModeUI();
+
+    // Check AI key status on init
+    ConnectionStatus.refreshAiStatus();
 
     if (getConnectionMode() === 'offline' && UserSession.hasSession()) {
         // Offline mode with existing session — skip API, render with local/snapshot data
