@@ -2081,89 +2081,6 @@ input, textarea, select { font-family: inherit; outline: none; }
 .tpi-dup-warn { font-size: 9px; color: var(--rag-amber); padding: 1px 0 4px 54px; font-style: italic; }
 .tpi-dup-warn::before { content: '\26A0\0020'; }
 
-/* AI Review Panel */
-.ai-review-panel {
-    margin-top: 14px; padding: 14px; background: var(--bg-elevated);
-    border-radius: var(--radius-md); border: 1px solid var(--border-subtle);
-    max-height: 400px; overflow-y: auto; display: none;
-}
-.ai-review-panel.visible { display: block; }
-.ai-review-header {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 10px;
-}
-.ai-review-header .title {
-    font-size: 11px; font-weight: 700; color: var(--text-secondary);
-    text-transform: uppercase; letter-spacing: 0.5px;
-}
-.ai-review-header .ai-badge {
-    font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 8px;
-    background: rgba(107,48,255,0.15); color: var(--accent-purple-light);
-}
-.ai-review-card {
-    background: var(--bg-card); border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px;
-}
-.ai-review-card .card-top {
-    display: flex; align-items: center; gap: 8px;
-}
-.ai-review-card .card-checkbox { width: 16px; height: 16px; accent-color: var(--accent-purple); cursor: pointer; flex-shrink: 0; }
-.ai-review-card .card-text {
-    flex: 1; background: transparent; border: 1px solid transparent;
-    border-radius: 4px; color: var(--text-primary); font-size: 12px;
-    padding: 3px 6px; font-family: inherit; line-height: 1.5;
-    transition: border-color 0.15s ease;
-}
-.ai-review-card .card-text:focus { border-color: var(--accent-purple); outline: none; background: var(--bg-input); }
-.ai-review-card .card-remove {
-    background: none; border: none; color: var(--text-muted); cursor: pointer;
-    font-size: 14px; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
-}
-.ai-review-card .card-remove:hover { color: var(--rag-red); background: rgba(232,73,73,0.1); }
-.ai-review-card .card-meta {
-    display: flex; gap: 8px; margin-top: 6px; padding-left: 24px; align-items: center; flex-wrap: wrap;
-}
-.ai-review-card .card-meta select,
-.ai-review-card .card-meta input[type="date"] {
-    padding: 3px 6px; font-size: 10px; background: var(--bg-input);
-    border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-primary);
-}
-.ai-review-card .card-client {
-    font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 8px;
-    background: rgba(87,155,252,0.15); color: #579bfc;
-}
-.ai-review-card .card-reasoning {
-    font-size: 9px; color: var(--text-muted); font-style: italic;
-    padding: 4px 0 0 24px;
-}
-.ai-review-actions {
-    display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; flex-wrap: wrap;
-}
-.ai-review-actions button {
-    padding: 7px 16px; border-radius: var(--radius-md); font-size: 12px;
-    font-weight: 600; cursor: pointer; border: none; transition: all var(--transition-fast);
-}
-.ai-review-actions .btn-add-all { background: var(--accent-purple); color: #fff; }
-.ai-review-actions .btn-add-all:hover { background: var(--accent-purple-light); }
-.ai-review-actions .btn-add-selected { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-default); }
-.ai-review-actions .btn-reanalyse { background: transparent; color: var(--accent-purple-light); border: 1px solid var(--accent-purple); font-size: 11px; }
-.ai-loading-state {
-    text-align: center; padding: 24px; color: var(--text-muted); font-size: 12px;
-}
-.ai-loading-state .spinner {
-    display: inline-block; width: 20px; height: 20px;
-    border: 2px solid var(--border-default); border-top-color: var(--accent-purple);
-    border-radius: 50%; animation: aiSpin 0.8s linear infinite; margin-bottom: 8px;
-}
-@keyframes aiSpin { to { transform: rotate(360deg); } }
-.ai-mode-indicator {
-    display: inline-flex; align-items: center; gap: 4px; font-size: 9px;
-    font-weight: 600; color: var(--accent-purple-light); padding: 2px 8px;
-    border-radius: 8px; background: rgba(107,48,255,0.1);
-    margin-left: 8px; vertical-align: middle; opacity: 0; transition: opacity 0.3s ease;
-}
-.ai-mode-indicator.visible { opacity: 1; }
-
 /* File Upload — Drop Zone, Chips, Parsing */
 .file-upload-zone {
     display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -3032,31 +2949,6 @@ input, textarea, select { font-family: inherit; outline: none; }
             <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:13px;padding:8px 16px;" onclick="switchPod()">Change Pod</button>
         </div>
 
-        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
-            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">
-                &#129302; AI Task Extraction
-                <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span>
-            </h3>
-            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">
-                Paste transcripts or meeting notes and Claude AI will extract tasks with priorities and client matching.
-            </p>
-            <div class="setup-input-group" id="aiKeyGroup">
-                <label>Claude API Key</label>
-                <input type="password" id="aiKeyInput" placeholder="sk-ant-...">
-                <button class="toggle-vis" onclick="const i=document.getElementById('aiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
-            </div>
-            <div id="aiKeyStatus" style="font-size:11px;margin:6px 0;min-height:16px;"></div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;"
-                    onclick="AISettings.saveAndValidate()">Save &amp; Validate Key</button>
-                <button class="btn-primary" style="background:transparent;color:var(--rag-red);border:1px solid var(--rag-red);font-size:12px;padding:6px 14px;"
-                    onclick="AISettings.removeKey()">Remove Key</button>
-            </div>
-            <div class="setup-hint" style="margin-top:8px;">
-                Get your key: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a><br>
-                Keys are stored locally in your browser only. Without a key, the task prompt uses fast regex parsing.
-            </div>
-        </div>
     </div>
 </div>
 
@@ -3263,11 +3155,6 @@ input, textarea, select { font-family: inherit; outline: none; }
                     <span class="conn-svc-name">Calendar</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
-                <div class="conn-dropdown-row" id="connRow-ai">
-                    <span class="conn-svc-dot gray"></span>
-                    <span class="conn-svc-name">AI Assistant</span>
-                    <span class="conn-svc-label gray">Pending</span>
-                </div>
             </div>
         </span>
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
@@ -3360,14 +3247,14 @@ input, textarea, select { font-family: inherit; outline: none; }
     <!-- ====== TASK PROMPT MODAL ====== -->
     <div class="task-prompt-overlay" id="taskPromptOverlay" onclick="if(event.target===this)closeTaskPrompt();">
         <div class="task-prompt-modal">
-            <h3>&#128221; Add Tasks <span class="ai-mode-indicator" id="aiModeIndicator">&#129302; AI Mode</span></h3>
+            <h3>&#128221; Add Tasks</h3>
             <div class="prompt-subtitle">
-                Type naturally, paste tasks, drop files, or paste a meeting transcript for AI extraction.<br>
+                Type naturally, paste tasks, drop files, or paste a meeting transcript.<br>
                 <span style="color:var(--text-primary);">Supports: </span>
-                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, files (.txt .md .csv .docx .pdf), !high/!low tags, @date, transcripts</code><br>
+                <code style="background:var(--bg-elevated);padding:2px 6px;border-radius:4px;font-size:11px;">Natural language, files (.txt .md .csv .docx .pdf), !high/!low tags, @date, "by Friday", transcripts</code><br>
                 <span style="color:var(--text-muted);font-size:10px;">Client names are recognised automatically. Email status, RAG, and upcoming meetings inform priority.</span>
             </div>
-            <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report !low @friday&#10;&#10;Or paste a meeting transcript / notes and AI will extract tasks automatically"></textarea>
+            <textarea class="task-prompt-textarea" id="taskPromptText" placeholder="I have 3 tasks today: chase Townhouse on booking, send QDP update and review Orbital system&#10;&#10;Or one per line:&#10;Follow up with client !high @monday&#10;Prepare weekly pod report by Friday&#10;&#10;Or paste a meeting transcript and action items will be extracted automatically"></textarea>
             <!-- File upload: chips + drop zone + parsing -->
             <div class="file-chips" id="fileChips"></div>
             <div class="file-upload-zone" id="fileUploadZone">
@@ -3400,23 +3287,6 @@ input, textarea, select { font-family: inherit; outline: none; }
             <div class="task-prompt-preview" id="taskPromptPreview">
                 <div class="task-prompt-preview-title">Preview (<span id="taskPromptPreviewCount">0</span> tasks)</div>
                 <div id="taskPromptPreviewList"></div>
-            </div>
-            <div id="aiLoadingState" class="ai-loading-state" style="display:none;">
-                <div class="spinner"></div>
-                <div>Extracting tasks with AI...</div>
-                <div style="font-size:10px;margin-top:4px;" id="aiLoadingProvider"></div>
-            </div>
-            <div class="ai-review-panel" id="aiReviewPanel">
-                <div class="ai-review-header">
-                    <span class="title">AI-Extracted Tasks (<span id="aiReviewCount">0</span>)</span>
-                    <span class="ai-badge" id="aiReviewBadge">Claude</span>
-                </div>
-                <div id="aiReviewList"></div>
-                <div class="ai-review-actions">
-                    <button class="btn-reanalyse" onclick="AIReview.reanalyse()">&#8635; Re-analyse</button>
-                    <button class="btn-add-selected" onclick="AIReview.addSelected()">Add Selected</button>
-                    <button class="btn-add-all" onclick="AIReview.addAll()">Add All</button>
-                </div>
             </div>
             <div class="task-prompt-actions">
                 <button class="btn-cancel" onclick="closeTaskPrompt()">Cancel</button>
@@ -4678,6 +4548,116 @@ const TaskContextEngine = {
 
     /** Invalidate cached client sort (call when clients change) */
     invalidateCache() { this._sortedClients = null; },
+};
+
+/* ================================================================
+   TRANSCRIPT PARSER — Extract action items from meeting transcripts
+   Detects speaker turns and commitment/assignment phrases to pull
+   actionable tasks from conversational text.
+   ================================================================ */
+const TranscriptParser = {
+    // Speaker turn patterns (Fireflies "Name 0 minutes 30 seconds", "Speaker 1:", "[00:12:34] Name:", "Name:")
+    _speakerRe: /(?:^|\n)\s*(?:([A-Z][a-zA-Z\s''\-]+?)\s+\d+\s*minutes?\s*\d+\s*seconds?|(?:Speaker\s*\d+|([A-Z][a-zA-Z\s''\-]{1,30}))\s*:|(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-Z][a-zA-Z\s''\-]{1,30})\s*:)/gm,
+
+    // Commitment / assignment trigger phrases
+    _commitmentPatterns: [
+        // Self-commitments: "I'll send...", "I will follow up...", "I'm going to..."
+        { re: /\b(?:i['']ll|i\s+will|i['']m\s+going\s+to|i\s+can|i\s+should|let\s+me|i\s+need\s+to|i['']ll\s+go\s+ahead\s+and)\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'self' },
+        // Assignments: "can you...", "could you...", "please...", "you need to..."
+        { re: /\b(?:can\s+you|could\s+you|would\s+you|you\s+(?:need|should|could|have)\s+to|(?:please|pls)\s+(?:can\s+you\s+)?)\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'assign' },
+        // Team commitments: "we need to...", "we should...", "we'll..."
+        { re: /\b(?:we\s+(?:need|should|have|ought)\s+to|we['']ll|we\s+will|we['']re\s+going\s+to)\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'team' },
+        // Explicit action markers: "action item:", "next step:", "the task is..."
+        { re: /\b(?:(?:the\s+)?(?:action\s+(?:item)?|next\s+step|task|to[ -]?do)\s*(?:is|would\s+be|:)\s*)(.+?)(?:\.|$)/gi, type: 'explicit' },
+        // Reminders/follow-ups: "follow up on...", "don't forget to...", "make sure to..."
+        { re: /\b(?:follow\s+up\s+(?:on|with|about)|don['']t\s+forget\s+to|make\s+sure\s+(?:to|we|you)|reminder\s+to)\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'followup' },
+    ],
+
+    /**
+     * Check if text looks like a meeting transcript.
+     * Moved from FileUpload._isTranscript() to be reusable.
+     */
+    isTranscript(text) {
+        const t = text.trim();
+        const speakerTimePattern = /\d+\s*minutes?\s*\d+\s*seconds?/gi;
+        const speakerTimeMatches = (t.match(speakerTimePattern) || []).length;
+        const timestampPattern = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
+        const timestampMatches = (t.match(timestampPattern) || []).length;
+        const speakerLabelPattern = /^[A-Z][a-zA-Z\s''\-]+\d+\s*\d*:?\d*/m;
+        const hasSpeakerLabels = speakerLabelPattern.test(t);
+        // Also check for "Speaker N:" or "Name:" patterns on multiple lines
+        const colonSpeakerMatches = (t.match(/(?:^|\n)\s*[A-Z][a-zA-Z\s''\-]{1,30}\s*:/gm) || []).length;
+        return (speakerTimeMatches >= 2) || (timestampMatches >= 4) || (speakerTimeMatches >= 1 && hasSpeakerLabels) || (colonSpeakerMatches >= 3);
+    },
+
+    /**
+     * Extract action items from transcript text.
+     * Returns array of clean task-line strings.
+     */
+    extractActions(text) {
+        const actions = [];
+        const seen = new Set(); // deduplicate
+
+        // Split into speaker turns
+        const turns = this._splitTurns(text);
+
+        for (const turn of turns) {
+            const content = turn.text;
+            // Try each commitment pattern
+            for (const pattern of this._commitmentPatterns) {
+                const re = new RegExp(pattern.re.source, pattern.re.flags);
+                let match;
+                while ((match = re.exec(content)) !== null) {
+                    let action = (match[1] || '').trim();
+                    // Clean up the extracted action
+                    action = action
+                        .replace(/\s+/g, ' ')
+                        .replace(/^(?:just|basically|probably|maybe|actually|definitely|certainly)\s+/i, '')
+                        .replace(/\s*(?:right|yeah|you know|I think|I guess|okay|ok)\s*$/i, '')
+                        .replace(/\?+$/, '')
+                        .trim();
+                    // Skip too-short or too-long fragments
+                    if (action.length < 5 || action.length > 200) continue;
+                    // Skip questions/noise
+                    if (/^(?:what|when|where|why|how|is\s+(?:it|that|this)|are\s+(?:we|you|they))\b/i.test(action) && !/\b(?:send|call|email|follow|update|check|review|prepare|chase|contact|schedule|book)\b/i.test(action)) continue;
+                    // Normalise for dedup (exact match + substring check)
+                    const normKey = action.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
+                    if (seen.has(normKey)) continue;
+                    let isSubstring = false;
+                    for (const prev of seen) {
+                        if (prev.includes(normKey) || normKey.includes(prev)) { isSubstring = true; break; }
+                    }
+                    if (isSubstring) continue;
+                    seen.add(normKey);
+                    // Capitalise first letter
+                    action = action.charAt(0).toUpperCase() + action.slice(1);
+                    actions.push(action);
+                }
+            }
+        }
+
+        return actions;
+    },
+
+    /** Split transcript into speaker turns */
+    _splitTurns(text) {
+        const turns = [];
+        const re = new RegExp(this._speakerRe.source, this._speakerRe.flags);
+        const matches = [...text.matchAll(re)];
+        if (matches.length === 0) {
+            // No speaker labels — treat whole text as one turn
+            return [{ speaker: 'Unknown', text }];
+        }
+        for (let i = 0; i < matches.length; i++) {
+            const m = matches[i];
+            const speaker = (m[1] || m[2] || m[3] || 'Unknown').trim();
+            const start = m.index + m[0].length;
+            const end = (i + 1 < matches.length) ? matches[i + 1].index : text.length;
+            const turnText = text.slice(start, end).trim();
+            if (turnText.length > 0) turns.push({ speaker, text: turnText });
+        }
+        return turns;
+    },
 };
 
 /* ================================================================
@@ -6133,263 +6113,6 @@ const RUNTIME = {
     allPods: [],         // discovered: [{ name, index, slug }]
 };
 
-/* ================================================================
-   AI CONFIG — API keys, provider selection, detection thresholds
-   ================================================================ */
-const AI_CONFIG = {
-    _storageKey: 'iai_ai_anthropic_key',
-
-    API_URL: 'https://api.anthropic.com/v1/messages',
-    MODEL: 'claude-sonnet-4-20250514',
-
-    MIN_CHARS_FOR_AI: 200,
-    MIN_LINES_FOR_AI: 5,
-
-    _pk(k) {
-        // Pod-namespaced key (falls back to raw key before session is loaded)
-        try { return typeof UserSession !== 'undefined' ? UserSession.podKey(k) : k; }
-        catch { return k; }
-    },
-    getKey()          { return localStorage.getItem(this._pk(this._storageKey)) || ''; },
-    setKey(value)     { if (value) localStorage.setItem(this._pk(this._storageKey), value); else localStorage.removeItem(this._pk(this._storageKey)); },
-    hasKey()          { return !!this.getKey(); },
-    hasAnyKey()       { return this.hasKey(); },
-};
-
-/* ================================================================
-   AI SERVICE — provider abstraction, prompt building, task extraction
-   ================================================================ */
-const AIService = {
-    async validateKey(key) {
-        try {
-            const resp = await fetch(AI_CONFIG.API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': key,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true',
-                },
-                body: JSON.stringify({ model: AI_CONFIG.MODEL, max_tokens: 10, messages: [{ role: 'user', content: 'Say OK' }] }),
-            });
-            return resp.ok;
-        } catch { return false; }
-    },
-
-    buildSystemPrompt() {
-        const now = new Date();
-        const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        const today = now.toISOString().split('T')[0];
-        const dayOfWeek = dayNames[now.getDay()];
-
-        // Client list with statuses
-        let clientCtx = '';
-        const clients = (typeof State !== 'undefined' && State.clients) ? State.clients : [];
-        if (clients.length) {
-            const lines = clients.map(c => {
-                const email = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : 'n/a';
-                return `- ${c.name} | RAG: ${c.rag || '?'} | Email: ${email} | Plan: ${c.plan || '?'}${c.deadline ? ' | Deadline: ' + c.deadline : ''}`;
-            });
-            clientCtx = `\n\nCLIENT LIST (${clients.length} active):\n${lines.join('\n')}`;
-        } else if (typeof EMAIL_DATA !== 'undefined' && EMAIL_DATA?.clients) {
-            const lines = Object.keys(EMAIL_DATA.clients).map(name => {
-                const email = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(name) : 'n/a';
-                return `- ${name} | Email: ${email}`;
-            });
-            clientCtx = `\n\nCLIENT LIST:\n${lines.join('\n')}`;
-        }
-
-        // Today's calendar
-        let calCtx = '';
-        if (typeof CALENDAR_DATA !== 'undefined' && CALENDAR_DATA?.events?.length) {
-            const todayStart = new Date(today + 'T00:00:00');
-            const todayEnd = new Date(today + 'T23:59:59');
-            const evts = CALENDAR_DATA.events.filter(e => { const s = new Date(e.start); return s >= todayStart && s <= todayEnd; });
-            if (evts.length) {
-                calCtx = `\n\nTODAY'S CALENDAR (${evts.length} events):\n` +
-                    evts.map(e => `- ${new Date(e.start).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}: ${e.subject}`).join('\n');
-            }
-        }
-
-        // Existing tasks
-        let taskCtx = '';
-        const incomplete = (typeof DashTodo !== 'undefined' && DashTodo._items) ? DashTodo._items.filter(t => !t.completed) : [];
-        if (incomplete.length) {
-            const lines = incomplete.slice(0, 20).map(t => `- [${t.priority}] ${t.text}${t.matchedClient ? ' (' + t.matchedClient + ')' : ''}`);
-            taskCtx = `\n\nEXISTING TASKS (${incomplete.length} incomplete — avoid duplicates):\n${lines.join('\n')}`;
-        }
-
-        return `You are a task extraction assistant for a client success pod lead at ImplementAI.
-Today is ${dayOfWeek}, ${today}.
-User: ${RUNTIME.userName || 'Unknown'} (${RUNTIME.userEmail || ''})
-
-Your job:
-1. Extract clear, actionable tasks from the user's input (transcript, meeting notes, email dump, or free text).
-2. For each task, provide: task text, priority (high/medium/low), suggested due date (YYYY-MM-DD), matched client name (if any), and brief reasoning.
-3. Match client names from the list below. If the text mentions a client, use the exact name from the list.
-4. Set priority based on: urgency words, client RAG status (Red = high priority), email status (needs-response = high), upcoming meetings, and deadlines.
-5. Suggest due dates based on urgency: urgent/ASAP = today, follow-ups = within 2-3 days, general = this week.
-6. Skip non-actionable content (greetings, small talk, status updates without actions).
-7. Do NOT duplicate tasks that already exist.
-
-Respond ONLY with a JSON array. No markdown, no code fences, no explanation outside the array.
-Each element: {"text": "...", "priority": "high|medium|low", "dueDate": "YYYY-MM-DD", "clientName": "..." or null, "reasoning": "..."}
-${clientCtx}${calCtx}${taskCtx}`;
-    },
-
-    async extractTasks(userText) {
-        const key = AI_CONFIG.getKey();
-        if (!key) throw new Error('No API key configured — add one in Settings');
-
-        const systemPrompt = this.buildSystemPrompt();
-
-        const resp = await fetch(AI_CONFIG.API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': key,
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-            },
-            body: JSON.stringify({
-                model: AI_CONFIG.MODEL,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: userText }],
-                max_tokens: 2000, temperature: 0.3,
-            }),
-        });
-        if (!resp.ok) {
-            if (resp.status === 401) throw new Error('Invalid API key — update in Settings');
-            if (resp.status === 429) throw new Error('Rate limited — wait a moment and retry');
-            throw new Error(`Claude API error ${resp.status}`);
-        }
-        const data = await resp.json();
-        const responseText = data.content?.[0]?.text || '';
-
-        return this._parseResponse(responseText);
-    },
-
-    _parseResponse(text) {
-        let cleaned = text.trim().replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-        const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
-        if (!arrayMatch) throw new Error('No task array found in AI response');
-        let tasks;
-        try { tasks = JSON.parse(arrayMatch[0]); } catch { throw new Error('Failed to parse AI response as JSON'); }
-        if (!Array.isArray(tasks)) throw new Error('AI response is not an array');
-        const today = new Date().toISOString().split('T')[0];
-        return tasks.map(t => ({
-            text: String(t.text || '').trim(),
-            priority: ['high','medium','low'].includes(t.priority) ? t.priority : 'medium',
-            dueDate: /^\d{4}-\d{2}-\d{2}$/.test(t.dueDate) ? t.dueDate : today,
-            clientName: t.clientName || null,
-            reasoning: String(t.reasoning || ''),
-        })).filter(t => t.text.length > 0);
-    },
-};
-
-/* ================================================================
-   AI REVIEW — interactive task review panel before committing
-   ================================================================ */
-const AIReview = {
-    _tasks: [],
-    _original: '',
-
-    show(tasks) {
-        this._tasks = tasks;
-        const panel = document.getElementById('aiReviewPanel');
-        const list = document.getElementById('aiReviewList');
-        document.getElementById('aiReviewCount').textContent = tasks.length;
-        document.getElementById('aiReviewBadge').textContent = 'Claude';
-        document.getElementById('taskPromptPreview').classList.remove('visible');
-
-        list.innerHTML = tasks.map((t, i) => {
-            const clientBadge = t.clientName ? `<span class="card-client">${t.clientName}</span>` : '';
-            return `<div class="ai-review-card" data-idx="${i}">
-                <div class="card-top">
-                    <input type="checkbox" class="card-checkbox" checked data-idx="${i}">
-                    <input type="text" class="card-text" value="${(t.text || '').replace(/"/g, '&quot;')}" data-idx="${i}">
-                    <button class="card-remove" onclick="AIReview.remove(${i})" title="Remove">&times;</button>
-                </div>
-                <div class="card-meta">
-                    <select data-idx="${i}" data-field="priority">
-                        <option value="high" ${t.priority==='high'?'selected':''}>High</option>
-                        <option value="medium" ${t.priority==='medium'?'selected':''}>Medium</option>
-                        <option value="low" ${t.priority==='low'?'selected':''}>Low</option>
-                    </select>
-                    <input type="date" value="${t.dueDate}" data-idx="${i}" data-field="dueDate">
-                    ${clientBadge}
-                </div>
-                ${t.reasoning ? `<div class="card-reasoning">${t.reasoning}</div>` : ''}
-            </div>`;
-        }).join('');
-
-        panel.classList.add('visible');
-        document.getElementById('taskPromptSubmit').style.display = 'none';
-    },
-
-    remove(idx) {
-        this._tasks.splice(idx, 1);
-        if (this._tasks.length === 0) { this.hide(); return; }
-        this.show(this._tasks);
-    },
-
-    _readEdits() {
-        document.querySelectorAll('.ai-review-card').forEach(card => {
-            const idx = parseInt(card.dataset.idx);
-            if (idx >= this._tasks.length) return;
-            const text = card.querySelector('.card-text');
-            const prio = card.querySelector('select[data-field="priority"]');
-            const date = card.querySelector('input[type="date"]');
-            if (text) this._tasks[idx].text = text.value.trim();
-            if (prio) this._tasks[idx].priority = prio.value;
-            if (date) this._tasks[idx].dueDate = date.value;
-        });
-    },
-
-    addAll() {
-        this._readEdits();
-        this._commitTasks(this._tasks);
-    },
-
-    addSelected() {
-        this._readEdits();
-        const selected = [];
-        document.querySelectorAll('.ai-review-card .card-checkbox').forEach(cb => {
-            if (cb.checked) {
-                const idx = parseInt(cb.dataset.idx);
-                if (this._tasks[idx]) selected.push(this._tasks[idx]);
-            }
-        });
-        if (selected.length === 0) { showToast('No tasks selected', 'error'); return; }
-        this._commitTasks(selected);
-    },
-
-    _commitTasks(tasks) {
-        tasks.forEach(t => {
-            const opts = { aiGenerated: true };
-            if (t.clientName) opts.matchedClient = t.clientName;
-            DashTodo.add(t.text, t.priority, t.dueDate, opts);
-        });
-        this.hide();
-        closeTaskPrompt();
-        showToast(`${tasks.length} AI-extracted task${tasks.length !== 1 ? 's' : ''} added`, 'success');
-        renderPlannerPage();
-    },
-
-    async reanalyse() {
-        if (!this._original) return;
-        this.hide();
-        await triggerAIExtraction(this._original);
-    },
-
-    hide() {
-        const panel = document.getElementById('aiReviewPanel');
-        if (panel) panel.classList.remove('visible');
-        const btn = document.getElementById('taskPromptSubmit');
-        if (btn) { btn.style.display = ''; btn.disabled = false; btn.textContent = 'Add Tasks'; }
-        this._tasks = [];
-    },
-};
 
 /* ================================================================
    USER SESSION — pod selection, identity, localStorage namespacing
@@ -9905,7 +9628,7 @@ const FileUpload = {
             if (result) { this._files.push(result); this._renderChips(); added++; }
         }
         this._hideParsing();
-        if (added > 0) { this._rebuildTextarea(); this._triggerAI(); }
+        if (added > 0) { this._rebuildTextarea(); this._afterFileLoad(); }
         document.getElementById('fileUploadInput').value = '';
     },
 
@@ -9995,8 +9718,6 @@ const FileUpload = {
         } else {
             textarea.value = this._files.map(f => `--- ${f.name} ---\n${f.text}`).join('\n\n');
         }
-        // Show AI mode indicator
-        document.getElementById('aiModeIndicator').classList.add('visible');
     },
 
     _renderChips() {
@@ -10014,44 +9735,13 @@ const FileUpload = {
         this._renderChips();
         if (this._files.length === 0) { this.clear(); return; }
         this._rebuildTextarea();
-        this._triggerAI();
+        this._afterFileLoad();
     },
 
-    _isTranscript(text) {
-        const t = text.trim();
-        // Speaker labels: "Name 0 minutes N seconds", "Speaker N:", timestamps
-        const speakerPattern = /\d+\s*minutes?\s*\d+\s*seconds?/gi;
-        const speakerMatches = (t.match(speakerPattern) || []).length;
-        const timestampPattern = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
-        const timestampMatches = (t.match(timestampPattern) || []).length;
-        const speakerLabelPattern = /^[A-Z][a-zA-Z\s''\-]+\d+\s*\d*:?\d*/m;
-        const hasSpeakerLabels = speakerLabelPattern.test(t);
-        // If we see multiple timestamps/speaker markers, it's a transcript
-        return (speakerMatches >= 3) || (timestampMatches >= 5) || (speakerMatches >= 2 && hasSpeakerLabels);
-    },
-
-    _triggerAI() {
+    _afterFileLoad() {
         const text = document.getElementById('taskPromptText').value;
         if (!text.trim()) return;
-        if (AI_CONFIG.hasKey()) {
-            triggerAIExtraction(text);
-        } else if (this._isTranscript(text)) {
-            // Transcript detected but no AI key — don't run regex parser on transcript content
-            document.getElementById('taskPromptPreview').classList.remove('visible');
-            const parsingEl = document.getElementById('fileParsingState');
-            parsingEl.classList.add('visible');
-            document.getElementById('fileParsingMsg').textContent = 'AI key required for transcript analysis';
-            document.getElementById('fileParsingDetail').innerHTML =
-                'This looks like a meeting transcript. The smart parser can\'t extract tasks from conversations.<br>' +
-                '<button onclick="document.getElementById(\'taskPromptOverlay\').classList.remove(\'open\');showSetup();" ' +
-                'style="margin-top:8px;padding:6px 14px;border-radius:6px;border:1px solid var(--accent-purple);' +
-                'background:transparent;color:var(--accent-purple-light);cursor:pointer;font-size:11px;font-weight:600;">' +
-                'Add AI Key in Settings</button>';
-            showToast('Transcript detected — add an AI key in Settings to extract tasks from meeting recordings.', 'info');
-        } else {
-            updateTaskPreview();
-            showToast('No AI key configured — using smart parser. Add a key in Settings for better results.', 'info');
-        }
+        updateTaskPreview();
     },
 
     _showParsing(name, ext) {
@@ -10061,7 +9751,6 @@ const FileUpload = {
             ext === '.pdf' ? 'Loading PDF engine...' : ext === '.docx' ? 'Extracting text from Word document...' : 'Reading text...';
         el.classList.add('visible');
         document.getElementById('taskPromptPreview').classList.remove('visible');
-        AIReview.hide();
     },
     _updateParsing(msg) { document.getElementById('fileParsingDetail').textContent = msg; },
     _hideParsing() { document.getElementById('fileParsingState').classList.remove('visible'); },
@@ -10072,9 +9761,7 @@ const FileUpload = {
         document.getElementById('fileChips').classList.remove('visible');
         document.getElementById('taskPromptText').value = '';
         document.getElementById('fileUploadInput').value = '';
-        document.getElementById('aiModeIndicator').classList.remove('visible');
         document.getElementById('taskPromptPreview').classList.remove('visible');
-        AIReview.hide();
     },
 };
 
@@ -10091,17 +9778,12 @@ function openTaskPrompt() {
     // Set default custom date to today
     document.getElementById('taskPromptCustomDate').value = new Date().toISOString().split('T')[0];
 
-    // Reset AI state
-    AIReview.hide();
-    document.getElementById('aiLoadingState').style.display = 'none';
-    document.getElementById('aiModeIndicator').classList.remove('visible');
-
     // Reset file upload state
     FileUpload.clear();
     document.getElementById('fileParsingState').classList.remove('visible');
     FileUpload.init();
 
-    // Listen for typing — debounced preview + AI mode detection
+    // Listen for typing — debounced preview
     const textarea = document.getElementById('taskPromptText');
     textarea.focus();
     let _tpTimer = null;
@@ -10109,9 +9791,6 @@ function openTaskPrompt() {
         clearTimeout(_tpTimer);
         _tpTimer = setTimeout(() => {
             updateTaskPreview();
-            // AI mode indicator
-            const isAI = shouldUseAI(textarea.value);
-            document.getElementById('aiModeIndicator').classList.toggle('visible', isAI);
         }, 200);
     };
 
@@ -10129,24 +9808,6 @@ function closeTaskPrompt() {
 }
 
 /**
- * Determine whether input should route to AI extraction vs fast regex pipeline.
- * Returns false if no API key is configured — zero degradation for non-AI users.
- */
-function shouldUseAI(text) {
-    if (!AI_CONFIG.hasKey()) return false;
-    const trimmed = text.trim();
-    const lines = trimmed.split('\n').filter(l => l.trim().length > 0);
-    // Explicit AI trigger phrases
-    if (/\b(analy[sz]e|extract\s+tasks?\s+from|what\s+tasks|what\s+should\s+i|summari[sz]e\s+actions|parse\s+this|meeting\s+notes?|transcript)\b/i.test(trimmed)) return true;
-    // Transcript markers: "Speaker:", timestamps, "Q:", "A:"
-    if (/(?:^|\n)\s*(?:Speaker\s*\d*\s*:|Q:|A:|\[\d{1,2}:\d{2}(?::\d{2})?\])/m.test(trimmed)) return true;
-    // Length thresholds
-    if (trimmed.length > AI_CONFIG.MIN_CHARS_FOR_AI) return true;
-    if (lines.length > AI_CONFIG.MIN_LINES_FOR_AI) return true;
-    return false;
-}
-
-/**
  * Smart-split natural language into individual task lines.
  * "I have 3 tasks: A, B and C" → ["A", "B", "C"]
  * "Today I need to: chase EzyClean, send the proposal and update notes" → 3 tasks
@@ -10155,6 +9816,13 @@ function shouldUseAI(text) {
 function smartSplitTasks(text) {
     const raw = text.trim();
     if (!raw) return [];
+
+    // Transcript detection — route through TranscriptParser for conversation text
+    if (TranscriptParser.isTranscript(raw)) {
+        const actions = TranscriptParser.extractActions(raw);
+        if (actions.length > 0) return actions;
+        // Fallback: if no actions extracted, try normal parsing
+    }
 
     // If input already has multiple lines, respect that structure
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -10231,6 +9899,80 @@ function cleanTaskText(text) {
     // Remove trailing comma/semicolon/period
     t = t.replace(/[,;.]+$/, '').trim();
     return t;
+}
+
+/**
+ * Parse natural-language dates from task text.
+ * Returns { cleaned: string, date: 'YYYY-MM-DD' } or null if no date found.
+ * Strips the matched date phrase from the text.
+ */
+function parseNaturalDate(text) {
+    const today = new Date();
+    const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
+    /** Helper: next occurrence of a weekday (always in the future) */
+    function nextWeekday(dayIdx) {
+        const d = new Date(today);
+        let diff = dayIdx - d.getDay();
+        if (diff <= 0) diff += 7;
+        d.setDate(d.getDate() + diff);
+        return d;
+    }
+    function toISO(d) { return d.toISOString().split('T')[0]; }
+
+    const patterns = [
+        // "by Friday", "before Monday", "by this Friday"
+        { re: /\b(?:by|before|due)\s+(?:this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+          fn: (m) => nextWeekday(dayNames.indexOf(m[1].toLowerCase())) },
+        // "next Monday", "next Friday"
+        { re: /\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+          fn: (m) => { const d = nextWeekday(dayNames.indexOf(m[1].toLowerCase())); if ((d - today) / 86400000 < 7) d.setDate(d.getDate() + 7); return d; } },
+        // "this Friday" (current week)
+        { re: /\bthis\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+          fn: (m) => nextWeekday(dayNames.indexOf(m[1].toLowerCase())) },
+        // "in N days/weeks"
+        { re: /\bin\s+(\d+)\s+(day|days|week|weeks)\b/i,
+          fn: (m) => { const d = new Date(today); const n = parseInt(m[1]); d.setDate(d.getDate() + (m[2].startsWith('week') ? n * 7 : n)); return d; } },
+        // "end of week" / "end of the week"
+        { re: /\b(?:end\s+of\s+(?:the\s+)?week|eow)\b/i,
+          fn: () => { const d = new Date(today); d.setDate(d.getDate() + (5 - d.getDay() + 7) % 7 || 7); return d; } },
+        // "end of month" / "end of the month"
+        { re: /\b(?:end\s+of\s+(?:the\s+)?month|eom)\b/i,
+          fn: () => new Date(today.getFullYear(), today.getMonth() + 1, 0) },
+        // "end of day" / "today"
+        { re: /\b(?:end\s+of\s+(?:the\s+)?day|eod)\b/i,
+          fn: () => new Date(today) },
+        // "tomorrow morning/afternoon/evening" or just "tomorrow"
+        { re: /\btomorrow(?:\s+(?:morning|afternoon|evening))?\b/i,
+          fn: () => { const d = new Date(today); d.setDate(d.getDate() + 1); return d; } },
+        // "next week" (next Monday)
+        { re: /\bnext\s+week\b/i,
+          fn: () => { const d = new Date(today); d.setDate(d.getDate() + (8 - d.getDay()) % 7 || 7); return d; } },
+        // "by the 15th" / "by the 3rd"
+        { re: /\bby\s+the\s+(\d{1,2})(?:st|nd|rd|th)?\b/i,
+          fn: (m) => { const day = parseInt(m[1]); const d = new Date(today.getFullYear(), today.getMonth(), day); if (d <= today) d.setMonth(d.getMonth() + 1); return d; } },
+        // "by March 10" / "by 10 March" / "by March 10th"
+        { re: /\bby\s+(?:(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?|(\d{1,2})(?:st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december))\b/i,
+          fn: (m) => {
+              const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+              const monthName = (m[1] || m[4]).toLowerCase();
+              const day = parseInt(m[2] || m[3]);
+              const monthIdx = months.indexOf(monthName);
+              let d = new Date(today.getFullYear(), monthIdx, day);
+              if (d < today) d = new Date(today.getFullYear() + 1, monthIdx, day);
+              return d;
+          }},
+    ];
+
+    for (const p of patterns) {
+        const match = text.match(p.re);
+        if (match) {
+            const date = p.fn(match);
+            const cleaned = text.replace(match[0], '').replace(/\s{2,}/g, ' ').trim();
+            return { cleaned, date: toISO(date) };
+        }
+    }
+    return null;
 }
 
 /**
@@ -10325,8 +10067,12 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
                 }
             }
         } else {
-            // No explicit date — use the mode
-            if (dateMode === 'today') {
+            // No explicit @date — try natural language date parsing
+            const naturalDate = parseNaturalDate(taskText);
+            if (naturalDate) {
+                dueDate = naturalDate.date;
+                taskText = naturalDate.cleaned;
+            } else if (dateMode === 'today') {
                 dueDate = todayStr;
             } else if (dateMode === 'custom' && customDate) {
                 dueDate = customDate;
@@ -10376,8 +10122,6 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
 }
 
 function updateTaskPreview() {
-    // Skip regex preview when AI review panel is active
-    if (document.getElementById('aiReviewPanel')?.classList.contains('visible')) return;
     const text = document.getElementById('taskPromptText').value;
     const defaultPriority = document.getElementById('taskPromptDefaultPriority').value;
     const dateMode = document.getElementById('taskPromptDateMode').value;
@@ -10448,71 +10192,28 @@ function updateTaskPreview() {
     }).join('');
 }
 
-async function submitTaskPrompt() {
+function submitTaskPrompt() {
     const text = document.getElementById('taskPromptText').value;
     if (!text.trim()) { showToast('Type or paste your tasks first', 'error'); return; }
 
-    // Route: AI extraction for long/complex input, else fast regex pipeline
-    if (shouldUseAI(text)) {
-        await triggerAIExtraction(text);
-    } else {
-        const defaultPriority = document.getElementById('taskPromptDefaultPriority').value;
-        const dateMode = document.getElementById('taskPromptDateMode').value;
-        const customDate = document.getElementById('taskPromptCustomDate').value;
+    const defaultPriority = document.getElementById('taskPromptDefaultPriority').value;
+    const dateMode = document.getElementById('taskPromptDateMode').value;
+    const customDate = document.getElementById('taskPromptCustomDate').value;
 
-        const tasks = parseTaskLines(text, defaultPriority, dateMode, customDate);
-        if (tasks.length === 0) {
-            showToast('No tasks found — type naturally or enter one per line', 'error');
-            return;
-        }
-
-        tasks.forEach(t => {
-            const opts = {};
-            if (t.context?.clientName) opts.matchedClient = t.context.clientName;
-            DashTodo.add(t.text, t.priority, t.dueDate, opts);
-        });
-        closeTaskPrompt();
-        showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} added`, 'success');
-        renderPlannerPage();
+    const tasks = parseTaskLines(text, defaultPriority, dateMode, customDate);
+    if (tasks.length === 0) {
+        showToast('No tasks found — type naturally or enter one per line', 'error');
+        return;
     }
-}
 
-async function triggerAIExtraction(text) {
-    const loadingEl = document.getElementById('aiLoadingState');
-    const providerLabel = document.getElementById('aiLoadingProvider');
-    const submitBtn = document.getElementById('taskPromptSubmit');
-
-    loadingEl.style.display = 'block';
-    providerLabel.textContent = 'Using Claude...';
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Extracting...';
-    document.getElementById('taskPromptPreview').classList.remove('visible');
-    AIReview.hide();
-    AIReview._original = text;
-
-    try {
-        const tasks = await AIService.extractTasks(text);
-        loadingEl.style.display = 'none';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Add Tasks';
-
-        if (tasks.length === 0) {
-            showToast('AI found no actionable tasks — falling back to smart parser', 'info');
-            updateTaskPreview();
-            submitBtn.style.display = '';
-            return;
-        }
-
-        AIReview.show(tasks);
-    } catch (err) {
-        loadingEl.style.display = 'none';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Add Tasks';
-        submitBtn.style.display = '';
-        console.error('AI extraction failed:', err);
-        showToast('AI: ' + err.message + '. Using smart parser.', 'error');
-        updateTaskPreview();
-    }
+    tasks.forEach(t => {
+        const opts = {};
+        if (t.context?.clientName) opts.matchedClient = t.context.clientName;
+        DashTodo.add(t.text, t.priority, t.dueDate, opts);
+    });
+    closeTaskPrompt();
+    showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} added`, 'success');
+    renderPlannerPage();
 }
 
 /* ================================================================
@@ -11802,41 +11503,6 @@ function toggleTokenVis() {
     inp.type = inp.type === 'password' ? 'text' : 'password';
 }
 
-const AISettings = {
-    init() {
-        const inp = document.getElementById('aiKeyInput');
-        if (inp) inp.value = AI_CONFIG.hasKey() ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
-    },
-    async saveAndValidate() {
-        const key = document.getElementById('aiKeyInput')?.value?.trim();
-        if (!key || /^\u2022+$/.test(key)) { this._setStatus('Enter your API key first', 'error'); return; }
-        this._setStatus('Validating...', 'info');
-        try {
-            const ok = await AIService.validateKey(key);
-            if (ok) {
-                AI_CONFIG.setKey(key);
-                document.getElementById('aiKeyInput').value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
-                this._setStatus('Key validated and saved', 'success');
-                ConnectionStatus.refreshAiStatus();
-            } else {
-                this._setStatus('Invalid key — check and try again', 'error');
-            }
-        } catch (e) { this._setStatus('Validation failed: ' + e.message, 'error'); }
-    },
-    removeKey() {
-        AI_CONFIG.setKey('');
-        document.getElementById('aiKeyInput').value = '';
-        this._setStatus('Key removed', 'info');
-        ConnectionStatus.refreshAiStatus();
-    },
-    _setStatus(msg, type) {
-        const el = document.getElementById('aiKeyStatus');
-        if (!el) return;
-        el.style.color = type === 'success' ? 'var(--rag-green)' : type === 'error' ? 'var(--rag-red)' : 'var(--text-muted)';
-        el.textContent = msg;
-    },
-};
-
 function showSetup() {
     document.getElementById('setupOverlay').classList.remove('hidden');
     document.getElementById('tokenInput').value = MondayAPI._token || '';
@@ -11854,8 +11520,6 @@ function showSetup() {
     if (closeBtn) closeBtn.style.display = UserSession.hasSession() ? 'flex' : 'none';
     // Update connection mode UI
     updateModeUI();
-    // Init AI settings
-    AISettings.init();
 }
 
 function closeSetup() {
@@ -11896,27 +11560,18 @@ const ConnectionStatus = {
     monday: 'unknown',       // 'ok' | 'error' | 'unknown'
     outlook: 'unknown',      // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
     calendar: 'unknown',     // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
-    aiAssistant: 'unknown',  // 'ok' | 'no-key' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
     setCalendar(status) { this.calendar = status; updateConnectionIndicator(); },
-    setAiAssistant(status) { this.aiAssistant = status; updateConnectionIndicator(); },
-
-    refreshAiStatus() {
-        this.setAiAssistant(AI_CONFIG.hasAnyKey() ? 'ok' : 'no-key');
-    },
 
     // Overall health: green if monday OK, amber if any issues, red if monday down
     getOverall() {
         if (getConnectionMode() === 'offline') return 'offline';
-        // Monday is the primary connection — if it's down, we're disconnected
         if (this.monday === 'error') return 'disconnected';
-        if (this.monday === 'unknown') return 'online'; // haven't tried yet
-        // Monday is OK — check secondary services
+        if (this.monday === 'unknown') return 'online';
         const outlookIssue = this.outlook === 'error' || this.outlook === 'token-expired';
         const calendarIssue = this.calendar === 'error' || this.calendar === 'token-expired';
-        // Only flag issues for services that have tokens configured
         if ((outlookIssue && OutlookSync.hasToken()) || (calendarIssue && CalendarSync.hasToken())) {
             return 'issues';
         }
@@ -11936,8 +11591,6 @@ const ConnectionStatus = {
             const cStatus = this.calendar === 'ok' ? 'Connected' : this.calendar === 'token-expired' ? 'Token expired' : this.calendar === 'error' ? 'Failed' : 'Pending';
             parts.push(`Calendar: ${cStatus}`);
         }
-        const aiLabel = this.aiAssistant === 'ok' ? 'Connected' : this.aiAssistant === 'no-key' ? 'No key' : 'Pending';
-        parts.push(`AI Assistant: ${aiLabel}`);
         return parts.join('\n');
     }
 };
@@ -11973,9 +11626,6 @@ function updateConnectionIndicator() {
     _updateConnRow('connRow-calendar', ConnectionStatus.calendar, {
         ok: 'Connected', error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
     }, !CalendarSync.hasToken());
-    _updateConnRow('connRow-ai', ConnectionStatus.aiAssistant, {
-        ok: 'Connected', 'no-key': 'No key', unknown: 'Pending'
-    });
 }
 
 function _updateConnRow(rowId, status, labelMap, hidden) {
@@ -12313,9 +11963,6 @@ async function init() {
 
     // Update offline badge on init
     updateModeUI();
-
-    // Check AI key status on init
-    ConnectionStatus.refreshAiStatus();
 
     if (getConnectionMode() === 'offline' && UserSession.hasSession()) {
         // Offline mode with existing session — skip API, render with local/snapshot data
