@@ -2296,6 +2296,14 @@ input, textarea, select { font-family: inherit; outline: none; }
     font-size: 10px; padding: 2px 6px; border-radius: 8px; flex-shrink: 0;
     background: rgba(0,200,117,0.12); color: var(--rag-green); font-weight: 600;
 }
+.ff-expand-arrow { font-size: 10px; color: var(--text-muted); transition: transform 0.15s; flex-shrink: 0; width: 14px; text-align: center; }
+.btn-ff-expand {
+    display: block; width: 100%; padding: 6px; margin-top: 4px; font-size: 11px;
+    color: var(--text-muted); background: transparent; border: 1px dashed var(--border-subtle);
+    border-radius: var(--radius-md); cursor: pointer; text-align: center;
+    transition: all var(--transition-fast);
+}
+.btn-ff-expand:hover { color: var(--accent-purple-light); border-color: rgba(107,48,255,0.3); }
 .ff-import-bar { display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
 .btn-ff-import {
     padding: 5px 12px; font-size: 11px; font-weight: 600; border-radius: var(--radius-md);
@@ -7499,7 +7507,18 @@ const OverviewCharts = {
     renderContactRecency(clients) {
         this.destroy('ovContact');
         const data = clients
-            .map(c => ({ name: c.name, days: getDaysSinceContact(c.lastContact) }))
+            .map(c => {
+                // Use monday.com lastContact first, fall back to most recent email date
+                let contactDate = c.lastContact;
+                if (!contactDate) {
+                    const ed = EMAIL_DATA.clients?.[c.name];
+                    if (ed?.emails?.length) {
+                        const sorted = ed.emails.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+                        contactDate = sorted[0].date?.split('T')[0] || '';
+                    }
+                }
+                return { name: c.name, days: getDaysSinceContact(contactDate) };
+            })
             .filter(d => d.days !== null && d.days >= 0)
             .sort((a, b) => b.days - a.days)
             .slice(0, 12);
@@ -9496,6 +9515,7 @@ document.addEventListener('click', (e) => {
 function buildFirefliesSection() {
     if (!FirefliesSync.hasToken()) return '';
     const meetings = FirefliesSync.getMeetingsWithActions();
+    const totalNew = meetings.reduce((s, m) => s + (m.actions || []).filter(a => !FirefliesSync.isImported(a.id)).length, 0);
     if (meetings.length === 0) {
         return `
         <div class="fireflies-section">
@@ -9506,38 +9526,68 @@ function buildFirefliesSection() {
             <div class="ff-empty">No meeting action items found. Sync to fetch latest transcripts.</div>
         </div>`;
     }
+    const MAX_PREVIEW = 5;
     const meetingHTML = meetings.map(m => {
         const actions = m.actions || [];
-        const actionsHTML = actions.map(a => {
-            const imported = FirefliesSync.isImported(a.id);
-            return `<div class="ff-action-item">
-                <input type="checkbox" class="ff-action-cb" data-action-id="${a.id}" ${imported ? 'disabled checked' : ''}>
+        const unimported = actions.filter(a => !FirefliesSync.isImported(a.id));
+        const previewActions = unimported.slice(0, MAX_PREVIEW);
+        const overflow = unimported.length - MAX_PREVIEW;
+        const previewHTML = previewActions.map(a => `<div class="ff-action-item">
+                <input type="checkbox" class="ff-action-cb" data-action-id="${a.id}">
                 <span class="ff-action-text">${a.text}</span>
-                ${imported ? '<span class="ff-action-imported">Imported</span>' : ''}
-            </div>`;
-        }).join('');
+            </div>`).join('');
+        const overflowHTML = overflow > 0 ? `<div class="ff-overflow" id="ffOverflow_${m.id}" style="display:none;">${unimported.slice(MAX_PREVIEW).map(a => `<div class="ff-action-item">
+                <input type="checkbox" class="ff-action-cb" data-action-id="${a.id}">
+                <span class="ff-action-text">${a.text}</span>
+            </div>`).join('')}</div>
+            <button class="btn-ff-expand" id="ffExpBtn_${m.id}" onclick="toggleFirefliesExpand('${m.id}', ${overflow})">Show ${overflow} more</button>` : '';
+        const dateStr = m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        if (unimported.length === 0) return ''; // skip fully-imported meetings
         return `
         <div class="ff-meeting-group" data-meeting-id="${m.id}">
-            <div class="ff-meeting-header">
+            <div class="ff-meeting-header" onclick="toggleFirefliesMeeting('${m.id}')" style="cursor:pointer;">
+                <span class="ff-expand-arrow" id="ffArrow_${m.id}">&#9654;</span>
                 <span class="ff-meeting-title">${m.title || 'Untitled Meeting'}</span>
-                <span class="ff-meeting-date">${m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</span>
-                <span class="ff-meeting-badge">${actions.length} action${actions.length !== 1 ? 's' : ''}</span>
+                <span class="ff-meeting-date">${dateStr}</span>
+                <span class="ff-meeting-badge">${unimported.length} new</span>
             </div>
-            ${actionsHTML}
-            <div class="ff-import-bar">
-                <button class="btn-ff-import" onclick="importAllFireflies('${m.id}')">Import All</button>
-                <button class="btn-ff-import-sel" onclick="importSelectedFireflies('${m.id}')">Import Selected</button>
+            <div class="ff-meeting-body" id="ffBody_${m.id}" style="display:none;">
+                ${previewHTML}
+                ${overflowHTML}
+                <div class="ff-import-bar">
+                    <button class="btn-ff-import" onclick="importAllFireflies('${m.id}')">Import All (${unimported.length})</button>
+                    <button class="btn-ff-import-sel" onclick="importSelectedFireflies('${m.id}')">Import Selected</button>
+                </div>
             </div>
         </div>`;
-    }).join('');
+    }).filter(Boolean).join('');
+    if (!meetingHTML) return '';
     return `
     <div class="fireflies-section">
         <div class="fireflies-section-header">
-            <h3>🎙️ Meeting Actions</h3>
+            <h3>🎙️ Meeting Actions <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(${totalNew} new from ${meetings.length} meeting${meetings.length !== 1 ? 's' : ''})</span></h3>
             <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
         </div>
         ${meetingHTML}
     </div>`;
+}
+
+function toggleFirefliesMeeting(meetingId) {
+    const body = document.getElementById('ffBody_' + meetingId);
+    const arrow = document.getElementById('ffArrow_' + meetingId);
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    if (arrow) arrow.innerHTML = open ? '&#9654;' : '&#9660;';
+}
+
+function toggleFirefliesExpand(meetingId, count) {
+    const overflow = document.getElementById('ffOverflow_' + meetingId);
+    const btn = document.getElementById('ffExpBtn_' + meetingId);
+    if (!overflow) return;
+    const open = overflow.style.display !== 'none';
+    overflow.style.display = open ? 'none' : 'block';
+    if (btn) btn.textContent = open ? `Show ${count} more` : 'Show less';
 }
 
 function importAllFireflies(meetingId) {
