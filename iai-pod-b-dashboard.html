@@ -5271,11 +5271,11 @@ const OutlookSync = {
         this._syncing = false;
         renderEmailActivity();
         this._updateSyncStatusUI();
-        // Refresh overview charts if currently on overview page (contact recency uses EMAIL_DATA)
+        // Refresh overview charts if currently on overview page (email volume uses EMAIL_DATA)
         if (typeof Router !== 'undefined' && Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
             const clients = State.clients.length > 0 ? State.clients : [];
             if (clients.length > 0) {
-                OverviewCharts.renderContactRecency(clients);
+                OverviewCharts.renderEmailVolume(clients);
             }
         }
     },
@@ -7510,49 +7510,40 @@ const OverviewCharts = {
         });
     },
 
-    /** Contact Recency — horizontal bar: days since last contact, top 12, color-coded */
-    renderContactRecency(clients) {
-        this.destroy('ovContact');
+    /** Email Volume by Client — horizontal bar: email count per client, split by sent/received */
+    renderEmailVolume(clients) {
+        this.destroy('ovEmailVol');
         const data = clients
             .map(c => {
-                // Collect all possible contact dates and pick the most recent
-                const candidates = [];
-                // 1. monday.com lastContact field
-                if (c.lastContact) candidates.push(new Date(c.lastContact));
-                // 2. EMAIL_DATA lastEmailDate (set by OutlookSync or snapshot)
                 const ed = EMAIL_DATA.clients?.[c.name];
-                if (ed?.lastEmailDate) candidates.push(new Date(ed.lastEmailDate));
-                // 3. Most recent email from emails array
-                if (ed?.emails?.length) {
-                    const sorted = ed.emails.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
-                    if (sorted[0]?.date) candidates.push(new Date(sorted[0].date));
-                }
-                // 4. lastClientEmail date (when client emailed us)
-                if (ed?.lastClientEmail) candidates.push(new Date(ed.lastClientEmail));
-                // Pick the most recent valid date
-                const validDates = candidates.filter(d => !isNaN(d.getTime()));
-                const contactDate = validDates.length > 0
-                    ? validDates.sort((a, b) => b - a)[0].toISOString().split('T')[0]
-                    : null;
-                return { name: c.name, days: getDaysSinceContact(contactDate) };
+                const emails = ed?.emails || [];
+                const received = emails.filter(e => !e.isFromMe).length;
+                const sent = emails.filter(e => e.isFromMe).length;
+                return { name: c.name, received, sent, total: received + sent };
             })
-            .filter(d => d.days !== null && d.days >= 0)
-            .sort((a, b) => b.days - a.days)
-            .slice(0, 12);
+            .sort((a, b) => b.total - a.total);
         if (data.length === 0) return;
-        const colors = data.map(d => d.days <= 3 ? '#00c875' : d.days <= 7 ? '#fdab3d' : d.days <= 14 ? '#ff642e' : '#df2f4a');
-        const ctx = document.getElementById('ovContactChart');
+        const ctx = document.getElementById('ovEmailVolChart');
         if (!ctx) return;
-        this._instances['ovContact'] = new Chart(ctx, {
+        this._instances['ovEmailVol'] = new Chart(ctx, {
             type: 'bar',
-            data: { labels: data.map(d => d.name), datasets: [{ data: data.map(d => d.days), backgroundColor: colors, borderRadius: 4, barThickness: 18 }] },
+            data: {
+                labels: data.map(d => d.name),
+                datasets: [
+                    { label: 'Received', data: data.map(d => d.received), backgroundColor: '#579bfc', borderRadius: 4, barThickness: 14 },
+                    { label: 'Sent', data: data.map(d => d.sent), backgroundColor: '#00c875', borderRadius: 4, barThickness: 14 }
+                ]
+            },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 indexAxis: 'y',
-                plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x} days since contact` } } },
+                plugins: {
+                    legend: { display: true, position: 'top', labels: { boxWidth: 10, padding: 8, font: { size: 10 }, color: ThemeManager.isDark() ? '#ccc' : '#555' } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.x} emails` } }
+                },
                 scales: {
-                    x: { grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, title: { display: true, text: 'Days', font: { size: 10 } } },
-                    y: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    x: { stacked: true, grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, title: { display: true, text: 'Emails', font: { size: 10 } }, ticks: { stepSize: 1 } },
+                    y: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
                 }
             }
         });
@@ -9036,8 +9027,8 @@ function renderOverviewPage() {
                 <div style="position:relative;height:220px;"><canvas id="ovPlanChart"></canvas></div>
             </div>
             <div class="chart-card">
-                <h4>&#128222; Contact Recency</h4>
-                <div style="position:relative;height:220px;"><canvas id="ovContactChart"></canvas></div>
+                <h4>&#128232; Email Volume by Client</h4>
+                <div style="position:relative;height:220px;"><canvas id="ovEmailVolChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <h4>&#128197; Upcoming Deadlines</h4>
@@ -9135,7 +9126,7 @@ function renderOverviewPage() {
         OverviewCharts.destroyAll();
         OverviewCharts.renderHealthDistribution(clients);
         OverviewCharts.renderPlanDistribution(clients);
-        OverviewCharts.renderContactRecency(clients);
+        OverviewCharts.renderEmailVolume(clients);
         OverviewCharts.renderActivityTrend();
     }, 80);
 }
