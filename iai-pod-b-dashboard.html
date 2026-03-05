@@ -1589,6 +1589,66 @@ input, textarea, select { font-family: inherit; outline: none; }
 .overview-target-fraction { font-size: 12px; font-weight: 700; flex-shrink: 0; min-width: 48px; text-align: right; }
 
 /* ========================================================
+   OVERVIEW — TASK STATS MINI-ROW
+   ======================================================== */
+.overview-task-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;
+}
+.overview-task-stat-card {
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: 14px 16px; position: relative; overflow: hidden;
+    cursor: pointer; transition: all var(--transition-fast);
+}
+.overview-task-stat-card:hover { border-color: var(--border-default); transform: translateY(-2px); box-shadow: var(--shadow-card); }
+.overview-task-stat-card .stat-accent {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px;
+}
+.overview-task-stat-card .stat-icon { font-size: 16px; margin-bottom: 4px; display: block; }
+.overview-task-stat-card .stat-value {
+    font-size: 22px; font-weight: 700; color: var(--text-white); line-height: 1.1; margin-bottom: 2px;
+}
+.overview-task-stat-card .stat-label {
+    font-size: 10px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ========================================================
+   OVERVIEW — ANALYTICS GRID
+   ======================================================== */
+.overview-analytics-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;
+}
+.overview-analytics-grid .chart-card {
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg); padding: 20px;
+}
+.overview-analytics-grid .chart-card h3 {
+    font-size: 13px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px;
+}
+.overview-analytics-grid .chart-card.full-width { grid-column: 1 / -1; }
+.overview-analytics-grid .chart-wrapper { position: relative; height: 220px; }
+.overview-analytics-grid .chart-wrapper canvas { max-height: 100%; }
+
+/* Upcoming Deadlines List */
+.overview-deadline-list { list-style: none; padding: 0; margin: 0; }
+.overview-deadline-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-bottom: 1px solid var(--border-subtle); font-size: 13px; cursor: pointer;
+    transition: background 0.15s;
+}
+.overview-deadline-item:last-child { border-bottom: none; }
+.overview-deadline-item:hover { background: rgba(255,255,255,0.02); }
+.overview-deadline-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.overview-deadline-name { font-weight: 600; color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-deadline-date { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
+.overview-deadline-days {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; flex-shrink: 0;
+}
+.overview-deadline-days.urgent { background: rgba(223,47,74,0.12); color: var(--rag-red); }
+.overview-deadline-days.soon { background: rgba(253,171,61,0.12); color: var(--rag-amber); }
+.overview-deadline-days.ok { background: rgba(0,200,117,0.12); color: var(--rag-green); }
+
+/* ========================================================
    ACTIVITY LOG / RECENT UPDATES
    ======================================================== */
 .activity-log-section { margin-top: 24px; }
@@ -2201,6 +2261,77 @@ input, textarea, select { font-family: inherit; outline: none; }
     border-color: rgba(107,48,255,0.3);
 }
 
+/* Fireflies Meeting Actions */
+.fireflies-section { margin-bottom: 24px; }
+.fireflies-section-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.fireflies-section-header h3 { font-size: 15px; color: var(--text-primary); margin: 0; }
+.btn-ff-sync {
+    padding: 5px 14px; font-size: 11px; font-weight: 600; border-radius: var(--radius-md);
+    background: rgba(107,48,255,0.12); color: var(--accent-purple-light); border: 1px solid rgba(107,48,255,0.25);
+    cursor: pointer; transition: all var(--transition-fast);
+}
+.btn-ff-sync:hover { background: rgba(107,48,255,0.22); }
+.ff-meeting-group {
+    background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+    padding: 14px 16px; margin-bottom: 10px;
+}
+.ff-meeting-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.ff-meeting-title { font-weight: 600; color: var(--text-primary); font-size: 13px; flex: 1; }
+.ff-meeting-date { font-size: 11px; color: var(--text-muted); }
+.ff-meeting-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    background: rgba(107,48,255,0.12); color: var(--accent-purple-light);
+}
+.ff-action-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; font-size: 12px; color: var(--text-secondary);
+}
+.ff-action-item input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; accent-color: var(--accent-purple-light); }
+.ff-action-text { flex: 1; line-height: 1.5; }
+.ff-action-imported {
+    font-size: 10px; padding: 2px 6px; border-radius: 8px; flex-shrink: 0;
+    background: rgba(0,200,117,0.12); color: var(--rag-green); font-weight: 600;
+}
+.ff-import-bar { display: flex; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.btn-ff-import {
+    padding: 5px 12px; font-size: 11px; font-weight: 600; border-radius: var(--radius-md);
+    background: var(--accent-purple); color: #fff; border: none; cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.btn-ff-import:hover { filter: brightness(1.15); }
+.btn-ff-import-sel {
+    padding: 5px 12px; font-size: 11px; font-weight: 600; border-radius: var(--radius-md);
+    background: transparent; color: var(--accent-purple-light); border: 1px solid rgba(107,48,255,0.3);
+    cursor: pointer; transition: all var(--transition-fast);
+}
+.btn-ff-import-sel:hover { background: rgba(107,48,255,0.12); }
+.ff-empty { padding: 16px; color: var(--text-muted); font-size: 12px; font-style: italic; text-align: center; }
+
+/* Fireflies in Task Prompt */
+.ff-prompt-toggle {
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px; margin: 8px 0;
+    background: rgba(107,48,255,0.08); border: 1px solid rgba(107,48,255,0.2); border-radius: var(--radius-md);
+    color: var(--accent-purple-light); font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all var(--transition-fast); width: 100%;
+}
+.ff-prompt-toggle:hover { background: rgba(107,48,255,0.15); }
+.ff-prompt-panel {
+    background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+    padding: 12px; margin: 8px 0; max-height: 240px; overflow-y: auto;
+}
+.ff-meeting-card {
+    background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: all var(--transition-fast);
+}
+.ff-meeting-card:hover { border-color: var(--accent-purple-light); background: rgba(107,48,255,0.05); }
+.ff-meeting-card:last-child { margin-bottom: 0; }
+.ff-meeting-card-title { font-weight: 600; font-size: 12px; color: var(--text-primary); }
+.ff-meeting-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
 /* Week Projection */
 .week-day-card {
     background: var(--bg-card); border: 1px solid var(--border-subtle);
@@ -2775,6 +2906,8 @@ input, textarea, select { font-family: inherit; outline: none; }
 @media (max-width: 1200px) {
     .kpi-row { grid-template-columns: repeat(3, 1fr); }
     .charts-section { grid-template-columns: 1fr; }
+    .overview-analytics-grid { grid-template-columns: 1fr; }
+    .overview-analytics-grid .chart-card.full-width { grid-column: span 1; }
     .clients-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
     .clients-large-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
     .targets-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -2804,6 +2937,7 @@ input, textarea, select { font-family: inherit; outline: none; }
     .snap-kpi-row { grid-template-columns: repeat(2, 1fr); }
     .snap-client-metrics { grid-template-columns: 1fr; }
     .email-cards { grid-template-columns: 1fr; }
+    .overview-task-stats { grid-template-columns: repeat(2, 1fr); }
     .overview-quick-grid { grid-template-columns: 1fr; }
     .overview-target-row { padding: 8px 10px; gap: 8px; }
     .overview-target-label { font-size: 12px; }
@@ -2930,6 +3064,20 @@ input, textarea, select { font-family: inherit; outline: none; }
             <div class="setup-hint" style="margin-top:8px;">
                 Get your token: <a href="https://developer.microsoft.com/en-us/graph/graph-explorer" target="_blank" style="color:var(--accent-purple-light);">Graph Explorer</a> &#8594; Sign in &#8594; Access token tab &#8594; Copy<br>
                 Requires <strong>Mail.Read</strong> and <strong>Calendars.Read</strong> scopes. Token expires after ~1 hour — dashboard falls back to cached data.
+            </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
+            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">🎙️ Connect Fireflies <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span></h3>
+            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Paste a Fireflies API key to sync meeting transcripts and extract action items into your task manager.</p>
+            <div class="setup-input-group">
+                <label>Fireflies API Key</label>
+                <input type="password" id="firefliesTokenInput" placeholder="your-fireflies-api-key...">
+                <button class="toggle-vis" onclick="const i=document.getElementById('firefliesTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+            </div>
+            <div class="setup-hint" style="margin-top:8px;">
+                Get your key: <a href="https://app.fireflies.ai/integrations/custom/fireflies" target="_blank" style="color:var(--accent-purple-light);">Fireflies Integrations</a> &#8594; API Key &#8594; Copy<br>
+                Syncs the last 10 meeting transcripts and extracts action items automatically.
             </div>
         </div>
 
@@ -3155,6 +3303,11 @@ input, textarea, select { font-family: inherit; outline: none; }
                     <span class="conn-svc-name">Calendar</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
+                <div class="conn-dropdown-row" id="connRow-fireflies" style="display:none;">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">🎙️ Fireflies</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
             </div>
         </span>
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
@@ -3268,6 +3421,10 @@ input, textarea, select { font-family: inherit; outline: none; }
                 <div class="spinner"></div>
                 <div id="fileParsingMsg">Reading file...</div>
                 <div class="parse-detail" id="fileParsingDetail"></div>
+            </div>
+            <div id="ffPromptWrap" style="display:none;">
+                <button class="ff-prompt-toggle" onclick="toggleFirefliesPromptPanel()">🎙️ Import from Fireflies <span id="ffPromptBadge" style="margin-left:auto;font-size:10px;opacity:0.7;"></span></button>
+                <div class="ff-prompt-panel" id="ffPromptPanel" style="display:none;"></div>
             </div>
             <div class="task-prompt-options">
                 <label>Default priority:</label>
@@ -5442,6 +5599,167 @@ const CalendarSync = {
 };
 
 /* ================================================================
+   FIREFLIES SYNC — Meeting transcript integration
+   Fetches transcripts via Fireflies GraphQL API, extracts
+   action items using TranscriptParser, imports as DashTodo items.
+   ================================================================ */
+const FirefliesSync = {
+    _tokenKey: 'iai_fireflies_token',
+    _cacheKey: 'iai_fireflies_cache',
+    _syncKey: 'iai_fireflies_lastsync',
+    _sk(k) { return UserSession.podKey(k); },
+
+    // Token management
+    getToken() { return localStorage.getItem(this._sk(this._tokenKey)) || ''; },
+    setToken(t) {
+        if (t) localStorage.setItem(this._sk(this._tokenKey), t);
+        else localStorage.removeItem(this._sk(this._tokenKey));
+    },
+    hasToken() { return !!this.getToken(); },
+
+    // Cache: { transcripts: [], actions: { transcriptId: [...] }, importedIds: [] }
+    _cache: { transcripts: [], actions: {}, importedIds: [] },
+    loadCache() {
+        try {
+            const raw = localStorage.getItem(this._sk(this._cacheKey));
+            this._cache = raw ? JSON.parse(raw) : { transcripts: [], actions: {}, importedIds: [] };
+        } catch { this._cache = { transcripts: [], actions: {}, importedIds: [] }; }
+        if (!this._cache.importedIds) this._cache.importedIds = [];
+    },
+    saveCache() { localStorage.setItem(this._sk(this._cacheKey), JSON.stringify(this._cache)); },
+
+    // Rate limiting (5-minute minimum)
+    _lastSync: null,
+    canSync() {
+        if (!this._lastSync) return true;
+        return (Date.now() - this._lastSync.getTime()) > 300000;
+    },
+    markSynced() {
+        this._lastSync = new Date();
+        localStorage.setItem(this._sk(this._syncKey), this._lastSync.toISOString());
+    },
+
+    // API: GraphQL fetch
+    async fetchTranscripts() {
+        const token = this.getToken();
+        if (!token) throw new Error('No Fireflies token');
+        const query = `query { transcripts(size: 10) {
+            id title date organizer_email
+            sentences { text speaker_name }
+        }}`;
+        const resp = await fetch('https://api.fireflies.ai/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ query })
+        });
+        if (!resp.ok) throw new Error(`Fireflies API ${resp.status}`);
+        const json = await resp.json();
+        if (json.errors) throw new Error(json.errors[0]?.message || 'GraphQL error');
+        return json.data?.transcripts || [];
+    },
+
+    // Parse transcript sentences into action items
+    parseTranscript(transcript) {
+        if (!transcript.sentences?.length) return [];
+        const text = transcript.sentences.map(s => `${s.speaker_name}: ${s.text}`).join('\n');
+        const rawActions = TranscriptParser.extractActions(text);
+        return rawActions.map((a, i) => ({
+            id: `ff_${transcript.id}_${i}`,
+            text: a,
+            transcriptId: transcript.id,
+            meetingTitle: transcript.title,
+            meetingDate: transcript.date ? new Date(transcript.date).toISOString().split('T')[0] : 'Unknown'
+        }));
+    },
+
+    // Full sync pipeline
+    async sync(force = false) {
+        if (!this.hasToken()) return { ok: false, error: 'No token' };
+        if (!force && !this.canSync()) return { ok: false, error: 'Rate limited' };
+        try {
+            if (typeof ConnectionStatus !== 'undefined') ConnectionStatus.setFireflies('syncing');
+            const transcripts = await this.fetchTranscripts();
+            this._cache.transcripts = transcripts.map(t => ({
+                id: t.id, title: t.title, date: t.date, organizer: t.organizer_email,
+                sentenceCount: t.sentences?.length || 0
+            }));
+            // Parse actions for each transcript
+            transcripts.forEach(t => {
+                this._cache.actions[t.id] = this.parseTranscript(t);
+            });
+            this.saveCache();
+            this.markSynced();
+            if (typeof ConnectionStatus !== 'undefined') ConnectionStatus.setFireflies('connected');
+            ActivityFeed.log({ type: 'system', dotClass: 'system', title: 'Fireflies synced', desc: `${transcripts.length} transcripts fetched`, source: 'fireflies' });
+            return { ok: true, count: transcripts.length };
+        } catch (e) {
+            if (typeof ConnectionStatus !== 'undefined') ConnectionStatus.setFireflies('error');
+            return { ok: false, error: e.message };
+        }
+    },
+
+    // Import helpers
+    isImported(actionId) { return this._cache.importedIds.includes(actionId); },
+    importAction(action) {
+        if (this.isImported(action.id)) return false;
+        DashTodo.add(action.text, 'medium', null, {
+            autoGenerated: true,
+            sourceEventId: `fireflies_${action.id}`,
+            matchedClient: '',
+            meetingType: 'fireflies'
+        });
+        this._cache.importedIds.push(action.id);
+        this.saveCache();
+        return true;
+    },
+    importAll(transcriptId) {
+        const actions = this._cache.actions[transcriptId] || [];
+        let count = 0;
+        actions.forEach(a => { if (this.importAction(a)) count++; });
+        if (count > 0) {
+            ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: 'Fireflies actions imported', desc: `${count} action items from meeting`, source: 'fireflies' });
+        }
+        return count;
+    },
+    importSelected(actionIds) {
+        let count = 0;
+        actionIds.forEach(aid => {
+            // Find the action across all transcripts
+            for (const tid of Object.keys(this._cache.actions)) {
+                const action = this._cache.actions[tid].find(a => a.id === aid);
+                if (action) { if (this.importAction(action)) count++; break; }
+            }
+        });
+        if (count > 0) {
+            ActivityFeed.log({ type: 'todo', dotClass: 'todo', title: 'Fireflies actions imported', desc: `${count} selected action items`, source: 'fireflies' });
+        }
+        return count;
+    },
+
+    // Get meetings that have >0 extracted actions
+    getMeetingsWithActions() {
+        return this._cache.transcripts
+            .filter(t => (this._cache.actions[t.id] || []).length > 0)
+            .map(t => ({
+                ...t,
+                actions: this._cache.actions[t.id],
+                importedCount: (this._cache.actions[t.id] || []).filter(a => this.isImported(a.id)).length
+            }));
+    },
+
+    init() {
+        this.loadCache();
+        const lastStr = localStorage.getItem(this._sk(this._syncKey));
+        if (lastStr) this._lastSync = new Date(lastStr);
+        if (this.hasToken()) {
+            if (typeof ConnectionStatus !== 'undefined') ConnectionStatus.setFireflies('connected');
+            // Auto-sync if stale
+            if (this.canSync()) this.sync().catch(() => {});
+        }
+    }
+};
+
+/* ================================================================
    ACTIVITY FEED — Comprehensive change log of ALL dashboard data
    Persists in localStorage for cross-session visibility.
    ================================================================ */
@@ -6207,7 +6525,8 @@ const UserSession = {
             'iai_outlook_cache', 'iai_calendar_cache', 'iai_activity_feed', 'iai_cal_states',
             'iai_email_notes', 'iai_local_edits', 'iai_local_data',
             'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions', 'iai_target_overrides', 'iai_connection_mode',
-            'iai_auto_todo_dismissed', 'iai_ai_anthropic_key'
+            'iai_auto_todo_dismissed', 'iai_ai_anthropic_key',
+            'iai_fireflies_token', 'iai_fireflies_cache', 'iai_fireflies_lastsync'
         ];
         keys.forEach(key => {
             const oldData = localStorage.getItem(key);
@@ -7103,6 +7422,151 @@ const Charts = {
                 scales: {
                     x: { grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, ticks: {}, title: { display: true, text: 'Days' } },
                     y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                }
+            }
+        });
+    },
+};
+
+/* ================================================================
+   OVERVIEW CHARTS (separate from Charts to avoid canvas conflicts)
+   ================================================================ */
+const OverviewCharts = {
+    _instances: {},
+    destroy(id) { if (this._instances[id]) { this._instances[id].destroy(); delete this._instances[id]; } },
+    destroyAll() { Object.keys(this._instances).forEach(id => this.destroy(id)); },
+
+    /** Health Score Distribution — bar chart, 4 buckets */
+    renderHealthDistribution(clients) {
+        this.destroy('ovHealth');
+        const buckets = [
+            { label: '0-25 Critical', min: 0, max: 25, color: '#df2f4a', count: 0 },
+            { label: '26-50 At Risk', min: 26, max: 50, color: '#fdab3d', count: 0 },
+            { label: '51-75 Stable', min: 51, max: 75, color: '#ffcb00', count: 0 },
+            { label: '76-100 Healthy', min: 76, max: 100, color: '#00c875', count: 0 },
+        ];
+        clients.forEach(c => {
+            const h = State.calcHealth(c);
+            for (const b of buckets) { if (h >= b.min && h <= b.max) { b.count++; break; } }
+        });
+        const ctx = document.getElementById('ovHealthChart');
+        if (!ctx) return;
+        this._instances['ovHealth'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: buckets.map(b => b.label),
+                datasets: [{ data: buckets.map(b => b.count), backgroundColor: buckets.map(b => b.color), borderRadius: 4, barThickness: 32 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                    y: { grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, ticks: { stepSize: 1 }, beginAtZero: true, title: { display: true, text: 'Clients', font: { size: 10 } } },
+                }
+            }
+        });
+    },
+
+    /** Plan Distribution — horizontal bar chart */
+    renderPlanDistribution(clients) {
+        this.destroy('ovPlans');
+        const counts = {};
+        clients.forEach(c => { counts[c.plan] = (counts[c.plan] || 0) + 1; });
+        const labels = Object.keys(counts);
+        const colors = labels.map(l => {
+            const opt = CONFIG.PLAN_OPTIONS.find(o => o.label === l);
+            return opt ? opt.color : '#666';
+        });
+        const ctx = document.getElementById('ovPlanChart');
+        if (!ctx) return;
+        this._instances['ovPlans'] = new Chart(ctx, {
+            type: 'bar',
+            data: { labels, datasets: [{ data: Object.values(counts), backgroundColor: colors, borderRadius: 4, barThickness: 24 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, ticks: { stepSize: 1 } },
+                    y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                }
+            }
+        });
+    },
+
+    /** Contact Recency — horizontal bar: days since last contact, top 12, color-coded */
+    renderContactRecency(clients) {
+        this.destroy('ovContact');
+        const data = clients
+            .map(c => ({ name: c.name, days: getDaysSinceContact(c.lastContact) }))
+            .filter(d => d.days !== null && d.days >= 0)
+            .sort((a, b) => b.days - a.days)
+            .slice(0, 12);
+        if (data.length === 0) return;
+        const colors = data.map(d => d.days <= 3 ? '#00c875' : d.days <= 7 ? '#fdab3d' : d.days <= 14 ? '#ff642e' : '#df2f4a');
+        const ctx = document.getElementById('ovContactChart');
+        if (!ctx) return;
+        this._instances['ovContact'] = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: data.map(d => d.name), datasets: [{ data: data.map(d => d.days), backgroundColor: colors, borderRadius: 4, barThickness: 18 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x} days since contact` } } },
+                scales: {
+                    x: { grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, title: { display: true, text: 'Days', font: { size: 10 } } },
+                    y: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                }
+            }
+        });
+    },
+
+    /** Weekly Activity Trend — stacked bar, last 7 days × event types */
+    renderActivityTrend() {
+        this.destroy('ovActivity');
+        const allEvents = ActivityFeed.getAll();
+        const days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
+            days.push(d);
+        }
+        const typeConfig = {
+            'email-in': { label: 'Emails In', color: '#579bfc' },
+            'email-out': { label: 'Emails Out', color: '#007eb5' },
+            'calendar': { label: 'Calendar', color: '#9d50dd' },
+            'data-change': { label: 'Data Changes', color: '#00c875' },
+            'todo': { label: 'Todos', color: '#fdab3d' },
+            'system': { label: 'System', color: '#666' },
+        };
+        const typeKeys = Object.keys(typeConfig);
+        const matrix = {};
+        typeKeys.forEach(t => { matrix[t] = new Array(7).fill(0); });
+        allEvents.forEach(ev => {
+            const evDate = new Date(ev.date); evDate.setHours(0,0,0,0);
+            const dayIdx = days.findIndex(d => d.getTime() === evDate.getTime());
+            if (dayIdx < 0) return;
+            const t = typeKeys.includes(ev.type) ? ev.type : (ev.type === 'alert' || ev.type === 'note' || ev.type === 'override' || ev.type === 'target' || ev.type === 'status-change') ? 'system' : 'system';
+            matrix[t][dayIdx]++;
+        });
+        const datasets = typeKeys
+            .filter(t => matrix[t].some(v => v > 0))
+            .map(t => ({ label: typeConfig[t].label, data: matrix[t], backgroundColor: typeConfig[t].color, borderRadius: 2 }));
+        if (datasets.length === 0) return;
+        const ctx = document.getElementById('ovActivityChart');
+        if (!ctx) return;
+        this._instances['ovActivity'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: days.map(d => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })),
+                datasets
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', font: { size: 10 }, padding: 10 } } },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, ticks: { stepSize: 1 }, beginAtZero: true, title: { display: true, text: 'Events', font: { size: 10 } } },
                 }
             }
         });
@@ -8467,6 +8931,88 @@ function renderOverviewPage() {
     const changeCount = ChangeTracker.totalCount();
     const changeBanner = changeCount > 0 ? `<button onclick="ChangeTracker.dismissAll()" style="font-size:11px;padding:5px 12px;border-radius:var(--radius-md);background:rgba(107,48,255,0.12);color:var(--accent-purple-light);border:1px solid rgba(107,48,255,0.25);cursor:pointer;font-weight:600;transition:all var(--transition-fast);" onmouseover="this.style.background='rgba(107,48,255,0.22)'" onmouseout="this.style.background='rgba(107,48,255,0.12)'">&#10003; Clear ${changeCount} Change${changeCount !== 1 ? 's' : ''}</button>` : '';
 
+    // === Task stats for overview ===
+    const todayTasks = DashTodo.getToday();
+    const allTodos = DashTodo._items;
+    const nowD = new Date();
+    const todayISO = nowD.getFullYear() + '-' + String(nowD.getMonth()+1).padStart(2,'0') + '-' + String(nowD.getDate()).padStart(2,'0');
+    const completedToday = allTodos.filter(t => t.completed && t.completedAt && t.completedAt.startsWith(todayISO)).length;
+    const overdue = allTodos.filter(t => !t.completed && t.dueDate && t.dueDate < todayISO).length;
+    const weekTasks = DashTodo.getThisWeek();
+
+    // === Upcoming deadlines from clients ===
+    const upcomingDeadlines = clients
+        .map(c => {
+            const dateStr = c.deadline || c.goLive;
+            if (!dateStr) return null;
+            const d = new Date(dateStr);
+            const diff = Math.ceil((d - nowD) / 86400000);
+            if (diff < -30) return null; // skip very old
+            return { name: c.name, date: dateStr, days: diff, id: c.id };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.days - b.days)
+        .slice(0, 5);
+
+    // === Task stats HTML ===
+    const taskStatsHTML = `
+        <div class="overview-task-stats">
+            <div class="overview-stat-card" onclick="Router.navigate('planner')">
+                <div class="overview-stat-value">${todayTasks.length}</div>
+                <div class="overview-stat-label">Tasks Today</div>
+            </div>
+            <div class="overview-stat-card" onclick="Router.navigate('planner')">
+                <div class="overview-stat-value" style="color:var(--rag-green)">${completedToday}</div>
+                <div class="overview-stat-label">Completed Today</div>
+            </div>
+            <div class="overview-stat-card" onclick="Router.navigate('planner')" ${overdue > 0 ? 'style="border-color:var(--rag-red)"' : ''}>
+                <div class="overview-stat-value" ${overdue > 0 ? 'style="color:var(--rag-red)"' : ''}>${overdue}</div>
+                <div class="overview-stat-label">Overdue</div>
+            </div>
+            <div class="overview-stat-card" onclick="Router.navigate('planner')">
+                <div class="overview-stat-value">${weekTasks.length}</div>
+                <div class="overview-stat-label">This Week</div>
+            </div>
+        </div>`;
+
+    // === Analytics grid HTML ===
+    const deadlineListHTML = upcomingDeadlines.length > 0
+        ? upcomingDeadlines.map(dl => {
+            const cls = dl.days < 0 ? 'urgent' : dl.days <= 7 ? 'soon' : 'ok';
+            const label = dl.days < 0 ? `${Math.abs(dl.days)}d overdue` : dl.days === 0 ? 'Today' : `${dl.days}d`;
+            return `<li class="overview-deadline-item" onclick="Router.navigate('client/${dl.id}')">
+                <span class="overview-deadline-dot" style="background:${cls === 'urgent' ? 'var(--rag-red)' : cls === 'soon' ? 'var(--rag-amber)' : 'var(--rag-green)'}"></span>
+                <span class="overview-deadline-name">${dl.name}</span>
+                <span class="overview-deadline-date">${dl.date}</span>
+                <span class="overview-deadline-days ${cls}">${label}</span>
+            </li>`;
+        }).join('')
+        : '<li style="padding:12px;color:var(--text-muted);font-style:italic;">No upcoming deadlines</li>';
+
+    const analyticsGridHTML = `
+        <div class="overview-analytics-grid">
+            <div class="chart-card">
+                <h4>&#128202; Health Distribution</h4>
+                <div style="position:relative;height:220px;"><canvas id="ovHealthChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h4>&#128203; Plan Distribution</h4>
+                <div style="position:relative;height:220px;"><canvas id="ovPlanChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h4>&#128222; Contact Recency</h4>
+                <div style="position:relative;height:220px;"><canvas id="ovContactChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+                <h4>&#128197; Upcoming Deadlines</h4>
+                <ul class="overview-deadline-list">${deadlineListHTML}</ul>
+            </div>
+            <div class="chart-card full-width">
+                <h4>&#128200; Weekly Activity Trend</h4>
+                <div style="position:relative;height:220px;"><canvas id="ovActivityChart"></canvas></div>
+            </div>
+        </div>`;
+
     // === Targets overview bar ===
     const allTargets = TargetsManager.getAll();
     const targetsBarHTML = allTargets.length > 0 ? `
@@ -8500,6 +9046,8 @@ function renderOverviewPage() {
 
     container.innerHTML = `
         ${targetsBarHTML}
+        ${taskStatsHTML}
+        ${analyticsGridHTML}
         <div class="overview-clients-header">
             <h3>&#128101; Quick Client View ${changeCount > 0 ? `<span style="font-size:12px;font-weight:600;color:var(--accent-purple-light);margin-left:8px;">&#9889; ${changeCount} updated</span>` : ''}</h3>
             <div style="display:flex;gap:8px;align-items:center;">
@@ -8545,6 +9093,15 @@ function renderOverviewPage() {
             }
         });
     }, 60);
+
+    // Render overview analytics charts
+    setTimeout(() => {
+        OverviewCharts.destroyAll();
+        OverviewCharts.renderHealthDistribution(clients);
+        OverviewCharts.renderPlanDistribution(clients);
+        OverviewCharts.renderContactRecency(clients);
+        OverviewCharts.renderActivityTrend();
+    }, 80);
 }
 
 /* ================================================================
@@ -8936,6 +9493,67 @@ document.addEventListener('click', (e) => {
 /* ================================================================
    RENDER PLANNER & TO-DO PAGE
    ================================================================ */
+function buildFirefliesSection() {
+    if (!FirefliesSync.hasToken()) return '';
+    const meetings = FirefliesSync.getMeetingsWithActions();
+    if (meetings.length === 0) {
+        return `
+        <div class="fireflies-section">
+            <div class="fireflies-section-header">
+                <h3>🎙️ Meeting Actions</h3>
+                <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
+            </div>
+            <div class="ff-empty">No meeting action items found. Sync to fetch latest transcripts.</div>
+        </div>`;
+    }
+    const meetingHTML = meetings.map(m => {
+        const actions = m.actions || [];
+        const actionsHTML = actions.map(a => {
+            const imported = FirefliesSync.isImported(a.id);
+            return `<div class="ff-action-item">
+                <input type="checkbox" class="ff-action-cb" data-action-id="${a.id}" ${imported ? 'disabled checked' : ''}>
+                <span class="ff-action-text">${a.text}</span>
+                ${imported ? '<span class="ff-action-imported">Imported</span>' : ''}
+            </div>`;
+        }).join('');
+        return `
+        <div class="ff-meeting-group" data-meeting-id="${m.id}">
+            <div class="ff-meeting-header">
+                <span class="ff-meeting-title">${m.title || 'Untitled Meeting'}</span>
+                <span class="ff-meeting-date">${m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}</span>
+                <span class="ff-meeting-badge">${actions.length} action${actions.length !== 1 ? 's' : ''}</span>
+            </div>
+            ${actionsHTML}
+            <div class="ff-import-bar">
+                <button class="btn-ff-import" onclick="importAllFireflies('${m.id}')">Import All</button>
+                <button class="btn-ff-import-sel" onclick="importSelectedFireflies('${m.id}')">Import Selected</button>
+            </div>
+        </div>`;
+    }).join('');
+    return `
+    <div class="fireflies-section">
+        <div class="fireflies-section-header">
+            <h3>🎙️ Meeting Actions</h3>
+            <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
+        </div>
+        ${meetingHTML}
+    </div>`;
+}
+
+function importAllFireflies(meetingId) {
+    const count = FirefliesSync.importAll(meetingId);
+    if (count > 0) renderPlannerPage();
+}
+
+function importSelectedFireflies(meetingId) {
+    const group = document.querySelector(`.ff-meeting-group[data-meeting-id="${meetingId}"]`);
+    if (!group) return;
+    const checked = [...group.querySelectorAll('.ff-action-cb:checked:not(:disabled)')].map(cb => cb.dataset.actionId);
+    if (checked.length === 0) return;
+    const count = FirefliesSync.importSelected(checked);
+    if (count > 0) renderPlannerPage();
+}
+
 function renderPlannerPage() {
     const container = document.getElementById('plannerContent');
     if (!container) return;
@@ -9399,6 +10017,8 @@ function renderPlannerPage() {
             ${todayEmailHTML}
         </div>
 
+        ${buildFirefliesSection()}
+
         <div class="planner-layout">
             <!-- LEFT: To-Do List -->
             <div class="planner-column">
@@ -9813,6 +10433,21 @@ function openTaskPrompt() {
     document.getElementById('fileParsingState').classList.remove('visible');
     FileUpload.init();
 
+    // Fireflies prompt panel
+    const ffWrap = document.getElementById('ffPromptWrap');
+    const ffPanel = document.getElementById('ffPromptPanel');
+    if (ffWrap) {
+        if (FirefliesSync.hasToken()) {
+            ffWrap.style.display = 'block';
+            const meetings = FirefliesSync.getMeetingsWithActions();
+            const totalActions = meetings.reduce((s, m) => s + (m.actions?.length || 0), 0);
+            document.getElementById('ffPromptBadge').textContent = totalActions > 0 ? `${totalActions} actions from ${meetings.length} meeting${meetings.length !== 1 ? 's' : ''}` : 'No actions found';
+        } else {
+            ffWrap.style.display = 'none';
+        }
+        if (ffPanel) ffPanel.style.display = 'none';
+    }
+
     // Listen for typing — debounced preview
     const textarea = document.getElementById('taskPromptText');
     textarea.focus();
@@ -9835,6 +10470,53 @@ function openTaskPrompt() {
 
 function closeTaskPrompt() {
     document.getElementById('taskPromptOverlay').classList.remove('open');
+}
+
+function toggleFirefliesPromptPanel() {
+    const panel = document.getElementById('ffPromptPanel');
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none';
+    if (isHidden) {
+        renderFirefliesPromptPanel();
+        panel.style.display = 'block';
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function renderFirefliesPromptPanel() {
+    const panel = document.getElementById('ffPromptPanel');
+    if (!panel) return;
+    const meetings = FirefliesSync.getMeetingsWithActions();
+    if (meetings.length === 0) {
+        panel.innerHTML = '<div class="ff-empty">No meeting actions available. Sync Fireflies from Settings.</div>';
+        return;
+    }
+    panel.innerHTML = meetings.map(m => {
+        const unimported = (m.actions || []).filter(a => !FirefliesSync.isImported(a.id)).length;
+        return `
+        <div class="ff-meeting-card" onclick="insertFirefliesActions('${m.id}')">
+            <div class="ff-meeting-card-title">🎙️ ${m.title || 'Untitled Meeting'}</div>
+            <div class="ff-meeting-card-meta">
+                ${m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''} ·
+                ${m.actions?.length || 0} action${(m.actions?.length || 0) !== 1 ? 's' : ''}
+                ${unimported > 0 ? ` · <strong>${unimported} new</strong>` : ' · all imported'}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function insertFirefliesActions(meetingId) {
+    const actions = (FirefliesSync._cache.actions[meetingId] || [])
+        .filter(a => !FirefliesSync.isImported(a.id));
+    if (actions.length === 0) return;
+    const textarea = document.getElementById('taskPromptText');
+    if (!textarea) return;
+    const lines = actions.map(a => a.text).join('\n');
+    textarea.value = textarea.value ? textarea.value + '\n' + lines : lines;
+    // Hide panel and trigger preview
+    document.getElementById('ffPromptPanel').style.display = 'none';
+    updateTaskPreview();
 }
 
 /**
@@ -11728,6 +12410,8 @@ function showSetup() {
     document.getElementById('tokenInput').value = MondayAPI._token || '';
     const outlookInput = document.getElementById('outlookTokenInput');
     if (outlookInput) outlookInput.value = OutlookSync.getToken() || '';
+    const firefliesInput = document.getElementById('firefliesTokenInput');
+    if (firefliesInput) firefliesInput.value = FirefliesSync.getToken() || '';
     // Show current pod info
     const podInfo = document.getElementById('currentPodInfo');
     if (podInfo) {
@@ -11780,10 +12464,12 @@ const ConnectionStatus = {
     monday: 'unknown',       // 'ok' | 'error' | 'unknown'
     outlook: 'unknown',      // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
     calendar: 'unknown',     // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+    fireflies: 'unknown',   // 'connected' | 'syncing' | 'error' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
     setCalendar(status) { this.calendar = status; updateConnectionIndicator(); },
+    setFireflies(status) { this.fireflies = status; updateConnectionIndicator(); },
 
     // Overall health: green if monday OK, amber if any issues, red if monday down
     getOverall() {
@@ -11792,7 +12478,8 @@ const ConnectionStatus = {
         if (this.monday === 'unknown') return 'online';
         const outlookIssue = this.outlook === 'error' || this.outlook === 'token-expired';
         const calendarIssue = this.calendar === 'error' || this.calendar === 'token-expired';
-        if ((outlookIssue && OutlookSync.hasToken()) || (calendarIssue && CalendarSync.hasToken())) {
+        const firefliesIssue = this.fireflies === 'error';
+        if ((outlookIssue && OutlookSync.hasToken()) || (calendarIssue && CalendarSync.hasToken()) || (firefliesIssue && FirefliesSync.hasToken())) {
             return 'issues';
         }
         return 'online';
@@ -11810,6 +12497,10 @@ const ConnectionStatus = {
         if (CalendarSync.hasToken()) {
             const cStatus = this.calendar === 'ok' ? 'Connected' : this.calendar === 'token-expired' ? 'Token expired' : this.calendar === 'error' ? 'Failed' : 'Pending';
             parts.push(`Calendar: ${cStatus}`);
+        }
+        if (FirefliesSync.hasToken()) {
+            const fStatus = this.fireflies === 'connected' ? 'Connected' : this.fireflies === 'syncing' ? 'Syncing...' : this.fireflies === 'error' ? 'Failed' : 'Pending';
+            parts.push(`Fireflies: ${fStatus}`);
         }
         return parts.join('\n');
     }
@@ -11846,6 +12537,9 @@ function updateConnectionIndicator() {
     _updateConnRow('connRow-calendar', ConnectionStatus.calendar, {
         ok: 'Connected', error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
     }, !CalendarSync.hasToken());
+    _updateConnRow('connRow-fireflies', ConnectionStatus.fireflies, {
+        connected: 'Connected', syncing: 'Syncing...', error: 'Failed', unknown: 'Pending'
+    }, !FirefliesSync.hasToken());
 }
 
 function _updateConnRow(rowId, status, labelMap, hidden) {
@@ -11855,7 +12549,7 @@ function _updateConnRow(rowId, status, labelMap, hidden) {
     row.style.display = '';
     const dot = row.querySelector('.conn-svc-dot');
     const label = row.querySelector('.conn-svc-label');
-    const colorClass = status === 'ok' ? 'green' : (status === 'error' || status === 'token-expired') ? 'red' : (status === 'no-key' || status === 'no-token') ? 'amber' : 'gray';
+    const colorClass = (status === 'ok' || status === 'connected') ? 'green' : (status === 'error' || status === 'token-expired') ? 'red' : (status === 'no-key' || status === 'no-token') ? 'amber' : status === 'syncing' ? 'amber' : 'gray';
     dot.className = 'conn-svc-dot ' + colorClass;
     label.className = 'conn-svc-label ' + colorClass;
     label.textContent = labelMap[status] || 'Pending';
@@ -11971,6 +12665,10 @@ async function testConnection() {
         const outlookToken = document.getElementById('outlookTokenInput')?.value?.trim();
         if (outlookToken) OutlookSync.setToken(outlookToken);
 
+        // Save Fireflies token if provided
+        const firefliesToken = document.getElementById('firefliesTokenInput')?.value?.trim();
+        if (firefliesToken) FirefliesSync.setToken(firefliesToken);
+
         setTimeout(async () => {
             document.getElementById('setupOverlay').classList.add('hidden');
 
@@ -11982,6 +12680,9 @@ async function testConnection() {
                 if (outlookToken && OutlookSync.hasToken()) {
                     OutlookSync.sync(true);
                     CalendarSync.sync(true);
+                }
+                if (firefliesToken && FirefliesSync.hasToken()) {
+                    FirefliesSync.sync(true);
                 }
             } else {
                 // New user or no pod selected — discover pods
@@ -12098,6 +12799,7 @@ function reloadNamespacedModules() {
     LocalEditManager.load();
     OutlookSync.init();
     CalendarSync.init();
+    FirefliesSync.init();
 }
 
 /** Update all hardcoded Pod/User text in the DOM */
@@ -12168,6 +12870,7 @@ async function init() {
     LocalEditManager.load();
     OutlookSync.init();
     CalendarSync.init();
+    FirefliesSync.init();
 
     // Handle EMAIL_DATA and CALENDAR_DATA for non-Pod-B users
     handleEmailDataForPod();
