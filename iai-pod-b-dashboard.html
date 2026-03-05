@@ -3038,25 +3038,12 @@ input, textarea, select { font-family: inherit; outline: none; }
                 <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span>
             </h3>
             <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">
-                Paste transcripts or meeting notes and AI will extract tasks with priorities and client matching.
+                Paste transcripts or meeting notes and Claude AI will extract tasks with priorities and client matching.
             </p>
-            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
-                <label style="font-size:12px;font-weight:600;color:var(--text-secondary);">Provider:</label>
-                <select id="aiProviderSelect" onchange="AISettings.onProviderChange()"
-                    style="padding:6px 10px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;">
-                    <option value="anthropic">Claude (Anthropic)</option>
-                    <option value="openai">GPT (OpenAI)</option>
-                </select>
-            </div>
-            <div class="setup-input-group" id="aiKeyGroup-anthropic">
-                <label>Anthropic API Key</label>
-                <input type="password" id="aiAnthropicKeyInput" placeholder="sk-ant-...">
-                <button class="toggle-vis" onclick="const i=document.getElementById('aiAnthropicKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
-            </div>
-            <div class="setup-input-group" id="aiKeyGroup-openai" style="display:none;">
-                <label>OpenAI API Key</label>
-                <input type="password" id="aiOpenAIKeyInput" placeholder="sk-...">
-                <button class="toggle-vis" onclick="const i=document.getElementById('aiOpenAIKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+            <div class="setup-input-group" id="aiKeyGroup">
+                <label>Claude API Key</label>
+                <input type="password" id="aiKeyInput" placeholder="sk-ant-...">
+                <button class="toggle-vis" onclick="const i=document.getElementById('aiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
             </div>
             <div id="aiKeyStatus" style="font-size:11px;margin:6px 0;min-height:16px;"></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -3066,8 +3053,7 @@ input, textarea, select { font-family: inherit; outline: none; }
                     onclick="AISettings.removeKey()">Remove Key</button>
             </div>
             <div class="setup-hint" style="margin-top:8px;">
-                Get your key: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> |
-                <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-purple-light);">OpenAI Platform</a><br>
+                Get your key: <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a><br>
                 Keys are stored locally in your browser only. Without a key, the task prompt uses fast regex parsing.
             </div>
         </div>
@@ -3410,11 +3396,6 @@ input, textarea, select { font-family: inherit; outline: none; }
                     <option value="custom">Custom date</option>
                 </select>
                 <input type="date" id="taskPromptCustomDate" style="display:none;" value="">
-                <label id="aiProviderLabel" style="display:none;margin-left:auto;">AI:</label>
-                <select id="taskPromptAIProvider" style="display:none;" onchange="AI_CONFIG.setProvider(this.value)">
-                    <option value="anthropic">Claude</option>
-                    <option value="openai">GPT</option>
-                </select>
             </div>
             <div class="task-prompt-preview" id="taskPromptPreview">
                 <div class="task-prompt-preview-title">Preview (<span id="taskPromptPreviewCount">0</span> tasks)</div>
@@ -6156,14 +6137,10 @@ const RUNTIME = {
    AI CONFIG — API keys, provider selection, detection thresholds
    ================================================================ */
 const AI_CONFIG = {
-    _keyProvider: 'iai_ai_provider',
-    _keyAnthropicKey: 'iai_ai_anthropic_key',
-    _keyOpenAIKey: 'iai_ai_openai_key',
+    _storageKey: 'iai_ai_anthropic_key',
 
-    ANTHROPIC_URL: 'https://api.anthropic.com/v1/messages',
-    OPENAI_URL: 'https://api.openai.com/v1/chat/completions',
-    ANTHROPIC_MODEL: 'claude-sonnet-4-20250514',
-    OPENAI_MODEL: 'gpt-4o',
+    API_URL: 'https://api.anthropic.com/v1/messages',
+    MODEL: 'claude-sonnet-4-20250514',
 
     MIN_CHARS_FOR_AI: 200,
     MIN_LINES_FOR_AI: 5,
@@ -6173,40 +6150,29 @@ const AI_CONFIG = {
         try { return typeof UserSession !== 'undefined' ? UserSession.podKey(k) : k; }
         catch { return k; }
     },
-    getProvider()     { return localStorage.getItem(this._pk(this._keyProvider)) || 'anthropic'; },
-    setProvider(p)    { localStorage.setItem(this._pk(this._keyProvider), p); },
-    getKey(provider)  { const k = (provider || this.getProvider()) === 'openai' ? this._keyOpenAIKey : this._keyAnthropicKey; return localStorage.getItem(this._pk(k)) || ''; },
-    setKey(provider, value) { const k = provider === 'openai' ? this._keyOpenAIKey : this._keyAnthropicKey; if (value) localStorage.setItem(this._pk(k), value); else localStorage.removeItem(this._pk(k)); },
-    hasKey(provider)  { return !!this.getKey(provider || this.getProvider()); },
-    hasAnyKey()       { return !!this.getKey('anthropic') || !!this.getKey('openai'); },
+    getKey()          { return localStorage.getItem(this._pk(this._storageKey)) || ''; },
+    setKey(value)     { if (value) localStorage.setItem(this._pk(this._storageKey), value); else localStorage.removeItem(this._pk(this._storageKey)); },
+    hasKey()          { return !!this.getKey(); },
+    hasAnyKey()       { return this.hasKey(); },
 };
 
 /* ================================================================
    AI SERVICE — provider abstraction, prompt building, task extraction
    ================================================================ */
 const AIService = {
-    async validateKey(provider, key) {
+    async validateKey(key) {
         try {
-            if (provider === 'openai') {
-                const resp = await fetch(AI_CONFIG.OPENAI_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-                    body: JSON.stringify({ model: AI_CONFIG.OPENAI_MODEL, messages: [{ role: 'user', content: 'Say OK' }], max_tokens: 5 }),
-                });
-                return resp.ok;
-            } else {
-                const resp = await fetch(AI_CONFIG.ANTHROPIC_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': key,
-                        'anthropic-version': '2023-06-01',
-                        'anthropic-dangerous-direct-browser-access': 'true',
-                    },
-                    body: JSON.stringify({ model: AI_CONFIG.ANTHROPIC_MODEL, max_tokens: 10, messages: [{ role: 'user', content: 'Say OK' }] }),
-                });
-                return resp.ok;
-            }
+            const resp = await fetch(AI_CONFIG.API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': key,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true',
+                },
+                body: JSON.stringify({ model: AI_CONFIG.MODEL, max_tokens: 10, messages: [{ role: 'user', content: 'Say OK' }] }),
+            });
+            return resp.ok;
         } catch { return false; }
     },
 
@@ -6272,54 +6238,33 @@ ${clientCtx}${calCtx}${taskCtx}`;
     },
 
     async extractTasks(userText) {
-        const provider = AI_CONFIG.getProvider();
-        const key = AI_CONFIG.getKey(provider);
+        const key = AI_CONFIG.getKey();
         if (!key) throw new Error('No API key configured — add one in Settings');
 
         const systemPrompt = this.buildSystemPrompt();
-        let responseText;
 
-        if (provider === 'openai') {
-            const resp = await fetch(AI_CONFIG.OPENAI_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-                body: JSON.stringify({
-                    model: AI_CONFIG.OPENAI_MODEL,
-                    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-                    max_tokens: 2000, temperature: 0.3,
-                }),
-            });
-            if (!resp.ok) {
-                if (resp.status === 401) throw new Error('Invalid API key — update in Settings');
-                if (resp.status === 429) throw new Error('Rate limited — wait a moment and retry');
-                throw new Error(`OpenAI error ${resp.status}`);
-            }
-            const data = await resp.json();
-            responseText = data.choices?.[0]?.message?.content || '';
-        } else {
-            const resp = await fetch(AI_CONFIG.ANTHROPIC_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': key,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-dangerous-direct-browser-access': 'true',
-                },
-                body: JSON.stringify({
-                    model: AI_CONFIG.ANTHROPIC_MODEL,
-                    system: systemPrompt,
-                    messages: [{ role: 'user', content: userText }],
-                    max_tokens: 2000, temperature: 0.3,
-                }),
-            });
-            if (!resp.ok) {
-                if (resp.status === 401) throw new Error('Invalid API key — update in Settings');
-                if (resp.status === 429) throw new Error('Rate limited — wait a moment and retry');
-                throw new Error(`Anthropic error ${resp.status}`);
-            }
-            const data = await resp.json();
-            responseText = data.content?.[0]?.text || '';
+        const resp = await fetch(AI_CONFIG.API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': key,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({
+                model: AI_CONFIG.MODEL,
+                system: systemPrompt,
+                messages: [{ role: 'user', content: userText }],
+                max_tokens: 2000, temperature: 0.3,
+            }),
+        });
+        if (!resp.ok) {
+            if (resp.status === 401) throw new Error('Invalid API key — update in Settings');
+            if (resp.status === 429) throw new Error('Rate limited — wait a moment and retry');
+            throw new Error(`Claude API error ${resp.status}`);
         }
+        const data = await resp.json();
+        const responseText = data.content?.[0]?.text || '';
 
         return this._parseResponse(responseText);
     },
@@ -6354,7 +6299,7 @@ const AIReview = {
         const panel = document.getElementById('aiReviewPanel');
         const list = document.getElementById('aiReviewList');
         document.getElementById('aiReviewCount').textContent = tasks.length;
-        document.getElementById('aiReviewBadge').textContent = AI_CONFIG.getProvider() === 'openai' ? 'GPT' : 'Claude';
+        document.getElementById('aiReviewBadge').textContent = 'Claude';
         document.getElementById('taskPromptPreview').classList.remove('visible');
 
         list.innerHTML = tasks.map((t, i) => {
@@ -6509,7 +6454,7 @@ const UserSession = {
             'iai_outlook_cache', 'iai_calendar_cache', 'iai_activity_feed', 'iai_cal_states',
             'iai_email_notes', 'iai_local_edits', 'iai_local_data',
             'iai_kb_docs', 'iai_snapshot', 'iai_target_exclusions', 'iai_target_overrides', 'iai_connection_mode',
-            'iai_auto_todo_dismissed', 'iai_ai_provider', 'iai_ai_anthropic_key', 'iai_ai_openai_key'
+            'iai_auto_todo_dismissed', 'iai_ai_anthropic_key'
         ];
         keys.forEach(key => {
             const oldData = localStorage.getItem(key);
@@ -10052,10 +9997,6 @@ const FileUpload = {
         }
         // Show AI mode indicator
         document.getElementById('aiModeIndicator').classList.add('visible');
-        const lbl = document.getElementById('aiProviderLabel');
-        const sel = document.getElementById('taskPromptAIProvider');
-        if (lbl) lbl.style.display = '';
-        if (sel) sel.style.display = '';
     },
 
     _renderChips() {
@@ -10154,10 +10095,6 @@ function openTaskPrompt() {
     AIReview.hide();
     document.getElementById('aiLoadingState').style.display = 'none';
     document.getElementById('aiModeIndicator').classList.remove('visible');
-    const aiProvLabel = document.getElementById('aiProviderLabel');
-    const aiProvSel = document.getElementById('taskPromptAIProvider');
-    if (aiProvLabel) aiProvLabel.style.display = 'none';
-    if (aiProvSel) { aiProvSel.style.display = 'none'; aiProvSel.value = AI_CONFIG.getProvider(); }
 
     // Reset file upload state
     FileUpload.clear();
@@ -10175,8 +10112,6 @@ function openTaskPrompt() {
             // AI mode indicator
             const isAI = shouldUseAI(textarea.value);
             document.getElementById('aiModeIndicator').classList.toggle('visible', isAI);
-            if (aiProvLabel) aiProvLabel.style.display = isAI ? '' : 'none';
-            if (aiProvSel) aiProvSel.style.display = isAI ? '' : 'none';
         }, 200);
     };
 
@@ -10548,7 +10483,7 @@ async function triggerAIExtraction(text) {
     const submitBtn = document.getElementById('taskPromptSubmit');
 
     loadingEl.style.display = 'block';
-    providerLabel.textContent = 'Using ' + (AI_CONFIG.getProvider() === 'openai' ? 'GPT' : 'Claude') + '...';
+    providerLabel.textContent = 'Using Claude...';
     submitBtn.disabled = true;
     submitBtn.textContent = 'Extracting...';
     document.getElementById('taskPromptPreview').classList.remove('visible');
@@ -11869,33 +11804,18 @@ function toggleTokenVis() {
 
 const AISettings = {
     init() {
-        const sel = document.getElementById('aiProviderSelect');
-        if (sel) sel.value = AI_CONFIG.getProvider();
-        this.onProviderChange();
-        const aInp = document.getElementById('aiAnthropicKeyInput');
-        const oInp = document.getElementById('aiOpenAIKeyInput');
-        if (aInp) aInp.value = AI_CONFIG.getKey('anthropic') ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
-        if (oInp) oInp.value = AI_CONFIG.getKey('openai') ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
-    },
-    onProviderChange() {
-        const provider = document.getElementById('aiProviderSelect')?.value || 'anthropic';
-        const aGrp = document.getElementById('aiKeyGroup-anthropic');
-        const oGrp = document.getElementById('aiKeyGroup-openai');
-        if (aGrp) aGrp.style.display = provider === 'anthropic' ? 'flex' : 'none';
-        if (oGrp) oGrp.style.display = provider === 'openai' ? 'flex' : 'none';
-        AI_CONFIG.setProvider(provider);
+        const inp = document.getElementById('aiKeyInput');
+        if (inp) inp.value = AI_CONFIG.hasKey() ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '';
     },
     async saveAndValidate() {
-        const provider = AI_CONFIG.getProvider();
-        const inputId = provider === 'openai' ? 'aiOpenAIKeyInput' : 'aiAnthropicKeyInput';
-        const key = document.getElementById(inputId)?.value?.trim();
+        const key = document.getElementById('aiKeyInput')?.value?.trim();
         if (!key || /^\u2022+$/.test(key)) { this._setStatus('Enter your API key first', 'error'); return; }
         this._setStatus('Validating...', 'info');
         try {
-            const ok = await AIService.validateKey(provider, key);
+            const ok = await AIService.validateKey(key);
             if (ok) {
-                AI_CONFIG.setKey(provider, key);
-                document.getElementById(inputId).value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+                AI_CONFIG.setKey(key);
+                document.getElementById('aiKeyInput').value = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
                 this._setStatus('Key validated and saved', 'success');
                 ConnectionStatus.refreshAiStatus();
             } else {
@@ -11904,10 +11824,8 @@ const AISettings = {
         } catch (e) { this._setStatus('Validation failed: ' + e.message, 'error'); }
     },
     removeKey() {
-        const provider = AI_CONFIG.getProvider();
-        AI_CONFIG.setKey(provider, '');
-        const inputId = provider === 'openai' ? 'aiOpenAIKeyInput' : 'aiAnthropicKeyInput';
-        document.getElementById(inputId).value = '';
+        AI_CONFIG.setKey('');
+        document.getElementById('aiKeyInput').value = '';
         this._setStatus('Key removed', 'info');
         ConnectionStatus.refreshAiStatus();
     },
