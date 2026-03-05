@@ -5643,7 +5643,7 @@ const FirefliesSync = {
     async fetchTranscripts() {
         const token = this.getToken();
         if (!token) throw new Error('No Fireflies token');
-        const query = `query { transcripts(size: 10) {
+        const query = `query { transcripts(limit: 10) {
             id title date organizer_email
             sentences { text speaker_name }
         }}`;
