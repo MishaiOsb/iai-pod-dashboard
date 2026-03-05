@@ -2340,6 +2340,130 @@ input, textarea, select { font-family: inherit; outline: none; }
 .ff-meeting-card-title { font-weight: 600; font-size: 12px; color: var(--text-primary); }
 .ff-meeting-card-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
+/* Meeting Notes Modal */
+.mn-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
+    background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center;
+    animation: mnFadeIn 0.18s ease;
+}
+@keyframes mnFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.mn-modal {
+    background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-xl);
+    width: 94vw; max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: mnSlideUp 0.2s ease;
+}
+@keyframes mnSlideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.mn-header {
+    padding: 18px 22px 14px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: flex-start; gap: 12px;
+}
+.mn-header-info { flex: 1; min-width: 0; }
+.mn-header-title { font-size: 16px; font-weight: 700; color: var(--text-primary); margin: 0; line-height: 1.3; }
+.mn-header-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mn-client-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    background: rgba(0,200,117,0.12); color: var(--rag-green);
+}
+.mn-close {
+    width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+    background: rgba(255,255,255,0.06); color: var(--text-muted); font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition-fast); flex-shrink: 0;
+}
+.mn-close:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+.mn-tabs {
+    display: flex; border-bottom: 1px solid var(--border-subtle); padding: 0 22px; gap: 0;
+}
+.mn-tab {
+    padding: 10px 16px; font-size: 12px; font-weight: 600; color: var(--text-muted);
+    border: none; background: none; cursor: pointer; position: relative;
+    transition: color var(--transition-fast);
+}
+.mn-tab:hover { color: var(--text-primary); }
+.mn-tab.active { color: var(--accent-purple-light); }
+.mn-tab.active::after {
+    content: ''; position: absolute; bottom: -1px; left: 8px; right: 8px; height: 2px;
+    background: var(--accent-purple-light); border-radius: 2px;
+}
+.mn-body { flex: 1; overflow-y: auto; padding: 18px 22px; }
+.mn-section { margin-bottom: 18px; }
+.mn-section-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.mn-overview-list { list-style: none; padding: 0; margin: 0; }
+.mn-overview-list li {
+    padding: 5px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.6;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.mn-overview-list li:last-child { border-bottom: none; }
+.mn-keywords { display: flex; flex-wrap: wrap; gap: 6px; }
+.mn-keyword-tag {
+    font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+    background: rgba(107,48,255,0.1); color: var(--accent-purple-light);
+    border: 1px solid rgba(107,48,255,0.2);
+}
+.mn-action-group { margin-bottom: 14px; }
+.mn-action-person {
+    font-size: 12px; font-weight: 700; color: var(--accent-purple-light); margin-bottom: 6px;
+    padding-bottom: 4px; border-bottom: 1px solid var(--border-subtle);
+}
+.mn-action-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 5px 0 5px 8px;
+    font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+}
+.mn-action-item input[type="checkbox"] { margin-top: 3px; accent-color: var(--accent-purple-light); flex-shrink: 0; }
+.mn-action-imported { font-size: 9px; padding: 1px 6px; border-radius: 8px; background: rgba(0,200,117,0.12); color: var(--rag-green); font-weight: 600; white-space: nowrap; }
+.mn-import-bar {
+    display: flex; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border-subtle);
+}
+.mn-notes-body { font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
+.mn-notes-body h2, .mn-notes-body h3 { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 14px 0 6px; }
+.mn-notes-body ul { padding-left: 18px; margin: 4px 0; }
+.mn-notes-body li { margin-bottom: 3px; }
+.mn-notes-body strong { color: var(--accent-purple-light); font-weight: 600; }
+.mn-bullet-section { margin-bottom: 10px; }
+.mn-bullet-header { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.mn-bullet-list { list-style: none; padding: 0; margin: 0; }
+.mn-bullet-list li { padding: 3px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+/* Updated Fireflies Meeting Cards (v2) */
+.ff-meeting-card-v2 {
+    background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+    padding: 14px 16px; margin-bottom: 10px; transition: all var(--transition-fast);
+}
+.ff-meeting-card-v2:hover { border-color: var(--accent-purple-light); background: rgba(107,48,255,0.03); }
+.ff-mc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ff-mc-title { font-weight: 700; font-size: 13px; color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ff-mc-date { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+.ff-mc-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.ff-client-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    background: rgba(0,200,117,0.12); color: var(--rag-green);
+}
+.ff-actions-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+    background: rgba(107,48,255,0.12); color: var(--accent-purple-light);
+}
+.ff-mc-summary {
+    font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ff-mc-actions { display: flex; gap: 8px; }
+.btn-ff-view-notes {
+    padding: 5px 12px; font-size: 11px; font-weight: 600; border-radius: var(--radius-md);
+    background: var(--accent-purple); color: #fff; border: none; cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.btn-ff-view-notes:hover { filter: brightness(1.15); }
+
+/* Client Detail — Recent Meetings */
+.client-detail-meetings { background: var(--card-bg); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 24px; }
+.client-detail-meetings h3 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 12px; }
+@media (max-width: 640px) {
+    .mn-modal { width: 100vw; max-width: 100%; max-height: 100vh; border-radius: 0; }
+    .mn-header { padding: 14px 16px 10px; }
+    .mn-body { padding: 14px 16px; }
+    .mn-tabs { padding: 0 12px; }
+}
+
 /* Week Projection */
 .week-day-card {
     background: var(--bg-card); border: 1px solid var(--border-subtle);
@@ -5615,14 +5739,17 @@ const CalendarSync = {
 
 /* ================================================================
    FIREFLIES SYNC — Meeting transcript integration
-   Fetches transcripts via Fireflies GraphQL API, extracts
-   action items using TranscriptParser, imports as DashTodo items.
+   Fetches transcripts with AI summaries via Fireflies GraphQL API,
+   provides structured meeting notes, action items, and client matching.
    ================================================================ */
 const FirefliesSync = {
     _tokenKey: 'iai_fireflies_token',
     _cacheKey: 'iai_fireflies_cache',
     _syncKey: 'iai_fireflies_lastsync',
     _sk(k) { return UserSession.podKey(k); },
+
+    // Common email domains to exclude from client matching
+    _commonDomains: new Set(['gmail.com','outlook.com','hotmail.com','yahoo.com','live.com','icloud.com','aol.com','protonmail.com','mail.com','zoho.com','fireflies.ai','implementai.io']),
 
     // Token management
     getToken() { return localStorage.getItem(this._sk(this._tokenKey)) || ''; },
@@ -5654,13 +5781,13 @@ const FirefliesSync = {
         localStorage.setItem(this._sk(this._syncKey), this._lastSync.toISOString());
     },
 
-    // API: GraphQL fetch
+    // API: GraphQL fetch — now fetches AI summaries instead of raw sentences
     async fetchTranscripts() {
         const token = this.getToken();
         if (!token) throw new Error('No Fireflies token');
         const query = `query { transcripts(limit: 10) {
-            id title date organizer_email
-            sentences { text speaker_name }
+            id title date organizer_email participants
+            summary { short_summary keywords action_items overview shorthand_bullet notes }
         }}`;
         const resp = await fetch('https://api.fireflies.ai/graphql', {
             method: 'POST',
@@ -5673,18 +5800,65 @@ const FirefliesSync = {
         return json.data?.transcripts || [];
     },
 
-    // Parse transcript sentences into action items
+    // Parse action items from Fireflies summary.action_items string
+    // Format: "**Person Name**\nAction text (HH:MM)\n\n**Next Person**\n..."
     parseTranscript(transcript) {
-        if (!transcript.sentences?.length) return [];
-        const text = transcript.sentences.map(s => `${s.speaker_name}: ${s.text}`).join('\n');
-        const rawActions = TranscriptParser.extractActions(text);
-        return rawActions.map((a, i) => ({
-            id: `ff_${transcript.id}_${i}`,
-            text: a,
-            transcriptId: transcript.id,
-            meetingTitle: transcript.title,
-            meetingDate: transcript.date ? new Date(transcript.date).toISOString().split('T')[0] : 'Unknown'
-        }));
+        const raw = transcript.summary?.action_items;
+        if (!raw) return [];
+        const actions = [];
+        let currentPerson = '';
+        const lines = raw.split('\n');
+        lines.forEach(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            // Match person heading: **Name**
+            const personMatch = trimmed.match(/^\*\*(.+?)\*\*$/);
+            if (personMatch) {
+                currentPerson = personMatch[1];
+                return;
+            }
+            // It's an action line — strip leading bullet/dash and trailing timestamp
+            let actionText = trimmed.replace(/^[-•]\s*/, '').replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '').trim();
+            if (actionText) {
+                actions.push({
+                    id: `ff_${transcript.id}_${actions.length}`,
+                    text: currentPerson ? `${currentPerson}: ${actionText}` : actionText,
+                    person: currentPerson,
+                    transcriptId: transcript.id,
+                    meetingTitle: transcript.title,
+                    meetingDate: transcript.date ? new Date(transcript.date).toISOString().split('T')[0] : 'Unknown'
+                });
+            }
+        });
+        return actions;
+    },
+
+    // Match meeting participants to dashboard clients
+    matchMeetingToClients(transcript) {
+        const participants = transcript.participants || [];
+        if (!participants.length || !State.clients.length) return [];
+        const matched = [];
+        State.clients.forEach(client => {
+            const clientEmails = [client.sponsorEmail, client.pocEmail, client.otherEmail, client.itContact]
+                .filter(Boolean).map(e => e.toLowerCase().trim());
+            let clientDomain = null;
+            if (client.domain) {
+                const d = client.domain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+                clientDomain = this._commonDomains.has(d) ? null : d;
+            }
+            const hasMatch = participants.some(pEmail => {
+                if (!pEmail) return false;
+                const addr = pEmail.toLowerCase();
+                if (clientEmails.includes(addr)) return true;
+                if (clientDomain) {
+                    const fromDomain = addr.split('@')[1];
+                    if (fromDomain === clientDomain) return true;
+                }
+                return false;
+            });
+            if (hasMatch) matched.push(client.name);
+        });
+        return matched;
     },
 
     // Full sync pipeline
@@ -5696,7 +5870,9 @@ const FirefliesSync = {
             const transcripts = await this.fetchTranscripts();
             this._cache.transcripts = transcripts.map(t => ({
                 id: t.id, title: t.title, date: t.date, organizer: t.organizer_email,
-                sentenceCount: t.sentences?.length || 0
+                participants: t.participants || [],
+                summary: t.summary || {},
+                matchedClients: this.matchMeetingToClients(t)
             }));
             // Parse actions for each transcript
             transcripts.forEach(t => {
@@ -5751,15 +5927,25 @@ const FirefliesSync = {
         return count;
     },
 
-    // Get meetings that have >0 extracted actions
-    getMeetingsWithActions() {
+    // Get all meetings (with summary data)
+    getMeetings() {
         return this._cache.transcripts
-            .filter(t => (this._cache.actions[t.id] || []).length > 0)
             .map(t => ({
                 ...t,
-                actions: this._cache.actions[t.id],
+                actions: this._cache.actions[t.id] || [],
                 importedCount: (this._cache.actions[t.id] || []).filter(a => this.isImported(a.id)).length
-            }));
+            }))
+            .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    },
+
+    // Get meetings that have >0 extracted actions (backwards compat)
+    getMeetingsWithActions() {
+        return this.getMeetings().filter(m => m.actions.length > 0);
+    },
+
+    // Get meetings matched to a specific client
+    getMeetingsForClient(clientName) {
+        return this.getMeetings().filter(m => (m.matchedClients || []).includes(clientName));
     },
 
     init() {
@@ -5770,6 +5956,198 @@ const FirefliesSync = {
             if (typeof ConnectionStatus !== 'undefined') ConnectionStatus.setFireflies('connected');
             // Auto-sync if stale
             if (this.canSync()) this.sync().catch(() => {});
+        }
+    }
+};
+
+/* ================================================================
+   MEETING NOTES VIEWER — Modal for viewing Fireflies AI summaries
+   Shows 3 tabs: Summary, Action Items, Full Notes
+   ================================================================ */
+const MeetingNotesViewer = {
+    _currentId: null,
+
+    open(transcriptId) {
+        const meeting = FirefliesSync._cache.transcripts.find(t => t.id === transcriptId);
+        if (!meeting) return;
+        this._currentId = transcriptId;
+        const overlay = document.createElement('div');
+        overlay.className = 'mn-overlay';
+        overlay.id = 'mnOverlay';
+        overlay.onclick = (e) => { if (e.target === overlay) this.close(); };
+        overlay.innerHTML = this._buildModal(meeting);
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+        // Default to Summary tab
+        this._switchTab('summary');
+        // Escape key handler
+        this._escHandler = (e) => { if (e.key === 'Escape') this.close(); };
+        document.addEventListener('keydown', this._escHandler);
+    },
+
+    close() {
+        const overlay = document.getElementById('mnOverlay');
+        if (overlay) { overlay.remove(); document.body.style.overflow = ''; }
+        if (this._escHandler) { document.removeEventListener('keydown', this._escHandler); this._escHandler = null; }
+        this._currentId = null;
+    },
+
+    _switchTab(tab) {
+        document.querySelectorAll('.mn-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+        document.querySelectorAll('.mn-tab-content').forEach(c => c.style.display = c.dataset.tab === tab ? 'block' : 'none');
+    },
+
+    _buildModal(meeting) {
+        const summary = meeting.summary || {};
+        const dateStr = meeting.date ? new Date(meeting.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+        const clients = (meeting.matchedClients || []).map(c => `<span class="mn-client-badge">🏷️ ${c}</span>`).join(' ');
+        const actions = FirefliesSync._cache.actions[meeting.id] || [];
+        const actionCount = actions.length;
+
+        return `<div class="mn-modal">
+            <div class="mn-header">
+                <div class="mn-header-info">
+                    <h2 class="mn-header-title">📋 ${meeting.title || 'Untitled Meeting'}</h2>
+                    <div class="mn-header-meta">
+                        <span>${dateStr}</span>
+                        ${clients}
+                        ${actionCount > 0 ? `<span class="ff-actions-badge">${actionCount} actions</span>` : ''}
+                    </div>
+                </div>
+                <button class="mn-close" onclick="MeetingNotesViewer.close()" title="Close">✕</button>
+            </div>
+            <div class="mn-tabs">
+                <button class="mn-tab active" data-tab="summary" onclick="MeetingNotesViewer._switchTab('summary')">Summary</button>
+                <button class="mn-tab" data-tab="actions" onclick="MeetingNotesViewer._switchTab('actions')">Action Items${actionCount > 0 ? ` (${actionCount})` : ''}</button>
+                <button class="mn-tab" data-tab="notes" onclick="MeetingNotesViewer._switchTab('notes')">Full Notes</button>
+            </div>
+            <div class="mn-body">
+                <div class="mn-tab-content" data-tab="summary" style="display:block;">
+                    ${this._renderSummaryTab(summary)}
+                </div>
+                <div class="mn-tab-content" data-tab="actions" style="display:none;">
+                    ${this._renderActionsTab(meeting.id, actions)}
+                </div>
+                <div class="mn-tab-content" data-tab="notes" style="display:none;">
+                    ${this._renderNotesTab(summary)}
+                </div>
+            </div>
+        </div>`;
+    },
+
+    _renderSummaryTab(summary) {
+        let html = '';
+        // Overview bullets
+        if (summary.overview) {
+            const bullets = summary.overview.split('\n').filter(l => l.trim());
+            html += `<div class="mn-section">
+                <div class="mn-section-title">📝 Overview</div>
+                <ul class="mn-overview-list">${bullets.map(b => `<li>${b.replace(/^[-•]\s*/, '')}</li>`).join('')}</ul>
+            </div>`;
+        }
+        // Short summary
+        if (summary.short_summary) {
+            html += `<div class="mn-section">
+                <div class="mn-section-title">💡 Summary</div>
+                <p style="font-size:12px;color:var(--text-secondary);line-height:1.7;margin:0;">${summary.short_summary}</p>
+            </div>`;
+        }
+        // Shorthand bullets (emoji sections)
+        if (summary.shorthand_bullet) {
+            const sections = summary.shorthand_bullet.split('\n\n').filter(s => s.trim());
+            if (sections.length > 0) {
+                html += `<div class="mn-section"><div class="mn-section-title">📌 Key Points</div>`;
+                sections.forEach(sec => {
+                    const lines = sec.split('\n').filter(l => l.trim());
+                    if (lines.length === 0) return;
+                    const header = lines[0];
+                    const items = lines.slice(1);
+                    html += `<div class="mn-bullet-section">
+                        <div class="mn-bullet-header">${header}</div>
+                        ${items.length > 0 ? `<ul class="mn-bullet-list">${items.map(i => `<li>${i.replace(/^[-•]\s*/, '')}</li>`).join('')}</ul>` : ''}
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+        }
+        // Keywords
+        if (summary.keywords && summary.keywords.length > 0) {
+            const kws = Array.isArray(summary.keywords) ? summary.keywords : summary.keywords.split(',');
+            html += `<div class="mn-section">
+                <div class="mn-section-title">🏷️ Keywords</div>
+                <div class="mn-keywords">${kws.map(k => `<span class="mn-keyword-tag">${k.trim()}</span>`).join('')}</div>
+            </div>`;
+        }
+        return html || '<p style="color:var(--text-muted);font-style:italic;">No summary data available for this meeting.</p>';
+    },
+
+    _renderActionsTab(transcriptId, actions) {
+        if (!actions.length) return '<p style="color:var(--text-muted);font-style:italic;">No action items found for this meeting.</p>';
+        // Group by person
+        const groups = {};
+        actions.forEach(a => {
+            const person = a.person || 'General';
+            if (!groups[person]) groups[person] = [];
+            groups[person].push(a);
+        });
+        let html = '';
+        Object.keys(groups).forEach(person => {
+            html += `<div class="mn-action-group">
+                <div class="mn-action-person">${person}</div>
+                ${groups[person].map(a => {
+                    const imported = FirefliesSync.isImported(a.id);
+                    const actionText = a.person ? a.text.replace(`${a.person}: `, '') : a.text;
+                    return `<div class="mn-action-item">
+                        <input type="checkbox" class="mn-action-cb" data-action-id="${a.id}" ${imported ? 'checked disabled' : ''}>
+                        <span style="flex:1;">${actionText}</span>
+                        ${imported ? '<span class="mn-action-imported">Imported</span>' : ''}
+                    </div>`;
+                }).join('')}
+            </div>`;
+        });
+        const unimportedCount = actions.filter(a => !FirefliesSync.isImported(a.id)).length;
+        if (unimportedCount > 0) {
+            html += `<div class="mn-import-bar">
+                <button class="btn-ff-import" onclick="MeetingNotesViewer._importAll('${transcriptId}')">Import All (${unimportedCount})</button>
+                <button class="btn-ff-import-sel" onclick="MeetingNotesViewer._importSelected('${transcriptId}')">Import Selected</button>
+            </div>`;
+        }
+        return html;
+    },
+
+    _renderNotesTab(summary) {
+        if (!summary.notes) return '<p style="color:var(--text-muted);font-style:italic;">No detailed notes available for this meeting.</p>';
+        // Convert Fireflies notes to HTML — it uses ## headers, **bold**, bullet points
+        let html = summary.notes
+            .replace(/## (.+)/g, '<h3>$1</h3>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/^- (.+)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+            .replace(/\n{2,}/g, '<br><br>')
+            .replace(/\n/g, '<br>');
+        return `<div class="mn-notes-body">${html}</div>`;
+    },
+
+    _importAll(transcriptId) {
+        const count = FirefliesSync.importAll(transcriptId);
+        if (count > 0) {
+            // Refresh the modal to show updated state
+            this.close();
+            this.open(transcriptId);
+            if (typeof renderPlannerPage === 'function') renderPlannerPage();
+        }
+    },
+
+    _importSelected(transcriptId) {
+        const overlay = document.getElementById('mnOverlay');
+        if (!overlay) return;
+        const checked = [...overlay.querySelectorAll('.mn-action-cb:checked:not(:disabled)')].map(cb => cb.dataset.actionId);
+        if (checked.length === 0) return;
+        const count = FirefliesSync.importSelected(checked);
+        if (count > 0) {
+            this.close();
+            this.open(transcriptId);
+            if (typeof renderPlannerPage === 'function') renderPlannerPage();
         }
     }
 };
@@ -9134,6 +9512,31 @@ function renderOverviewPage() {
 /* ================================================================
    CLIENT FULL PAGE (INDIVIDUAL CLIENT DETAIL)
    ================================================================ */
+/** Build "Recent Meetings" section for a client detail page */
+function buildClientMeetingsSection(clientName) {
+    if (!FirefliesSync.hasToken()) return '';
+    const meetings = FirefliesSync.getMeetingsForClient(clientName).slice(0, 5);
+    if (meetings.length === 0) return '';
+    const cards = meetings.map(m => {
+        const dateStr = m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        const actionCount = (m.actions || []).length;
+        return `<div class="ff-meeting-card-v2" style="margin-bottom:8px;">
+            <div class="ff-mc-header">
+                <span class="ff-mc-title">${m.title || 'Untitled Meeting'}</span>
+                <span class="ff-mc-date">${dateStr}</span>
+            </div>
+            ${actionCount > 0 ? `<div class="ff-mc-badges"><span class="ff-actions-badge">${actionCount} actions</span></div>` : ''}
+            <div class="ff-mc-actions">
+                <button class="btn-ff-view-notes" onclick="MeetingNotesViewer.open('${m.id}')">📋 View Notes</button>
+            </div>
+        </div>`;
+    }).join('');
+    return `<div class="client-detail-meetings">
+        <h3>🎙️ Recent Meetings (${meetings.length})</h3>
+        ${cards}
+    </div>`;
+}
+
 function renderClientFullPage(clientId) {
     State.selectedId = clientId;
     State.pendingChanges = {};
@@ -9262,6 +9665,8 @@ function renderClientFullPage(clientId) {
             <h3>&#128236; Email Activity</h3>
             ${emailHTML}
         </div>
+
+        ${buildClientMeetingsSection(c.name)}
 
         <div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
             <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">&#128736; Contacts &amp; Links <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(click to edit)</span></h3>
@@ -9522,58 +9927,45 @@ document.addEventListener('click', (e) => {
    ================================================================ */
 function buildFirefliesSection() {
     if (!FirefliesSync.hasToken()) return '';
-    const meetings = FirefliesSync.getMeetingsWithActions();
-    const totalNew = meetings.reduce((s, m) => s + (m.actions || []).filter(a => !FirefliesSync.isImported(a.id)).length, 0);
+    const meetings = FirefliesSync.getMeetings();
     if (meetings.length === 0) {
         return `
         <div class="fireflies-section">
             <div class="fireflies-section-header">
-                <h3>🎙️ Meeting Actions</h3>
+                <h3>🎙️ Meeting Notes</h3>
                 <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
             </div>
-            <div class="ff-empty">No meeting action items found. Sync to fetch latest transcripts.</div>
+            <div class="ff-empty">No meetings found. Sync to fetch latest transcripts.</div>
         </div>`;
     }
-    const MAX_PREVIEW = 5;
+    const totalActions = meetings.reduce((s, m) => s + (m.actions || []).filter(a => !FirefliesSync.isImported(a.id)).length, 0);
     const meetingHTML = meetings.map(m => {
-        const actions = m.actions || [];
-        const unimported = actions.filter(a => !FirefliesSync.isImported(a.id));
-        const previewActions = unimported.slice(0, MAX_PREVIEW);
-        const overflow = unimported.length - MAX_PREVIEW;
-        const previewHTML = previewActions.map(a => `<div class="ff-action-item">
-                <input type="checkbox" class="ff-action-cb" data-action-id="${a.id}">
-                <span class="ff-action-text">${a.text}</span>
-            </div>`).join('');
-        const overflowHTML = overflow > 0 ? `<div class="ff-overflow" id="ffOverflow_${m.id}" style="display:none;">${unimported.slice(MAX_PREVIEW).map(a => `<div class="ff-action-item">
-                <input type="checkbox" class="ff-action-cb" data-action-id="${a.id}">
-                <span class="ff-action-text">${a.text}</span>
-            </div>`).join('')}</div>
-            <button class="btn-ff-expand" id="ffExpBtn_${m.id}" onclick="toggleFirefliesExpand('${m.id}', ${overflow})">Show ${overflow} more</button>` : '';
         const dateStr = m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
-        if (unimported.length === 0) return ''; // skip fully-imported meetings
+        const shortSummary = m.summary?.short_summary || '';
+        const actionCount = (m.actions || []).length;
+        const unimported = (m.actions || []).filter(a => !FirefliesSync.isImported(a.id)).length;
+        const clientBadges = (m.matchedClients || []).map(c => `<span class="ff-client-badge">🏷️ ${c}</span>`).join('');
         return `
-        <div class="ff-meeting-group" data-meeting-id="${m.id}">
-            <div class="ff-meeting-header" onclick="toggleFirefliesMeeting('${m.id}')" style="cursor:pointer;">
-                <span class="ff-expand-arrow" id="ffArrow_${m.id}">&#9654;</span>
-                <span class="ff-meeting-title">${m.title || 'Untitled Meeting'}</span>
-                <span class="ff-meeting-date">${dateStr}</span>
-                <span class="ff-meeting-badge">${unimported.length} new</span>
+        <div class="ff-meeting-card-v2">
+            <div class="ff-mc-header">
+                <span class="ff-mc-title">${m.title || 'Untitled Meeting'}</span>
+                <span class="ff-mc-date">${dateStr}</span>
             </div>
-            <div class="ff-meeting-body" id="ffBody_${m.id}" style="display:none;">
-                ${previewHTML}
-                ${overflowHTML}
-                <div class="ff-import-bar">
-                    <button class="btn-ff-import" onclick="importAllFireflies('${m.id}')">Import All (${unimported.length})</button>
-                    <button class="btn-ff-import-sel" onclick="importSelectedFireflies('${m.id}')">Import Selected</button>
-                </div>
+            <div class="ff-mc-badges">
+                ${clientBadges}
+                ${actionCount > 0 ? `<span class="ff-actions-badge">${unimported > 0 ? unimported + ' new · ' : ''}${actionCount} actions</span>` : ''}
+            </div>
+            ${shortSummary ? `<div class="ff-mc-summary">${shortSummary}</div>` : ''}
+            <div class="ff-mc-actions">
+                <button class="btn-ff-view-notes" onclick="MeetingNotesViewer.open('${m.id}')">📋 View Notes</button>
+                ${unimported > 0 ? `<button class="btn-ff-import-sel" onclick="importAllFireflies('${m.id}')">Import Actions (${unimported})</button>` : ''}
             </div>
         </div>`;
-    }).filter(Boolean).join('');
-    if (!meetingHTML) return '';
+    }).join('');
     return `
     <div class="fireflies-section">
         <div class="fireflies-section-header">
-            <h3>🎙️ Meeting Actions <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(${totalNew} new from ${meetings.length} meeting${meetings.length !== 1 ? 's' : ''})</span></h3>
+            <h3>🎙️ Meeting Notes <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(${meetings.length} meeting${meetings.length !== 1 ? 's' : ''}${totalActions > 0 ? ' · ' + totalActions + ' new actions' : ''})</span></h3>
             <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
         </div>
         ${meetingHTML}
