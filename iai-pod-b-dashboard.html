@@ -4571,6 +4571,18 @@ const TranscriptParser = {
         { re: /\b(?:(?:the\s+)?(?:action\s+(?:item)?|next\s+step|task|to[ -]?do)\s*(?:is|would\s+be|:)\s*)(.+?)(?:\.|$)/gi, type: 'explicit' },
         // Reminders/follow-ups: "follow up on...", "don't forget to...", "make sure to..."
         { re: /\b(?:follow\s+up\s+(?:on|with|about)|don['']t\s+forget\s+to|make\s+sure\s+(?:to|we|you)|reminder\s+to)\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'followup' },
+        // "Let's" proposals: "Let's schedule a meeting", "Let's finalize the proposal"
+        { re: /\blet[''\u2019]?s\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'team' },
+        // Semi-modal obligations: "I have to", "I've gotta", "I'm supposed to"
+        { re: /\b(?:i[''\u2019]ve?\s+(?:got|gotta)\s+to|i\s+have\s+to|i[''\u2019]m\s+supposed\s+to|i\s+really\s+(?:need|ought)\s+to)\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'self' },
+        // Volunteering: "I'll take care of that", "Leave it with me", "I can handle the deployment"
+        { re: /\b(?:(?:i[''\u2019]ll|i\s+can)\s+(?:take\s+care\s+of|handle|own|pick\s+up|look\s+(?:into|after))\s+(.+?)|leave\s+(?:it|that|this)\s+(?:with|to)\s+me(?:\s*[,.]?\s*(?:i[''\u2019]ll\s+)?(.+?))?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'self' },
+        // Polite directives: "Would it be possible to...", "Shall we...", "Can we please..."
+        { re: /\b(?:(?:would|could)\s+(?:it\s+be\s+possible\s+to|you\s+be\s+able\s+to)|shall\s+we|(?:do\s+you\s+)?mind\s+if\s+(?:i|we)|can\s+we(?:\s+please)?)\s+(.+?)(?:\?|\.|,\s*(?:so|and|but)|$)/gi, type: 'assign' },
+        // Chat confirmations with follow-on: "Got it - will send by EOD", "Sure, I'll handle that"
+        { re: /\b(?:(?:will\s+do|on\s+it|got\s+it|sure|absolutely|definitely|roger|copy\s+that)(?:\s*[-\u2014,]\s*(?:i[''\u2019]ll\s+|will\s+)?(.+?))?|(?:sure|yep|yeah|yes)(?:\s*,?\s*i[''\u2019]ll\s+(.+?)))(?:\.|!|$)/gi, type: 'self' },
+        // Passive obligation: "The report needs to be updated", "This has to be resolved"
+        { re: /\b(?:(?:the|this|that|it)\s+)?(?:(?:needs?|has|have)\s+to\s+be|should\s+(?:be|get)|(?:must|has\s+to)\s+(?:be|get))\s+(.+?)(?:\.|,\s*(?:so|and|but)|$)/gi, type: 'team' },
     ],
 
     /**
@@ -4595,6 +4607,7 @@ const TranscriptParser = {
      * Returns array of clean task-line strings.
      */
     extractActions(text) {
+        text = normalizeInputText(text);
         const actions = [];
         const seen = new Set(); // deduplicate
 
@@ -4608,7 +4621,9 @@ const TranscriptParser = {
                 const re = new RegExp(pattern.re.source, pattern.re.flags);
                 let match;
                 while ((match = re.exec(content)) !== null) {
-                    let action = (match[1] || '').trim();
+                    // Find first non-empty capture group (supports multi-capture patterns)
+                    let action = '';
+                    for (let g = 1; g < match.length; g++) { if (match[g]) { action = match[g].trim(); break; } }
                     // Clean up the extracted action
                     action = action
                         .replace(/\s+/g, ' ')
@@ -4616,8 +4631,13 @@ const TranscriptParser = {
                         .replace(/\s*(?:right|yeah|you know|I think|I guess|okay|ok)\s*$/i, '')
                         .replace(/\?+$/, '')
                         .trim();
-                    // Skip too-short or too-long fragments
+                    // Skip too-short, single-word, or too-long fragments
                     if (action.length < 5 || action.length > 200) continue;
+                    if (action.split(/\s+/).length < 2) continue;
+                    // Skip negated, past-tense, or low-confidence matches
+                    if (isNegated(match[0])) continue;
+                    if (isPastTenseReport(match[0])) continue;
+                    if (hasLowConfidenceHedge(match[0])) continue;
                     // Skip questions/noise
                     if (/^(?:what|when|where|why|how|is\s+(?:it|that|this)|are\s+(?:we|you|they))\b/i.test(action) && !/\b(?:send|call|email|follow|update|check|review|prepare|chase|contact|schedule|book)\b/i.test(action)) continue;
                     // Normalise for dedup (exact match + substring check)
@@ -4636,7 +4656,17 @@ const TranscriptParser = {
             }
         }
 
-        return actions;
+        // Post-process: merge continuation phrases into prior actions
+        const continuationRe = /^(?:specifically|in\s+particular|that\s+means|meaning|i\.e\.|namely|which\s+means|so\s+basically)\b/i;
+        const merged = [];
+        for (let i = 0; i < actions.length; i++) {
+            if (i > 0 && continuationRe.test(actions[i])) {
+                merged[merged.length - 1] += ' \u2014 ' + actions[i].charAt(0).toLowerCase() + actions[i].slice(1);
+            } else {
+                merged.push(actions[i]);
+            }
+        }
+        return merged;
     },
 
     /** Split transcript into speaker turns */
@@ -9814,8 +9844,10 @@ function closeTaskPrompt() {
  * Falls back to newline splitting for structured input.
  */
 function smartSplitTasks(text) {
-    const raw = text.trim();
+    let raw = text.trim();
     if (!raw) return [];
+    raw = stripEmailChrome(raw);
+    raw = normalizeInputText(raw);
 
     // Transcript detection — route through TranscriptParser for conversation text
     if (TranscriptParser.isTranscript(raw)) {
@@ -9848,6 +9880,14 @@ function smartSplitTasks(text) {
         if (parts.length >= 2) return parts;
     }
 
+    // Try conditional extraction BEFORE comma splitting
+    // "Once we get approval, send the invoice" should NOT split at the comma
+    const conditionalPrefixRe = /^(?:once|after|when|as\s+soon\s+as|if|before|upon|assuming|provided\s+(?:that)?)\s+/i;
+    if (conditionalPrefixRe.test(single)) {
+        const extracted = extractConditionalTask(single);
+        if (extracted !== single) return [extracted];
+    }
+
     // No preamble detected — check for comma/and lists that look like tasks
     // "Chase EzyClean, send the report and update notes"
     if (/,/.test(single) || /\band\b/i.test(single)) {
@@ -9857,12 +9897,13 @@ function smartSplitTasks(text) {
             .map(s => s.trim())
             .filter(s => s.length > 0);
         // Only split if each part looks like a task (starts with a verb or is short enough)
-        const verbRe = /^(chase|send|call|email|follow|update|review|prepare|check|write|create|finish|complete|submit|schedule|book|contact|draft|organise|organize|fix|build|set\s?up|meet|plan|arrange|confirm|cancel|order|research|look\s?into|sort|clean|test|deploy|upload|download|share|notify|remind|discuss|present|sign|approve|request)/i;
+        const verbRe = /^(chase|send|call|email|follow|update|review|prepare|check|write|create|finish|complete|submit|schedule|book|contact|draft|organise|organize|fix|build|set\s?up|meet|plan|arrange|confirm|cancel|order|research|look\s?into|sort|clean|test|deploy|upload|download|share|notify|remind|discuss|present|sign|approve|request|escalate|respond|reply|forward|ask|get|pay|print|file|add|move|run|migrate|audit|implement|integrate|onboard|brief|scope|estimate|invoice|quote|pitch)/i;
         const looksLikeTasks = parts.every(p => verbRe.test(p) || p.split(/\s+/).length <= 8);
         if (parts.length >= 2 && looksLikeTasks) return parts;
     }
 
-    return [single];
+    // Apply conditional extraction to single-task lines
+    return [extractConditionalTask(single)];
 }
 
 /**
@@ -9870,13 +9911,67 @@ function smartSplitTasks(text) {
  */
 function inferTaskPriority(text, defaultPriority) {
     const lower = text.toLowerCase();
-    // High priority signals (word-stem matching — no trailing \b so "urgent" matches "urgently", "escalat" matches "escalate" etc)
-    if (/\b(urgent|asap|critical|important|deadline|overdue|immediate|eod|end\s+of\s+day)/i.test(lower)) return 'high';
-    if (/\b(chase|escalat|follow\s*up|remind|blocker)/i.test(lower)) return 'high';
+    // High priority signals
+    if (/\b(urgent|asap|critical|important|deadline|overdue|immediate|eod|end\s+of\s+day|emergency|emergent|show\s*stopper|deal[\s-]?breaker)\b/i.test(lower)) return 'high';
+    if (/\b(chase|escalat|follow\s*up|remind|blocker|sos|help)\b/i.test(lower)) return 'high';
+    if (/\b(P0|P1)\b/.test(text)) return 'high';
+    // Emoji-derived priority markers (from normalizeInputText)
+    if (/\[(?:FIRE|ALERT|SOS)\]/.test(text)) return 'high';
     // Low priority signals
-    if (/\b(when\s+you\s+can|nice\s+to\s+have|eventual|backlog|optional|later|someday)/i.test(lower)) return 'low';
-    if (/\b(tidy|clean\s*up|organis|reorganis|sort\s+out)/i.test(lower)) return 'low';
+    if (/\b(when\s+you\s+can|nice\s+to\s+have|eventual|backlog|optional|later|someday|no\s+rush|whenever|not\s+urgent|low\s+priority)\b/i.test(lower)) return 'low';
+    if (/\b(tidy|clean\s*up|organis|reorganis|sort\s+out)\b/i.test(lower)) return 'low';
+    if (/\bP2\b/.test(text)) return 'low';
+    if (/\[DONE\]/.test(text)) return 'low';
     return defaultPriority;
+}
+
+/**
+ * Normalize informal text before parsing.
+ * Expands contractions (gonna, gotta, wanna, lemme), abbreviations, and
+ * converts task-relevant emojis to text markers for priority detection.
+ */
+function normalizeInputText(text) {
+    let t = text;
+    // Informal contractions → standard forms (applied case-insensitive)
+    t = t.replace(/\bgonna\b/gi, 'going to');
+    t = t.replace(/\bgotta\b/gi, 'got to');
+    t = t.replace(/\bwanna\b/gi, 'want to');
+    t = t.replace(/\blemme\b/gi, 'let me');
+    t = t.replace(/\bdunno\b/gi, "don't know");
+    t = t.replace(/\bimma\b/gi, 'I am going to');
+    // Common abbreviation expansions (preserves ASAP/EOD/COB/EOW/EOM for date parser)
+    t = t.replace(/\bMTG\b/g, 'meeting');
+    t = t.replace(/\bw\/(?=\s)/gi, 'with');
+    t = t.replace(/\bb\/c\b/gi, 'because');
+    // Emoji → text markers (for priority and status detection)
+    t = t.replace(/\u{1F525}/gu, ' [FIRE] ');     // 🔥
+    t = t.replace(/\u{1F6A8}/gu, ' [ALERT] ');    // 🚨
+    t = t.replace(/\u26A0\uFE0F?/gu, ' [WARN] '); // ⚠️
+    t = t.replace(/\u2705/gu, ' [DONE] ');         // ✅
+    t = t.replace(/\u{1F4A5}/gu, ' [FIRE] ');     // 💥
+    t = t.replace(/\u{1F198}/gu, ' [SOS] ');      // 🆘
+    return t.replace(/\s{2,}/g, ' ');
+}
+
+/**
+ * Strip email reply chains and signatures from pasted email text.
+ * Removes "On ... wrote:" blocks, quoted lines, Outlook headers, signatures, disclaimers.
+ */
+function stripEmailChrome(text) {
+    let t = text;
+    // Remove "On Mon, Jan 5, 2026 at 3:45 PM, Name <email> wrote:" and everything after
+    t = t.replace(/\n\s*On\s+.{10,80}\s+wrote:\s*\n[\s\S]*$/m, '');
+    // Remove Outlook-style "-----Original Message-----" blocks and everything after
+    t = t.replace(/\n\s*-{2,}\s*(?:Original\s+Message|Forwarded\s+message)\s*-{2,}\s*\n[\s\S]*/i, '');
+    t = t.replace(/\n\s*From:\s+.+\n\s*Sent:\s+.+\n[\s\S]*/i, '');
+    // Remove quoted reply lines (> prefix)
+    t = t.replace(/^>+\s?.*$/gm, '');
+    // Remove common email signatures
+    t = t.replace(/\n\s*-{2,}\s*\n[\s\S]{0,500}$/, '');
+    t = t.replace(/\n\s*(?:Sent\s+from\s+my\s+(?:iPhone|iPad|Android|Galaxy|Pixel|phone)|Get\s+Outlook\s+for\s+\w+|Sent\s+via\s+.{3,30})\s*$/i, '');
+    // Remove confidentiality disclaimers at the end
+    t = t.replace(/\n\s*(?:CONFIDENTIAL|DISCLAIMER|This\s+email\s+(?:and\s+any\s+attachments?\s+)?(?:is|are)\s+(?:confidential|intended))[\s\S]{0,500}$/i, '');
+    return t.trim();
 }
 
 /**
@@ -9962,6 +10057,47 @@ function parseNaturalDate(text) {
               if (d < today) d = new Date(today.getFullYear() + 1, monthIdx, day);
               return d;
           }},
+        // "ASAP" / "immediately" / "right away" / "stat" → today
+        { re: /\b(?:asap|immediately|right\s+away|right\s+now|straightaway|stat)\b/i,
+          fn: () => new Date(today) },
+        // "first thing Monday" / "first thing tomorrow"
+        { re: /\bfirst\s+thing\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+          fn: (m) => nextWeekday(dayNames.indexOf(m[1].toLowerCase())) },
+        { re: /\bfirst\s+thing\s+(?:tomorrow|in\s+the\s+morning)\b/i,
+          fn: () => { const d = new Date(today); d.setDate(d.getDate() + 1); return d; } },
+        // "close of business Friday" / "COB Friday" / "COB today"
+        { re: /\b(?:close\s+of\s+business|cob)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+          fn: (m) => nextWeekday(dayNames.indexOf(m[1].toLowerCase())) },
+        { re: /\b(?:close\s+of\s+business|cob)\s*(?:today)?\b/i,
+          fn: () => new Date(today) },
+        // "start of business Monday" / "SOB Monday"
+        { re: /\b(?:start\s+of\s+business|sob)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+          fn: (m) => nextWeekday(dayNames.indexOf(m[1].toLowerCase())) },
+        // Month abbreviations: "by Jan 15" / "by 15 Feb" / "by Mar 10th"
+        { re: /\bby\s+(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?|(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i,
+          fn: (m) => {
+              const abbrevs = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+              const monthAbbr = (m[1] || m[4]).toLowerCase().slice(0, 3);
+              const day = parseInt(m[2] || m[3]);
+              const monthIdx = abbrevs.indexOf(monthAbbr);
+              if (monthIdx < 0) return new Date(today);
+              let d = new Date(today.getFullYear(), monthIdx, day);
+              if (d < today) d = new Date(today.getFullYear() + 1, monthIdx, day);
+              return d;
+          }},
+        // Quarter references: "Q1" → Mar 31, "end of Q2" → Jun 30, "by Q3" → Sep 30
+        { re: /\b(?:(?:end\s+of|by)\s+)?Q([1-4])\b/i,
+          fn: (m) => {
+              const q = parseInt(m[1]);
+              const endMonths = [2, 5, 8, 11]; // Mar, Jun, Sep, Dec (0-indexed)
+              const endDays = [31, 30, 30, 31];
+              let d = new Date(today.getFullYear(), endMonths[q - 1], endDays[q - 1]);
+              if (d < today) d = new Date(today.getFullYear() + 1, endMonths[q - 1], endDays[q - 1]);
+              return d;
+          }},
+        // "today" standalone (last to avoid clobbering more specific patterns)
+        { re: /\btoday\b/i,
+          fn: () => new Date(today) },
     ];
 
     for (const p of patterns) {
@@ -9976,11 +10112,81 @@ function parseNaturalDate(text) {
 }
 
 /**
+ * Check if a sentence is negated — "I don't need to", "No need to", "We decided not to".
+ * Returns true if the text expresses NOT doing something.
+ */
+function isNegated(text) {
+    const t = text.trim().toLowerCase();
+    return [
+        /\b(?:i|we|you|they)\s+(?:don[''\u2019]t|do\s+not|didn[''\u2019]t|did\s+not|won[''\u2019]t|will\s+not|can[''\u2019]t|cannot|couldn[''\u2019]t|shouldn[''\u2019]t|wouldn[''\u2019]t)\s+(?:need|have|want|plan|intend|bother)\s+to\b/,
+        /\bno\s+need\s+to\b/,
+        /\b(?:we|i|they)\s+(?:decided|agreed|chose|opted)\s+(?:not\s+to|against)\b/,
+        /\b(?:don[''\u2019]t|do\s+not)\s+(?:worry\s+about|bother\s+with|follow\s+up|stress\s+about)\b/,
+        /\bnot\s+(?:going\s+to|gonna|planning\s+to|necessary)\b/,
+        /\b(?:skip|cancel|drop|scrap|abandon|shelve|defer|postpone|deprioritize)\s+(?:the|this|that)\b/,
+        /\b(?:no\s+longer|not\s+anymore|never\s+mind|scratch\s+that|forget\s+(?:about\s+)?(?:it|that|this))\b/,
+        /\blet[''\u2019]?s\s+not\b/,
+        /\b(?:there[''\u2019]s|there\s+is)\s+no\s+need\b/,
+    ].some(re => re.test(t));
+}
+
+/**
+ * Check if text is a past-tense status report rather than a forward-looking task.
+ * "I sent the report", "We already handled it", "That's been resolved".
+ */
+function isPastTenseReport(text) {
+    const t = text.trim().toLowerCase();
+    return [
+        /\b(?:i|we|they|he|she)\s+(?:already\s+)?(?:sent|called|emailed|contacted|finished|completed|submitted|handled|resolved|fixed|updated|reviewed|prepared|created|wrote|drafted|booked|scheduled|arranged|confirmed|cancelled|paid|filed|deployed|uploaded|shared|forwarded|replied|responded|took\s+care\s+of)\b/,
+        /\b(?:that[''\u2019]s|it[''\u2019]s|this\s+(?:has|is))\s+(?:been|already)\s+(?:done|handled|resolved|completed|sent|fixed|sorted|taken\s+care\s+of|dealt\s+with|addressed)\b/,
+        /\b(?:already|previously)\s+(?:done|sent|completed|handled|resolved|submitted|fixed)\b/,
+        /\b(?:was|were|got)\s+(?:done|finished|completed|sorted|resolved|handled)\s+(?:yesterday|last\s+week|earlier|this\s+morning|already)\b/,
+    ].some(re => re.test(t));
+}
+
+/**
+ * Check if text contains low-confidence hedging (transcript-only).
+ * "I might send it", "I could possibly review it", "Maybe I'll check".
+ */
+function hasLowConfidenceHedge(text) {
+    const t = text.trim().toLowerCase();
+    return [
+        /\bi\s+(?:might|may)\s+(?:possibly\s+)?(?:need\s+to\s+)?/,
+        /\bi\s+could\s+(?:possibly|maybe|potentially)\b/,
+        /\b(?:not\s+sure\s+if|unsure\s+(?:if|whether)|depends\s+(?:on|whether))\b/,
+        /\b(?:if\s+(?:i|we)\s+(?:get|have)\s+(?:time|a\s+chance))\b/,
+        /\b(?:possibly|potentially|tentatively|hypothetically)\s+(?:need|should|could)\b/,
+        /\b(?:thinking\s+about|considering|debating\s+whether)\b/,
+    ].some(re => re.test(t));
+}
+
+/**
+ * Extract the actionable clause from conditional / temporal sentences.
+ * "Once we get approval, send the invoice" → "Send the invoice"
+ * "After the meeting, follow up with Sarah" → "Follow up with Sarah"
+ * Returns the actionable part or the original text if no conditional found.
+ */
+function extractConditionalTask(text) {
+    const conditionalRe = /^(?:once|after|when|as\s+soon\s+as|if|before|upon|assuming|provided\s+(?:that)?)\s+.{5,60}?[,\u2014\-]\s*(.+)$/i;
+    const match = text.match(conditionalRe);
+    if (match && match[1] && match[1].trim().length >= 5) {
+        const action = match[1].trim();
+        // Capitalise first letter
+        return action.charAt(0).toUpperCase() + action.slice(1);
+    }
+    return text;
+}
+
+/**
  * Determine if a text line is an actionable task vs narrative/commentary.
  * Returns false for non-actionable content like "things went well", "had a good meeting", etc.
  */
 function isActionableTask(text) {
     const t = text.trim().toLowerCase();
+    if (t.length < 3) return false;
+    // Negation and past-tense checks
+    if (isNegated(text)) return false;
+    if (isPastTenseReport(text)) return false;
     if (t.length < 3) return false;
 
     // Narrative/commentary patterns — these are NOT tasks
@@ -10003,7 +10209,7 @@ function isActionableTask(text) {
     // Very short fragments with no verb — likely not a task
     const words = t.split(/\s+/);
     if (words.length <= 2) {
-        const actionVerbs = /^(chase|send|call|email|follow|update|review|prepare|check|write|create|finish|complete|submit|schedule|book|contact|draft|organise|organize|fix|build|set|meet|plan|arrange|confirm|cancel|order|research|look|sort|clean|test|deploy|upload|download|share|notify|remind|discuss|present|sign|approve|request|escalate|respond|reply|forward|ask|get|do|make|find|pay|buy|print|file|add|move|copy|open|close)/;
+        const actionVerbs = /^(chase|send|call|email|follow|update|review|prepare|check|write|create|finish|complete|submit|schedule|book|contact|draft|organise|organize|fix|build|set|meet|plan|arrange|confirm|cancel|order|research|look|sort|clean|test|deploy|upload|download|share|notify|remind|discuss|present|sign|approve|request|escalate|respond|reply|forward|ask|get|do|make|find|pay|buy|print|file|add|move|copy|open|close|run|migrate|audit|implement|integrate|onboard|brief|scope|estimate|invoice|quote|pitch|handover|debrief)/;
         if (!actionVerbs.test(words[0])) return false;
     }
 
@@ -10029,12 +10235,13 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
         let dueDate = todayStr;
         let taskText = line;
 
-        // Extract explicit priority: !high, !medium, !low, !urgent (→high), !important (→high)
+        // Extract explicit priority: !high, !medium, !low, !urgent, !important, P0, P1, P2
         let explicitPriority = false;
-        const prioMatch = taskText.match(/\s*!(high|medium|low|urgent|important)\s*/i);
+        const prioMatch = taskText.match(/\s*(?:!(high|medium|low|urgent|important)|(?:^|\s)(P0|P1|P2)(?:\s|$))/i);
         if (prioMatch) {
-            const p = prioMatch[1].toLowerCase();
-            priority = (p === 'urgent' || p === 'important') ? 'high' : p;
+            const p = (prioMatch[1] || prioMatch[2] || '').toLowerCase();
+            priority = (p === 'urgent' || p === 'important' || p === 'p0' || p === 'p1') ? 'high'
+                     : (p === 'p2') ? 'low' : p;
             taskText = taskText.replace(prioMatch[0], ' ').trim();
             explicitPriority = true;
         }
@@ -10048,8 +10255,21 @@ function parseTaskLines(text, defaultPriority, dateMode, customDate) {
             // Try ISO date first
             if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
                 dueDate = raw;
-            } else if (raw === 'today') {
+            } else if (raw === 'today' || raw === 'eod' || raw === 'cob' || raw === 'asap') {
                 dueDate = todayStr;
+            } else if (raw === 'eow') {
+                // End of week = next Friday (or today if already Friday)
+                const eow = new Date(today);
+                const dayOfWeek = eow.getDay();
+                let daysToFri = 5 - dayOfWeek;
+                if (daysToFri <= 0) daysToFri += 7;
+                if (dayOfWeek === 5) daysToFri = 0; // Already Friday
+                eow.setDate(eow.getDate() + daysToFri);
+                dueDate = eow.toISOString().split('T')[0];
+            } else if (raw === 'eom') {
+                // End of month
+                const eom = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                dueDate = eom.toISOString().split('T')[0];
             } else if (raw === 'tomorrow') {
                 const tmrw = new Date(today);
                 tmrw.setDate(today.getDate() + 1);
