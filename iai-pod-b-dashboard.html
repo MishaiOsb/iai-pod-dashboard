@@ -239,7 +239,7 @@ input, textarea, select { font-family: inherit; outline: none; }
     font-size: 10px; font-weight: 600; padding: 3px 10px;
     border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px;
     transition: all var(--transition-fast);
-    cursor: default;
+    cursor: pointer; position: relative;
 }
 .nav-connection-status .conn-dot {
     width: 7px; height: 7px; border-radius: 50%;
@@ -261,6 +261,37 @@ input, textarea, select { font-family: inherit; outline: none; }
     background: rgba(255,203,0,0.15); color: var(--rag-amber);
 }
 .nav-connection-status[data-status="offline"] .conn-dot { background: var(--rag-amber); }
+.conn-dropdown {
+    display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--bg-card); border: 1px solid var(--border-default);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
+    min-width: 220px; padding: 10px 0; z-index: 1000;
+}
+.conn-dropdown.open { display: block; }
+.conn-dropdown-title {
+    padding: 0 14px 8px; font-size: 11px; font-weight: 700; color: var(--text-primary);
+    text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-default);
+    margin-bottom: 6px;
+}
+.conn-dropdown-row {
+    display: flex; align-items: center; gap: 10px; padding: 7px 14px;
+    font-size: 12px; font-weight: 500; color: var(--text-secondary);
+}
+.conn-dropdown-row .conn-svc-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.conn-dropdown-row .conn-svc-dot.green { background: #00c875; box-shadow: 0 0 4px rgba(0,200,117,0.5); }
+.conn-dropdown-row .conn-svc-dot.amber { background: var(--rag-amber); box-shadow: 0 0 4px rgba(255,203,0,0.5); }
+.conn-dropdown-row .conn-svc-dot.red { background: var(--rag-red); box-shadow: 0 0 4px rgba(226,68,92,0.5); }
+.conn-dropdown-row .conn-svc-dot.gray { background: var(--text-muted); opacity: 0.5; }
+.conn-dropdown-row .conn-svc-name { flex: 1; }
+.conn-dropdown-row .conn-svc-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.conn-dropdown-row .conn-svc-label.green { color: #00c875; }
+.conn-dropdown-row .conn-svc-label.amber { color: var(--rag-amber); }
+.conn-dropdown-row .conn-svc-label.red { color: var(--rag-red); }
+.conn-dropdown-row .conn-svc-label.gray { color: var(--text-muted); }
 
 /* ========================================================
    LOADING OVERLAY
@@ -3227,7 +3258,32 @@ input, textarea, select { font-family: inherit; outline: none; }
             <button data-theme-btn="dark" onclick="setTheme('dark')" title="Dark mode">&#9790;</button>
             <button data-theme-btn="system" onclick="setTheme('system')" title="Match system">&#128187;</button>
         </div>
-        <span class="nav-connection-status" id="navConnectionStatus" data-status="online" style="display:none;"><span class="conn-dot"></span><span id="connStatusText">Online</span></span>
+        <span class="nav-connection-status" id="navConnectionStatus" data-status="online" style="display:none;" onclick="toggleConnDropdown(event)">
+            <span class="conn-dot"></span><span id="connStatusText">Online</span>
+            <div class="conn-dropdown" id="connDropdown">
+                <div class="conn-dropdown-title">Service Status</div>
+                <div class="conn-dropdown-row" id="connRow-monday">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">monday.com</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
+                <div class="conn-dropdown-row" id="connRow-outlook">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">Outlook</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
+                <div class="conn-dropdown-row" id="connRow-calendar">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">Calendar</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
+                <div class="conn-dropdown-row" id="connRow-ai">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">AI Assistant</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
+            </div>
+        </span>
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
     </div>
 </nav>
@@ -11988,6 +12044,49 @@ function updateConnectionIndicator() {
         textEl.textContent = labels[overall] || 'Online';
         el.title = ConnectionStatus.getTooltip();
     }
+
+    // Update dropdown rows
+    _updateConnRow('connRow-monday', ConnectionStatus.monday, {
+        ok: 'Connected', error: 'Failed', unknown: 'Pending'
+    });
+    _updateConnRow('connRow-outlook', ConnectionStatus.outlook, {
+        ok: 'Connected', error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
+    }, !OutlookSync.hasToken());
+    _updateConnRow('connRow-calendar', ConnectionStatus.calendar, {
+        ok: 'Connected', error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
+    }, !CalendarSync.hasToken());
+    _updateConnRow('connRow-ai', ConnectionStatus.aiAssistant, {
+        ok: 'Connected', 'no-key': 'No key', unknown: 'Pending'
+    });
+}
+
+function _updateConnRow(rowId, status, labelMap, hidden) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    if (hidden) { row.style.display = 'none'; return; }
+    row.style.display = '';
+    const dot = row.querySelector('.conn-svc-dot');
+    const label = row.querySelector('.conn-svc-label');
+    const colorClass = status === 'ok' ? 'green' : (status === 'error' || status === 'token-expired') ? 'red' : (status === 'no-key' || status === 'no-token') ? 'amber' : 'gray';
+    dot.className = 'conn-svc-dot ' + colorClass;
+    label.className = 'conn-svc-label ' + colorClass;
+    label.textContent = labelMap[status] || 'Pending';
+}
+
+function toggleConnDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('connDropdown');
+    dd.classList.toggle('open');
+    // Close on outside click
+    if (dd.classList.contains('open')) {
+        setTimeout(() => {
+            document.addEventListener('click', _closeConnDropdown, { once: true });
+        }, 0);
+    }
+}
+function _closeConnDropdown() {
+    const dd = document.getElementById('connDropdown');
+    if (dd) dd.classList.remove('open');
 }
 
 function updateModeUI() {
