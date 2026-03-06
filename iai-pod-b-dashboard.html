@@ -891,6 +891,78 @@ input, textarea, select { font-family: inherit; outline: none; }
     font-size: 10px; font-weight: 600; padding: 2px 8px;
     border-radius: 4px;
 }
+
+/* Enhanced Agent Cards */
+.agent-card-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+    margin-bottom: 24px;
+}
+.agent-card {
+    background: var(--card-bg); border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+    padding: 16px; transition: all var(--transition-fast); cursor: pointer; position: relative;
+    border-left: 3px solid var(--border-subtle);
+}
+.agent-card:hover { border-color: var(--brand-purple); box-shadow: 0 2px 12px rgba(107,48,255,0.1); }
+.agent-card.stage-live { border-left-color: #00c875; }
+.agent-card.stage-production { border-left-color: #579bfc; }
+.agent-card.stage-onboarding { border-left-color: #fdab3d; }
+.agent-card.stage-ready { border-left-color: #9cd326; }
+.agent-card.stage-building { border-left-color: #784bd1; }
+.agent-card.stage-stuck { border-left-color: #df2f4a; }
+.agent-card-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.agent-card-name {
+    font-size: 14px; font-weight: 600; color: var(--text-primary); flex: 1;
+}
+.agent-stage-badge {
+    font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.agent-stage-badge.live { background: rgba(0,200,117,0.15); color: #00c875; }
+.agent-stage-badge.production { background: rgba(87,155,252,0.15); color: #579bfc; }
+.agent-stage-badge.onboarding { background: rgba(253,171,61,0.15); color: #fdab3d; }
+.agent-stage-badge.ready { background: rgba(156,211,38,0.15); color: #9cd326; }
+.agent-stage-badge.building { background: rgba(120,75,209,0.15); color: #784bd1; }
+.agent-stage-badge.stuck { background: rgba(223,47,74,0.15); color: #df2f4a; }
+.agent-stage-badge.unknown { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+.agent-card-meta {
+    display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--text-secondary);
+}
+.agent-card-meta span { display: flex; align-items: center; gap: 4px; }
+.agent-card-details {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle);
+    display: none; font-size: 12px;
+}
+.agent-card.expanded .agent-card-details { display: block; }
+.agent-card-details .agent-detail-row {
+    display: flex; justify-content: space-between; padding: 4px 0;
+    border-bottom: 1px dashed var(--border-subtle);
+}
+.agent-detail-row .detail-label { color: var(--text-muted); font-size: 11px; }
+.agent-detail-row .detail-value { color: var(--text-primary); font-weight: 500; font-size: 11px; max-width: 60%; text-align: right; }
+.agent-card-expand {
+    font-size: 10px; color: var(--text-muted); text-align: center; margin-top: 8px;
+    cursor: pointer; transition: color var(--transition-fast);
+}
+.agent-card-expand:hover { color: var(--brand-purple); }
+
+/* Agents Overview Page */
+.agents-overview-header {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    margin-bottom: 20px;
+}
+.agents-stage-pills {
+    display: flex; gap: 6px; flex-wrap: wrap;
+}
+.agents-stage-pill {
+    font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 12px;
+    cursor: pointer; transition: all var(--transition-fast); border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary); color: var(--text-secondary);
+}
+.agents-stage-pill.active { background: var(--brand-purple); color: white; border-color: var(--brand-purple); }
+.agents-stage-pill:hover:not(.active) { border-color: var(--brand-purple); color: var(--brand-purple); }
+
 .detail-footer {
     padding: 16px 24px;
     border-top: 1px solid var(--border-subtle);
@@ -3317,7 +3389,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 <div class="share-overlay" id="shareOverlay" onclick="if(event.target===this)ShareSnapshot.close()">
     <div class="share-modal">
         <div class="share-modal-header">
-            <h3>&#128228; Dashboard Snapshot</h3>
+            <h3>&#128202; Weekly Report</h3>
             <button class="share-modal-close" onclick="ShareSnapshot.close()" title="Close">&times;</button>
         </div>
         <div class="share-modal-actions">
@@ -3400,6 +3472,9 @@ input, textarea, select { font-family: inherit; outline: none; }
     </a>
     <a class="sidebar-nav-item" data-route="clients/compare" onclick="Router.navigate('clients/compare')">
         <span class="nav-icon">&#128203;</span> Compare Clients
+    </a>
+    <a class="sidebar-nav-item" data-route="agents" onclick="Router.navigate('agents')">
+        <span class="nav-icon">&#129302;</span> All Agents
     </a>
     <div style="border-top:1px solid var(--border-subtle);margin:10px 16px;"></div>
     <a class="sidebar-nav-item" data-route="knowledgebase" onclick="Router.navigate('knowledgebase')">
@@ -3688,6 +3763,11 @@ input, textarea, select { font-family: inherit; outline: none; }
         <div id="compareContent"></div>
     </div>
 
+    <!-- ====== PAGE: AGENTS OVERVIEW ====== -->
+    <div class="page-container" id="page-agents">
+        <div id="agentsPageContent"></div>
+    </div>
+
     <!-- ====== PAGE: CLIENT DETAIL ====== -->
     <div class="page-container" id="page-client-detail">
         <div id="clientDetailContent"></div>
@@ -3763,7 +3843,7 @@ const Router = {
     currentParams: null,
     _chartInstances: {},  // track detail-page chart instances for cleanup
 
-    pages: ['overview', 'charts', 'targets', 'emails', 'clients', 'clients/compare', 'client-detail'],
+    pages: ['overview', 'charts', 'targets', 'emails', 'clients', 'clients/compare', 'agents', 'client-detail'],
 
     toggleSidebar() {
         this.sidebarOpen = !this.sidebarOpen;
@@ -3787,7 +3867,7 @@ const Router = {
             return { route: 'client-detail', params: { id: h.replace('client/', '') } };
         }
         if (h === 'clients/compare') return { route: 'clients/compare', params: null };
-        const valid = ['overview', 'charts', 'targets', 'planner', 'emails', 'clients', 'knowledgebase'];
+        const valid = ['overview', 'charts', 'targets', 'planner', 'emails', 'clients', 'agents', 'knowledgebase'];
         return { route: valid.includes(h) ? h : 'overview', params: null };
     },
 
@@ -3859,6 +3939,9 @@ const Router = {
                 break;
             case 'clients/compare':
                 if (typeof renderComparisonTable === 'function') renderComparisonTable();
+                break;
+            case 'agents':
+                if (typeof renderAgentsOverview === 'function') renderAgentsOverview();
                 break;
             case 'client-detail':
                 if (params && params.id && typeof renderClientFullPage === 'function') {
@@ -7653,9 +7736,57 @@ const State = {
                     const scv = {};
                     s.column_values.forEach(c => { scv[c.id] = c; });
                     const stageCol = scv['color_mkynkxhs'] || scv['status'] || {};
-                    return { id: s.id, name: s.name, stage: stageCol.text || 'Unknown' };
+
+                    // Extract all column values into a readable dict
+                    const allColumns = {};
+                    let platform = '';
+                    let description = '';
+                    let link = '';
+                    let date = '';
+                    s.column_values.forEach(c => {
+                        const val = c.text || '';
+                        if (val) allColumns[c.id] = val;
+
+                        // Auto-detect useful fields by column type
+                        if (!platform && c.type === 'dropdown' && val) platform = val;
+                        if (!description && c.type === 'text' && val && val.length > 5) description = val;
+                        if (!link && c.type === 'link' && val) {
+                            try { link = JSON.parse(c.value)?.url || val; } catch { link = val; }
+                        }
+                        if (!date && c.type === 'date' && val) date = val;
+                    });
+
+                    return {
+                        id: s.id,
+                        name: s.name,
+                        stage: stageCol.text || 'Unknown',
+                        platform,
+                        description,
+                        link,
+                        date,
+                        allColumns,
+                    };
                 }),
             };
+
+            // Derive client-level agentStage + platform from agents
+            const agents = obj.agents || [];
+            if (agents.length > 0) {
+                // agentStage: most common stage, or "Mixed" if multiple
+                const stageCounts = {};
+                agents.forEach(a => { stageCounts[a.stage] = (stageCounts[a.stage] || 0) + 1; });
+                const stages = Object.keys(stageCounts);
+                obj.agentStage = stages.length === 1 ? stages[0] : stages.length > 1 ? 'Mixed' : 'Unknown';
+
+                // platform: unique platforms joined
+                const platforms = [...new Set(agents.map(a => a.platform).filter(Boolean))];
+                obj.platform = platforms.length > 0 ? platforms.join(', ') : '';
+            } else {
+                obj.agentStage = '';
+                obj.platform = '';
+            }
+
+            return obj;
         });
     },
 
@@ -9879,6 +10010,180 @@ function buildClientMeetingsSection(clientName) {
     </div>`;
 }
 
+function agentStageClass(stage) {
+    const s = (stage || '').toLowerCase();
+    if (s === 'live') return 'live';
+    if (s === 'production') return 'production';
+    if (s === 'onboarding') return 'onboarding';
+    if (s === 'ready') return 'ready';
+    if (s === 'building') return 'building';
+    if (s === 'stuck') return 'stuck';
+    return 'unknown';
+}
+
+function buildAgentCardsSection(client) {
+    const agents = client.agents || [];
+    if (agents.length === 0) {
+        return `<div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">&#129302; Deployed Agents (0)</h3>
+            <p style="font-size:12px;color:var(--text-muted);font-style:italic;">No agents configured as subitems in monday.com</p>
+        </div>`;
+    }
+
+    const cards = agents.map(a => {
+        const cls = agentStageClass(a.stage);
+        const detailRows = Object.entries(a.allColumns || {})
+            .filter(([id]) => id !== 'color_mkynkxhs' && id !== 'status' && id !== 'name')
+            .map(([id, val]) => {
+                const label = id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                return `<div class="agent-detail-row"><span class="detail-label">${label}</span><span class="detail-value">${val}</span></div>`;
+            }).join('');
+
+        return `<div class="agent-card stage-${cls}" onclick="this.classList.toggle('expanded')">
+            <div class="agent-card-header">
+                <span class="agent-card-name">${a.name}</span>
+                <span class="agent-stage-badge ${cls}">${a.stage}</span>
+            </div>
+            <div class="agent-card-meta">
+                ${a.platform ? `<span>&#128187; ${a.platform}</span>` : ''}
+                ${a.description ? `<span>&#128196; ${a.description.length > 60 ? a.description.substring(0,60) + '...' : a.description}</span>` : ''}
+                ${a.date ? `<span>&#128197; ${a.date}</span>` : ''}
+                ${a.link ? `<span>&#128279; <a href="${a.link}" target="_blank" onclick="event.stopPropagation()" style="color:var(--brand-purple);">Link</a></span>` : ''}
+            </div>
+            ${detailRows ? `<div class="agent-card-details">${detailRows}</div><div class="agent-card-expand">&#9660; click to expand / collapse</div>` : ''}
+        </div>`;
+    }).join('');
+
+    // Stage summary pills
+    const stageCounts = {};
+    agents.forEach(a => { stageCounts[a.stage] = (stageCounts[a.stage] || 0) + 1; });
+    const pills = Object.entries(stageCounts).map(([stage, count]) => {
+        const cls = agentStageClass(stage);
+        return `<span class="agent-stage-badge ${cls}" style="font-size:11px;">${count} ${stage}</span>`;
+    }).join(' ');
+
+    return `<div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0;">&#129302; Deployed Agents (${agents.length})</h3>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">${pills}</div>
+        </div>
+        <div class="agent-card-grid">${cards}</div>
+    </div>`;
+}
+
+function renderAgentsOverview() {
+    const container = document.getElementById('agentsPageContent');
+    if (!container) return;
+
+    // Flatten all agents across clients
+    const allAgents = [];
+    State.clients.forEach(c => {
+        (c.agents || []).forEach(a => {
+            allAgents.push({ ...a, clientName: c.name, clientId: c.id, clientRag: c.rag });
+        });
+    });
+
+    // Stage counts for filter pills
+    const stageCounts = { All: allAgents.length };
+    allAgents.forEach(a => { stageCounts[a.stage] = (stageCounts[a.stage] || 0) + 1; });
+
+    // Build stage filter pills
+    const pills = Object.entries(stageCounts).map(([stage, count]) => {
+        const cls = stage === 'All' ? '' : agentStageClass(stage);
+        return `<span class="agents-stage-pill active" data-stage="${stage}" onclick="filterAgentsTable('${stage}')">${stage} (${count})</span>`;
+    }).join('');
+
+    // Sort agents: by client name then agent name
+    allAgents.sort((a, b) => a.clientName.localeCompare(b.clientName) || a.name.localeCompare(b.name));
+
+    // Build table rows
+    const rows = allAgents.map(a => {
+        const cls = agentStageClass(a.stage);
+        const ragC = a.clientRag === 'Green' ? '#00c875' : a.clientRag === 'Amber' ? '#fdab3d' : a.clientRag === 'Red' ? '#df2f4a' : '#666';
+        return `<tr data-stage="${a.stage}">
+            <td>
+                <a style="color:var(--brand-purple);cursor:pointer;font-weight:600;text-decoration:none;" onclick="Router.navigate('client/${a.clientId}')">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${ragC};margin-right:6px;"></span>${a.clientName}
+                </a>
+            </td>
+            <td style="font-weight:600;">${a.name}</td>
+            <td><span class="agent-stage-badge ${cls}">${a.stage}</span></td>
+            <td>${a.platform || '--'}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(a.description || '').replace(/"/g, '&quot;')}">${a.description || '--'}</td>
+            <td>${a.date || '--'}</td>
+            <td>${a.link ? `<a href="${a.link}" target="_blank" style="color:var(--brand-purple);">&#128279;</a>` : '--'}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="agents-overview-header">
+            <div>
+                <h2 style="font-size:20px;font-weight:700;color:var(--text-primary);margin:0;">&#129302; All Agents</h2>
+                <p style="font-size:12px;color:var(--text-muted);margin-top:4px;">${allAgents.length} agents across ${State.clients.length} clients</p>
+            </div>
+            <div class="agents-stage-pills" id="agentsStagePills">${pills}</div>
+        </div>
+        ${allAgents.length === 0 ? '<p style="color:var(--text-muted);font-style:italic;text-align:center;padding:40px 0;">No agents found — agents are loaded from monday.com subitems</p>' : `
+        <div style="overflow-x:auto;">
+            <table class="compare-table" id="agentsTable" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th style="cursor:pointer;" onclick="sortAgentsTable('clientName')">Client &#8597;</th>
+                        <th style="cursor:pointer;" onclick="sortAgentsTable('name')">Agent Name &#8597;</th>
+                        <th style="cursor:pointer;" onclick="sortAgentsTable('stage')">Stage &#8597;</th>
+                        <th>Platform</th>
+                        <th>Description</th>
+                        <th style="cursor:pointer;" onclick="sortAgentsTable('date')">Date &#8597;</th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody id="agentsTableBody">${rows}</tbody>
+            </table>
+        </div>`}
+    `;
+
+    // Set initial filter state
+    window._agentsFilter = 'All';
+    window._agentsSortCol = 'clientName';
+    window._agentsSortDir = 'asc';
+
+    // Activate only 'All' pill initially
+    document.querySelectorAll('#agentsStagePills .agents-stage-pill').forEach(p => {
+        p.classList.toggle('active', p.dataset.stage === 'All');
+    });
+}
+
+function filterAgentsTable(stage) {
+    window._agentsFilter = stage;
+    document.querySelectorAll('#agentsStagePills .agents-stage-pill').forEach(p => {
+        p.classList.toggle('active', p.dataset.stage === stage);
+    });
+    const rows = document.querySelectorAll('#agentsTableBody tr');
+    rows.forEach(r => {
+        r.style.display = (stage === 'All' || r.dataset.stage === stage) ? '' : 'none';
+    });
+}
+
+function sortAgentsTable(col) {
+    if (window._agentsSortCol === col) {
+        window._agentsSortDir = window._agentsSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        window._agentsSortCol = col;
+        window._agentsSortDir = 'asc';
+    }
+    const tbody = document.getElementById('agentsTableBody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const colIdx = { clientName: 0, name: 1, stage: 2, date: 5 }[col] ?? 0;
+    const dir = window._agentsSortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+        const aT = (a.cells[colIdx]?.textContent || '').trim().toLowerCase();
+        const bT = (b.cells[colIdx]?.textContent || '').trim().toLowerCase();
+        return aT.localeCompare(bT) * dir;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
 function renderClientFullPage(clientId) {
     State.selectedId = clientId;
     State.pendingChanges = {};
@@ -9997,6 +10302,8 @@ function renderClientFullPage(clientId) {
                 <div class="chart-container" style="display:flex;flex-direction:column;gap:10px;justify-content:center;padding:10px 0;" id="detailTimeline"></div>
             </div>
         </div>
+
+        ${buildAgentCardsSection(c)}
 
         <div class="client-detail-notes">
             <h3>&#128221; Notes (${NotesManager.get(c.id).length})</h3>
@@ -12542,7 +12849,93 @@ const ShareSnapshot = {
         const billingActive = clients.filter(c => c.billing === 'Yes').length;
         const totalAgents = clients.reduce((s, c) => s + (c.agentCount || 0), 0);
 
-        return { total, green, amber, red, avgHealth, billingActive, totalAgents };
+        // Agent stage breakdown
+        const agentsByStage = {};
+        clients.forEach(c => (c.agents || []).forEach(a => {
+            agentsByStage[a.stage] = (agentsByStage[a.stage] || 0) + 1;
+        }));
+
+        // Clients needing attention (Red RAG or stale contact)
+        const needsAttention = clients.filter(c => {
+            if (c.rag === 'Red') return true;
+            const days = getDaysSinceContact(c.lastContact);
+            return days !== null && days > 14;
+        }).map(c => ({
+            name: c.name, rag: c.rag, health: State.calcHealth(c),
+            daysSinceContact: getDaysSinceContact(c.lastContact),
+            reason: c.rag === 'Red' ? 'Red RAG' : 'Stale contact (' + getDaysSinceContact(c.lastContact) + 'd)',
+        }));
+
+        // Email totals
+        let emailsSent = 0, emailsReceived = 0, emailClientsTracked = 0;
+        Object.entries(EMAIL_DATA.clients || {}).forEach(([name, data]) => {
+            if (!data || !data.emails) return;
+            emailClientsTracked++;
+            data.emails.forEach(e => {
+                if (e.isFromMe) emailsSent++;
+                else emailsReceived++;
+            });
+        });
+
+        // Teams totals
+        let teamsSent = 0, teamsReceived = 0, teamsClientsTracked = 0;
+        Object.entries(TEAMS_DATA.clients || {}).forEach(([name, data]) => {
+            if (!data) return;
+            teamsClientsTracked++;
+            teamsSent += data.sent || 0;
+            teamsReceived += data.received || 0;
+        });
+
+        // Meetings from Fireflies
+        const meetingsList = (typeof FirefliesSync !== 'undefined' && FirefliesSync.getMeetings)
+            ? FirefliesSync.getMeetings().slice(0, 10) : [];
+
+        // Upcoming dates (go-live / deadlines within 30 days)
+        const now = new Date();
+        const thirtyDaysOut = new Date(now.getTime() + 30 * 86400000);
+        const upcoming = [];
+        clients.forEach(c => {
+            if (c.goLive) {
+                const d = new Date(c.goLive);
+                if (d >= now && d <= thirtyDaysOut) upcoming.push({ client: c.name, type: 'Go-Live', date: c.goLive });
+            }
+            if (c.deadline) {
+                const d = new Date(c.deadline);
+                if (d >= now && d <= thirtyDaysOut) upcoming.push({ client: c.name, type: 'Deadline', date: c.deadline });
+            }
+        });
+        upcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        return {
+            total, green, amber, red, avgHealth, billingActive, totalAgents,
+            agentsByStage, needsAttention,
+            emailsSent, emailsReceived, emailClientsTracked,
+            teamsSent, teamsReceived, teamsClientsTracked,
+            meetingsList, upcoming,
+        };
+    },
+
+    _generateExecSummary(s) {
+        const parts = [];
+        // Health assessment
+        if (s.avgHealth >= 75) parts.push(`Portfolio is in strong health (avg ${s.avgHealth}/100) with ${s.green}/${s.total} clients at Green RAG.`);
+        else if (s.avgHealth >= 50) parts.push(`Portfolio health is moderate (avg ${s.avgHealth}/100) — ${s.amber} clients at Amber and ${s.red} at Red require focus.`);
+        else parts.push(`Portfolio health needs attention (avg ${s.avgHealth}/100) — ${s.red} client(s) at Red RAG.`);
+
+        // Attention callouts
+        if (s.needsAttention.length > 0) {
+            const redNames = s.needsAttention.filter(n => n.rag === 'Red').map(n => n.name);
+            if (redNames.length > 0) parts.push(`Red flag: ${redNames.join(', ')}.`);
+        }
+
+        // Agent + comms summary
+        const commParts = [];
+        if (s.totalAgents > 0) commParts.push(`${s.totalAgents} agents deployed`);
+        if (s.emailsSent + s.emailsReceived > 0) commParts.push(`${s.emailsSent + s.emailsReceived} emails tracked`);
+        if (s.teamsSent + s.teamsReceived > 0) commParts.push(`${s.teamsSent + s.teamsReceived} Teams messages`);
+        if (commParts.length > 0) parts.push(commParts.join(', ') + '.');
+
+        return parts.join(' ');
     },
 
     render() {
@@ -12551,43 +12944,71 @@ const ShareSnapshot = {
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
+        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} — ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
 
         let html = `
             <div class="snap-header">
-                <div class="snap-title">IAI ${RUNTIME.podName || 'Pod B'} — Client Progress Snapshot</div>
-                <div class="snap-subtitle">Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>
-            </div>
+                <div class="snap-title">&#128202; IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</div>
+                <div class="snap-subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>
+            </div>`;
 
-            <div class="snap-kpi-row">
-                <div class="snap-kpi">
-                    <div class="snap-kpi-value">${s.total}</div>
-                    <div class="snap-kpi-label">Total Clients</div>
-                </div>
-                <div class="snap-kpi">
-                    <div class="snap-kpi-value" style="color:${healthColor(s.avgHealth)}">${s.avgHealth}</div>
-                    <div class="snap-kpi-label">Avg Health</div>
-                </div>
-                <div class="snap-kpi">
-                    <div class="snap-kpi-value" style="color:#00c875">${s.green}</div>
-                    <div class="snap-kpi-label">Green RAG</div>
-                </div>
-                <div class="snap-kpi">
-                    <div class="snap-kpi-value">${s.totalAgents}</div>
-                    <div class="snap-kpi-label">Total Agents</div>
-                </div>
-            </div>
+        // Executive Summary
+        const execSummary = this._generateExecSummary(s);
+        html += `<div style="background:rgba(107,48,255,0.08);border:1px solid rgba(107,48,255,0.2);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px;">
+            <div style="font-size:12px;font-weight:700;color:var(--brand-purple);margin-bottom:6px;">&#128161; Executive Summary</div>
+            <div style="font-size:12px;color:var(--text-primary);line-height:1.6;">${execSummary}</div>
+        </div>`;
 
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-                <span style="font-size:11px;padding:4px 10px;border-radius:10px;background:rgba(0,200,117,0.12);color:#00c875;font-weight:600;">&#9679; ${s.green} Green</span>
-                <span style="font-size:11px;padding:4px 10px;border-radius:10px;background:rgba(253,171,61,0.12);color:#fdab3d;font-weight:600;">&#9679; ${s.amber} Amber</span>
-                <span style="font-size:11px;padding:4px 10px;border-radius:10px;background:rgba(223,47,74,0.12);color:#df2f4a;font-weight:600;">&#9679; ${s.red} Red</span>
-                <span style="font-size:11px;padding:4px 10px;border-radius:10px;background:rgba(255,255,255,0.06);color:var(--text-secondary);font-weight:600;">&#128179; ${s.billingActive}/${s.total} Billing Active</span>
-            </div>
+        // KPI Grid (6 columns)
+        html += `<div class="snap-kpi-row" style="grid-template-columns:repeat(6,1fr);">
+            <div class="snap-kpi"><div class="snap-kpi-value">${s.total}</div><div class="snap-kpi-label">Clients</div></div>
+            <div class="snap-kpi"><div class="snap-kpi-value" style="color:${healthColor(s.avgHealth)}">${s.avgHealth}</div><div class="snap-kpi-label">Avg Health</div></div>
+            <div class="snap-kpi"><div class="snap-kpi-value" style="color:#00c875">${s.green}</div><div class="snap-kpi-label">Green</div></div>
+            <div class="snap-kpi"><div class="snap-kpi-value" style="color:#fdab3d">${s.amber}</div><div class="snap-kpi-label">Amber</div></div>
+            <div class="snap-kpi"><div class="snap-kpi-value" style="color:#df2f4a">${s.red}</div><div class="snap-kpi-label">Red</div></div>
+            <div class="snap-kpi"><div class="snap-kpi-value">${s.totalAgents}</div><div class="snap-kpi-label">Agents</div></div>
+        </div>`;
 
-            <div class="snap-section-title">Client Details</div>
-            <div class="snap-clients-grid">`;
+        // Quick stat pills
+        html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+            <span style="font-size:11px;padding:4px 12px;border-radius:10px;background:rgba(0,200,117,0.12);color:#00c875;font-weight:600;">&#128179; ${s.billingActive}/${s.total} Billing</span>
+            <span style="font-size:11px;padding:4px 12px;border-radius:10px;background:rgba(87,155,252,0.12);color:#579bfc;font-weight:600;">&#128236; ${s.emailsSent}&#8593; ${s.emailsReceived}&#8595; Emails</span>
+            <span style="font-size:11px;padding:4px 12px;border-radius:10px;background:rgba(120,75,209,0.12);color:#a78bfa;font-weight:600;">&#128172; ${s.teamsSent}&#8593; ${s.teamsReceived}&#8595; Teams</span>
+            <span style="font-size:11px;padding:4px 12px;border-radius:10px;background:rgba(255,255,255,0.06);color:var(--text-secondary);font-weight:600;">&#127908; ${s.meetingsList.length} Meetings</span>
+        </div>`;
 
-        // Sort by health descending for the snapshot
+        // Clients Needing Attention
+        if (s.needsAttention.length > 0) {
+            html += `<div class="snap-section-title" style="color:#df2f4a;">&#9888; Clients Needing Attention (${s.needsAttention.length})</div>`;
+            html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:16px;">`;
+            s.needsAttention.forEach(n => {
+                const ragC = this._ragColor(n.rag);
+                html += `<div style="background:rgba(223,47,74,0.06);border:1px solid rgba(223,47,74,0.2);border-radius:var(--radius-md);padding:10px 14px;border-left:3px solid ${ragC};">
+                    <div style="font-weight:600;font-size:13px;color:var(--text-primary);margin-bottom:4px;">${n.name}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">Health: <span style="color:${healthColor(n.health)};font-weight:600;">${n.health}</span> &middot; ${n.reason}</div>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+
+        // Agent Portfolio Summary
+        const stageEntries = Object.entries(s.agentsByStage);
+        if (stageEntries.length > 0) {
+            html += `<div class="snap-section-title">&#129302; Agent Portfolio (${s.totalAgents} total)</div>`;
+            html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">`;
+            stageEntries.forEach(([stage, count]) => {
+                const cls = agentStageClass(stage);
+                const colors = { live:'#00c875', production:'#579bfc', onboarding:'#fdab3d', ready:'#9cd326', building:'#784bd1', stuck:'#df2f4a' };
+                const c = colors[cls] || '#888';
+                html += `<span style="font-size:11px;padding:4px 12px;border-radius:10px;background:${c}18;color:${c};font-weight:600;border:1px solid ${c}30;">${count} ${stage}</span>`;
+            });
+            html += `</div>`;
+        }
+
+        // Per-Client Status Cards
+        html += `<div class="snap-section-title">Client Status</div><div class="snap-clients-grid">`;
         const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
         sorted.forEach(c => {
@@ -12595,46 +13016,92 @@ const ShareSnapshot = {
             const hColor = healthColor(health);
             const ragC = this._ragColor(c.rag);
             const ragCls = this._ragClass(c.rag);
-            const summaryText = c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '';
+            const summaryText = c.summary ? (c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary) : '';
 
-            html += `
-                <div class="snap-client-card ${ragCls}">
-                    <div class="snap-client-header">
-                        <div class="snap-rag-dot" style="background:${ragC};" title="${c.rag}"></div>
-                        <div class="snap-client-name">${c.name}</div>
-                        <div class="snap-health-badge" style="color:${hColor}">Health: ${health}</div>
-                    </div>
-                    <div class="snap-client-metrics">
-                        <div class="snap-metric"><span class="snap-metric-label">RAG Status</span><span class="snap-metric-value" style="color:${ragC}">${c.rag}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">Plan</span><span class="snap-metric-value">${c.plan || 'N/A'}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">Billing</span><span class="snap-metric-value">${c.billing}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">Update Status</span><span class="snap-metric-value">${c.updateStatus}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">Agents</span><span class="snap-metric-value">${c.agentCount}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">AIOS Days</span><span class="snap-metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">Last Contact</span><span class="snap-metric-value">${daysAgo(c.lastContact)}</span></div>
-                        <div class="snap-metric"><span class="snap-metric-label">Commencement</span><span class="snap-metric-value">${this._formatDate(c.commencement)}</span></div>
-                    </div>`;
+            // Email status for this client
+            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
+
+            html += `<div class="snap-client-card ${ragCls}">
+                <div class="snap-client-header">
+                    <div class="snap-rag-dot" style="background:${ragC};" title="${c.rag}"></div>
+                    <div class="snap-client-name">${c.name}</div>
+                    <div class="snap-health-badge" style="color:${hColor}">Health: ${health}</div>
+                </div>
+                <div class="snap-client-metrics">
+                    <div class="snap-metric"><span class="snap-metric-label">RAG</span><span class="snap-metric-value" style="color:${ragC}">${c.rag}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Plan</span><span class="snap-metric-value">${c.plan || 'N/A'}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Billing</span><span class="snap-metric-value">${c.billing}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Update</span><span class="snap-metric-value">${c.updateStatus}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Agents</span><span class="snap-metric-value">${c.agentCount}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">AIOS Days</span><span class="snap-metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Last Contact</span><span class="snap-metric-value">${daysAgo(c.lastContact)}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Email Status</span><span class="snap-metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>
+                </div>`;
 
             if (c.agents && c.agents.length > 0) {
                 html += `<div class="snap-agents-row">`;
                 c.agents.forEach(a => {
-                    html += `<span class="snap-agent-tag">&#129302; ${a.name} — ${a.stage}</span>`;
+                    const cls = agentStageClass(a.stage);
+                    const colors = { live:'#00c875', production:'#579bfc', onboarding:'#fdab3d', ready:'#9cd326', building:'#784bd1', stuck:'#df2f4a' };
+                    const col = colors[cls] || '#888';
+                    html += `<span class="snap-agent-tag" style="background:${col}18;color:${col};border:1px solid ${col}30;">&#129302; ${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
                 });
                 html += `</div>`;
             }
 
-            if (summaryText) {
-                html += `<div class="snap-client-summary">${summaryText}</div>`;
-            }
-
+            if (summaryText) html += `<div class="snap-client-summary">${summaryText}</div>`;
             html += `</div>`;
         });
+        html += `</div>`;
 
-        html += `</div>
-            <div class="snap-footer">
-                IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Snapshot generated ${dateStr} at ${timeStr}
-            </div>`;
+        // Communication Summary
+        if (s.emailsSent + s.emailsReceived + s.teamsSent + s.teamsReceived > 0) {
+            html += `<div class="snap-section-title">&#128236; Communication Summary</div>`;
+            html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:16px;">`;
+            html += `<div class="snap-kpi"><div class="snap-kpi-value">${s.emailsSent}</div><div class="snap-kpi-label">Emails Sent</div></div>`;
+            html += `<div class="snap-kpi"><div class="snap-kpi-value">${s.emailsReceived}</div><div class="snap-kpi-label">Emails Received</div></div>`;
+            html += `<div class="snap-kpi"><div class="snap-kpi-value">${s.teamsSent}</div><div class="snap-kpi-label">Teams Sent</div></div>`;
+            html += `<div class="snap-kpi"><div class="snap-kpi-value">${s.teamsReceived}</div><div class="snap-kpi-label">Teams Received</div></div>`;
+            html += `</div>`;
+        }
 
+        // Recent Meetings
+        if (s.meetingsList.length > 0) {
+            html += `<div class="snap-section-title">&#127908; Recent Meetings (${s.meetingsList.length})</div>`;
+            html += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">`;
+            s.meetingsList.forEach(m => {
+                const mDate = new Date(m.date);
+                const dateLabel = isNaN(mDate.getTime()) ? 'Unknown date' : mDate.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+                const actionCount = (m.actions || []).length;
+                html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">
+                    <span style="font-size:11px;color:var(--text-muted);min-width:55px;">${dateLabel}</span>
+                    <span style="font-size:12px;color:var(--text-primary);flex:1;font-weight:500;">${m.title || 'Untitled'}</span>
+                    ${actionCount > 0 ? `<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(107,48,255,0.1);color:var(--brand-purple);font-weight:600;">${actionCount} actions</span>` : ''}
+                </div>`;
+            });
+            html += `</div>`;
+        }
+
+        // Upcoming Key Dates
+        if (s.upcoming.length > 0) {
+            html += `<div class="snap-section-title">&#128197; Upcoming Key Dates</div>`;
+            html += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">`;
+            s.upcoming.forEach(u => {
+                const d = new Date(u.date);
+                const dateLabel = d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+                const daysLeft = Math.ceil((d - now) / 86400000);
+                const urgency = daysLeft <= 7 ? 'color:#df2f4a;font-weight:700;' : daysLeft <= 14 ? 'color:#fdab3d;font-weight:600;' : '';
+                html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">
+                    <span style="font-size:11px;${urgency}min-width:55px;">${daysLeft}d</span>
+                    <span style="font-size:12px;color:var(--text-primary);font-weight:500;">${u.client}</span>
+                    <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">${u.type} — ${dateLabel}</span>
+                </div>`;
+            });
+            html += `</div>`;
+        }
+
+        html += `<div class="snap-footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Weekly Report generated ${dateStr} at ${timeStr}</div>`;
         body.innerHTML = html;
     },
 
@@ -12644,28 +13111,65 @@ const ShareSnapshot = {
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
+        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} - ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
 
-        let txt = `IAI POD B — CLIENT PROGRESS SNAPSHOT\n`;
-        txt += `Generated: ${dateStr} at ${timeStr} | Pod Lead: ${RUNTIME.userName || 'Mishai'}\n`;
-        txt += `${'═'.repeat(50)}\n\n`;
+        let txt = `IAI POD B — WEEKLY REPORT\n`;
+        txt += `Week of ${weekRange} | Generated: ${dateStr} at ${timeStr} | Pod Lead: ${RUNTIME.userName || 'Mishai'}\n`;
+        txt += `${'═'.repeat(60)}\n\n`;
 
-        txt += `OVERVIEW\n`;
-        txt += `  Total Clients: ${s.total}  |  Avg Health: ${s.avgHealth}\n`;
-        txt += `  RAG: ${s.green} Green, ${s.amber} Amber, ${s.red} Red\n`;
-        txt += `  Billing Active: ${s.billingActive}/${s.total}  |  Total Agents: ${s.totalAgents}\n`;
-        txt += `${'─'.repeat(50)}\n\n`;
+        // Executive Summary
+        txt += `EXECUTIVE SUMMARY\n`;
+        txt += `  ${this._generateExecSummary(s)}\n\n`;
 
+        // Portfolio Health
+        txt += `PORTFOLIO HEALTH\n`;
+        txt += `  Clients: ${s.total}  |  Avg Health: ${s.avgHealth}  |  Billing: ${s.billingActive}/${s.total}\n`;
+        txt += `  RAG: ${s.green} Green, ${s.amber} Amber, ${s.red} Red  |  Agents: ${s.totalAgents}\n`;
+        txt += `${'─'.repeat(60)}\n\n`;
+
+        // Communications
+        if (s.emailsSent + s.emailsReceived + s.teamsSent + s.teamsReceived > 0) {
+            txt += `COMMUNICATIONS\n`;
+            txt += `  Email: ${s.emailsSent} sent, ${s.emailsReceived} received (${s.emailClientsTracked} clients)\n`;
+            txt += `  Teams: ${s.teamsSent} sent, ${s.teamsReceived} received (${s.teamsClientsTracked} clients)\n`;
+            txt += `  Meetings: ${s.meetingsList.length} recorded\n\n`;
+        }
+
+        // Clients Needing Attention
+        if (s.needsAttention.length > 0) {
+            txt += `NEEDS ATTENTION (${s.needsAttention.length})\n`;
+            s.needsAttention.forEach(n => {
+                txt += `  ! ${n.name} — ${n.reason} (Health: ${n.health})\n`;
+            });
+            txt += `\n`;
+        }
+
+        // Agent Portfolio
+        const stageEntries = Object.entries(s.agentsByStage);
+        if (stageEntries.length > 0) {
+            txt += `AGENT PORTFOLIO (${s.totalAgents})\n`;
+            txt += `  ${stageEntries.map(([stage, count]) => `${count} ${stage}`).join('  |  ')}\n\n`;
+        }
+
+        // Per-Client Status
+        txt += `CLIENT STATUS\n`;
+        txt += `${'─'.repeat(60)}\n`;
         const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
         sorted.forEach(c => {
             const health = State.calcHealth(c);
+            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
+
             txt += `${c.rag.toUpperCase()} | ${c.name}  (Health: ${health})\n`;
             txt += `  Plan: ${c.plan || 'N/A'}  |  Billing: ${c.billing}  |  Update: ${c.updateStatus}\n`;
             txt += `  Agents: ${c.agentCount}  |  AIOS Days: ${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}  |  Last Contact: ${daysAgo(c.lastContact)}\n`;
-            txt += `  Commencement: ${this._formatDate(c.commencement)}\n`;
+            if (emailLabel) txt += `  Email: ${emailLabel.text}\n`;
 
             if (c.agents && c.agents.length > 0) {
-                txt += `  Agent Details: ${c.agents.map(a => `${a.name} (${a.stage})`).join(', ')}\n`;
+                txt += `  Agents: ${c.agents.map(a => `${a.name} (${a.stage}${a.platform ? ', ' + a.platform : ''})`).join(', ')}\n`;
             }
 
             if (c.summary) {
@@ -12675,8 +13179,31 @@ const ShareSnapshot = {
             txt += `\n`;
         });
 
-        txt += `${'═'.repeat(50)}\n`;
-        txt += `IAI ${RUNTIME.podName || 'Pod B'} Dashboard | ImplementAI | ${dateStr} at ${timeStr}\n`;
+        // Meetings
+        if (s.meetingsList.length > 0) {
+            txt += `RECENT MEETINGS\n`;
+            s.meetingsList.forEach(m => {
+                const mDate = new Date(m.date);
+                const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'});
+                const actionCount = (m.actions || []).length;
+                txt += `  ${dateLabel} — ${m.title || 'Untitled'}${actionCount > 0 ? ` (${actionCount} actions)` : ''}\n`;
+            });
+            txt += `\n`;
+        }
+
+        // Upcoming Dates
+        if (s.upcoming.length > 0) {
+            txt += `UPCOMING KEY DATES\n`;
+            s.upcoming.forEach(u => {
+                const d = new Date(u.date);
+                const daysLeft = Math.ceil((d - now) / 86400000);
+                txt += `  ${daysLeft}d — ${u.client}: ${u.type} (${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})})\n`;
+            });
+            txt += `\n`;
+        }
+
+        txt += `${'═'.repeat(60)}\n`;
+        txt += `IAI ${RUNTIME.podName || 'Pod B'} Dashboard | ImplementAI | Weekly Report ${dateStr}\n`;
         return txt;
     },
 
@@ -12735,52 +13262,74 @@ const ShareSnapshot = {
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
+        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} — ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
         const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
         let html = `<div style="font-family:Segoe UI,Arial,sans-serif;color:#222;max-width:700px;">`;
-        html += `<h2 style="margin:0 0 4px;font-size:18px;color:#1a1a2e;">IAI ${RUNTIME.podName || 'Pod B'} — Client Progress Snapshot</h2>`;
-        html += `<p style="margin:0 0 16px;font-size:12px;color:#888;">Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</p>`;
+        html += `<h2 style="margin:0 0 4px;font-size:18px;color:#1a1a2e;">&#128202; IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</h2>`;
+        html += `<p style="margin:0 0 14px;font-size:12px;color:#888;">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</p>`;
 
-        html += `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">`;
-        html += `<tr>`;
-        html += `<td style="text-align:center;padding:10px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;"><strong style="font-size:20px;">${s.total}</strong><br><span style="font-size:10px;color:#888;">Clients</span></td>`;
-        html += `<td style="text-align:center;padding:10px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;"><strong style="font-size:20px;color:${healthColor(s.avgHealth)};">${s.avgHealth}</strong><br><span style="font-size:10px;color:#888;">Avg Health</span></td>`;
-        html += `<td style="text-align:center;padding:10px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;"><strong style="font-size:20px;color:#00c875;">${s.green}</strong><br><span style="font-size:10px;color:#888;">Green</span></td>`;
-        html += `<td style="text-align:center;padding:10px;background:#f5f5f5;border:1px solid #ddd;border-radius:6px;"><strong style="font-size:20px;">${s.totalAgents}</strong><br><span style="font-size:10px;color:#888;">Agents</span></td>`;
+        // Executive Summary
+        html += `<div style="background:#f0ebff;border:1px solid #e0d6ff;border-radius:6px;padding:10px 14px;margin-bottom:14px;">`;
+        html += `<strong style="font-size:11px;color:#6B30FF;">Executive Summary</strong><br>`;
+        html += `<span style="font-size:12px;color:#333;">${this._generateExecSummary(s)}</span></div>`;
+
+        // KPI Table
+        html += `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;"><tr>`;
+        html += `<td style="text-align:center;padding:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;"><strong style="font-size:18px;">${s.total}</strong><br><span style="font-size:9px;color:#888;">Clients</span></td>`;
+        html += `<td style="text-align:center;padding:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;"><strong style="font-size:18px;color:${healthColor(s.avgHealth)};">${s.avgHealth}</strong><br><span style="font-size:9px;color:#888;">Health</span></td>`;
+        html += `<td style="text-align:center;padding:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;"><strong style="font-size:18px;color:#00c875;">${s.green}</strong><br><span style="font-size:9px;color:#888;">Green</span></td>`;
+        html += `<td style="text-align:center;padding:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;"><strong style="font-size:18px;color:#fdab3d;">${s.amber}</strong><br><span style="font-size:9px;color:#888;">Amber</span></td>`;
+        html += `<td style="text-align:center;padding:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;"><strong style="font-size:18px;color:#df2f4a;">${s.red}</strong><br><span style="font-size:9px;color:#888;">Red</span></td>`;
+        html += `<td style="text-align:center;padding:8px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;"><strong style="font-size:18px;">${s.totalAgents}</strong><br><span style="font-size:9px;color:#888;">Agents</span></td>`;
         html += `</tr></table>`;
 
-        html += `<p style="font-size:12px;margin:0 0 12px;">`;
-        html += `<span style="color:#00c875;font-weight:600;">&#9679; ${s.green} Green</span> &nbsp; `;
-        html += `<span style="color:#fdab3d;font-weight:600;">&#9679; ${s.amber} Amber</span> &nbsp; `;
-        html += `<span style="color:#df2f4a;font-weight:600;">&#9679; ${s.red} Red</span> &nbsp; `;
-        html += `<span style="color:#888;">Billing: ${s.billingActive}/${s.total} active</span></p>`;
+        // Stat pills
+        html += `<p style="font-size:11px;margin:0 0 12px;">`;
+        html += `<span style="color:#00c875;font-weight:600;">&#128179; ${s.billingActive}/${s.total} Billing</span> &nbsp; `;
+        html += `<span style="color:#579bfc;font-weight:600;">&#128236; ${s.emailsSent}↑ ${s.emailsReceived}↓ Email</span> &nbsp; `;
+        html += `<span style="color:#784bd1;font-weight:600;">&#128172; ${s.teamsSent}↑ ${s.teamsReceived}↓ Teams</span> &nbsp; `;
+        html += `<span style="color:#888;">&#127908; ${s.meetingsList.length} meetings</span></p>`;
+
+        // Attention
+        if (s.needsAttention.length > 0) {
+            html += `<p style="font-size:12px;font-weight:700;color:#df2f4a;margin:12px 0 6px;">&#9888; Needs Attention</p>`;
+            s.needsAttention.forEach(n => {
+                html += `<div style="font-size:11px;padding:4px 8px;margin-bottom:3px;background:#ffeaee;border-radius:4px;border-left:3px solid #df2f4a;"><strong>${n.name}</strong> — ${n.reason} (Health: ${n.health})</div>`;
+            });
+        }
+
         html += `<hr style="border:none;border-top:1px solid #ddd;margin:12px 0;">`;
 
+        // Client cards
         sorted.forEach(c => {
             const health = State.calcHealth(c);
             const hColor = healthColor(health);
             const ragC = this._ragColor(c.rag);
+            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
 
             html += `<div style="border-left:3px solid ${ragC};padding:10px 14px;margin-bottom:10px;background:#fafafa;border-radius:4px;">`;
             html += `<div style="display:flex;align-items:center;margin-bottom:6px;">`;
             html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ragC};margin-right:8px;"></span>`;
             html += `<strong style="font-size:14px;color:#1a1a2e;">${c.name}</strong>`;
-            html += `<span style="margin-left:auto;font-size:12px;font-weight:700;color:${hColor};">Health: ${health}</span>`;
-            html += `</div>`;
+            html += `<span style="margin-left:auto;font-size:12px;font-weight:700;color:${hColor};">Health: ${health}</span></div>`;
 
             html += `<table style="width:100%;font-size:11px;border-collapse:collapse;">`;
             html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">Plan</td><td style="font-weight:600;">${c.plan || 'N/A'}</td>`;
             html += `<td style="color:#888;padding:2px 8px 2px 16px;">Billing</td><td style="font-weight:600;">${c.billing}</td></tr>`;
             html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">Update</td><td style="font-weight:600;">${c.updateStatus}</td>`;
             html += `<td style="color:#888;padding:2px 8px 2px 16px;">Agents</td><td style="font-weight:600;">${c.agentCount}</td></tr>`;
-            html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">AIOS Days</td><td style="font-weight:600;">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</td>`;
-            html += `<td style="color:#888;padding:2px 8px 2px 16px;">Last Contact</td><td style="font-weight:600;">${daysAgo(c.lastContact)}</td></tr>`;
+            html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">Last Contact</td><td style="font-weight:600;">${daysAgo(c.lastContact)}</td>`;
+            html += `<td style="color:#888;padding:2px 8px 2px 16px;">Email</td><td style="font-weight:600;">${emailLabel ? emailLabel.text : 'N/A'}</td></tr>`;
             html += `</table>`;
 
             if (c.agents && c.agents.length > 0) {
                 html += `<div style="margin-top:6px;font-size:10px;">`;
                 c.agents.forEach(a => {
-                    html += `<span style="display:inline-block;padding:2px 8px;margin:2px 3px 2px 0;background:#f0ebff;color:#6B30FF;border-radius:10px;">&#129302; ${a.name} — ${a.stage}</span>`;
+                    html += `<span style="display:inline-block;padding:2px 8px;margin:2px 3px 2px 0;background:#f0ebff;color:#6B30FF;border-radius:10px;">&#129302; ${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
                 });
                 html += `</div>`;
             }
@@ -12792,7 +13341,27 @@ const ShareSnapshot = {
             html += `</div>`;
         });
 
-        html += `<p style="text-align:center;font-size:10px;color:#aaa;margin-top:16px;">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; ${dateStr}</p>`;
+        // Meetings
+        if (s.meetingsList.length > 0) {
+            html += `<p style="font-size:12px;font-weight:700;color:#1a1a2e;margin:12px 0 6px;">&#127908; Recent Meetings</p>`;
+            s.meetingsList.forEach(m => {
+                const mDate = new Date(m.date);
+                const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+                html += `<div style="font-size:11px;padding:3px 0;"><span style="color:#888;margin-right:8px;">${dateLabel}</span>${m.title || 'Untitled'}</div>`;
+            });
+        }
+
+        // Upcoming
+        if (s.upcoming.length > 0) {
+            html += `<p style="font-size:12px;font-weight:700;color:#1a1a2e;margin:12px 0 6px;">&#128197; Upcoming Key Dates</p>`;
+            s.upcoming.forEach(u => {
+                const d = new Date(u.date);
+                const daysLeft = Math.ceil((d - now) / 86400000);
+                html += `<div style="font-size:11px;padding:3px 0;"><span style="color:${daysLeft <= 7 ? '#df2f4a' : '#888'};font-weight:600;margin-right:8px;">${daysLeft}d</span>${u.client} — ${u.type} (${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})})</div>`;
+            });
+        }
+
+        html += `<p style="text-align:center;font-size:10px;color:#aaa;margin-top:16px;">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Weekly Report ${dateStr}</p>`;
         html += `</div>`;
         return html;
     },
@@ -12803,22 +13372,29 @@ const ShareSnapshot = {
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
+        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} - ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
         const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
         let doc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">`;
-        doc += `<title>IAI ${RUNTIME.podName || 'Pod B'} Snapshot — ${dateStr}</title>`;
+        doc += `<title>IAI ${RUNTIME.podName || 'Pod B'} Weekly Report — ${weekRange}</title>`;
         doc += `<style>
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d0d1a;color:#e0e0e0;padding:32px;max-width:800px;margin:0 auto;}
 h1{font-size:22px;color:#fff;margin-bottom:4px;}
-.subtitle{font-size:12px;color:#888;margin-bottom:24px;}
-.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;}
-.kpi{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:16px;text-align:center;}
-.kpi-value{font-size:26px;font-weight:800;color:#fff;}
-.kpi-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;}
+.subtitle{font-size:12px;color:#888;margin-bottom:20px;}
+.exec-summary{background:rgba(107,48,255,0.1);border:1px solid rgba(107,48,255,0.25);border-radius:10px;padding:14px 18px;margin-bottom:20px;}
+.exec-label{font-size:11px;font-weight:700;color:#a78bfa;margin-bottom:4px;}
+.exec-text{font-size:12px;color:#e0e0e0;line-height:1.6;}
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;}
+.kpi{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:14px 8px;text-align:center;}
+.kpi-value{font-size:22px;font-weight:800;color:#fff;}
+.kpi-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;}
 .tags{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
 .tag{font-size:11px;padding:4px 12px;border-radius:12px;font-weight:600;}
 .section-title{font-size:14px;font-weight:700;color:#fff;margin:20px 0 12px;padding-bottom:6px;border-bottom:1px solid #2a2a4a;}
+.attention{background:rgba(223,47,74,0.08);border:1px solid rgba(223,47,74,0.2);border-radius:8px;padding:10px 14px;margin-bottom:8px;border-left:3px solid #df2f4a;}
 .client{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:16px;margin-bottom:10px;border-left:3px solid #444;}
 .client.green{border-left-color:#00c875;} .client.amber{border-left-color:#fdab3d;} .client.red{border-left-color:#df2f4a;}
 .client-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
@@ -12831,42 +13407,57 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
 .agents-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
 .agent-tag{font-size:10px;padding:3px 10px;border-radius:12px;background:rgba(107,48,255,0.12);color:#a78bfa;border:1px solid rgba(107,48,255,0.2);}
 .summary{font-size:11px;color:#999;line-height:1.6;margin-top:8px;padding:8px 12px;background:#0d0d1a;border-radius:6px;border-left:2px solid #2a2a4a;}
+.meeting-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#1a1a2e;border:1px solid #2a2a4a;border-radius:6px;margin-bottom:4px;font-size:11px;}
 .footer{text-align:center;font-size:10px;color:#555;margin-top:24px;padding-top:16px;border-top:1px solid #2a2a4a;}
-@media(max-width:600px){.kpi-row{grid-template-columns:repeat(2,1fr);}.metrics{grid-template-columns:1fr;}}
-@media print{body{background:#fff;color:#222;padding:16px;} .kpi,.client{background:#f9f9f9;border-color:#ddd;} h1,.client-name,.section-title{color:#111;} .metric-value,.kpi-value{color:#222;}}
+@media(max-width:600px){.kpi-row{grid-template-columns:repeat(3,1fr);}.metrics{grid-template-columns:1fr;}}
+@media print{body{background:#fff;color:#222;padding:16px;} .kpi,.client,.meeting-row{background:#f9f9f9;border-color:#ddd;} h1,.client-name,.section-title{color:#111;} .metric-value,.kpi-value{color:#222;} .exec-summary{background:#f0ebff;border-color:#e0d6ff;} .exec-text{color:#333;}}
 </style></head><body>`;
 
-        doc += `<h1>IAI ${RUNTIME.podName || 'Pod B'} — Client Progress Snapshot</h1>`;
-        doc += `<div class="subtitle">Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
+        doc += `<h1>&#128202; IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</h1>`;
+        doc += `<div class="subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
 
+        // Executive Summary
+        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${this._generateExecSummary(s)}</div></div>`;
+
+        // KPIs
         doc += `<div class="kpi-row">`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.total}</div><div class="kpi-label">Total Clients</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:${healthColor(s.avgHealth)}">${s.avgHealth}</div><div class="kpi-label">Avg Health</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#00c875">${s.green}</div><div class="kpi-label">Green RAG</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.totalAgents}</div><div class="kpi-label">Total Agents</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value">${s.total}</div><div class="kpi-label">Clients</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:${healthColor(s.avgHealth)}">${s.avgHealth}</div><div class="kpi-label">Health</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:#00c875">${s.green}</div><div class="kpi-label">Green</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:#fdab3d">${s.amber}</div><div class="kpi-label">Amber</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:#df2f4a">${s.red}</div><div class="kpi-label">Red</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value">${s.totalAgents}</div><div class="kpi-label">Agents</div></div>`;
         doc += `</div>`;
 
+        // Stat pills
         doc += `<div class="tags">`;
-        doc += `<span class="tag" style="background:rgba(0,200,117,0.12);color:#00c875;">&#9679; ${s.green} Green</span>`;
-        doc += `<span class="tag" style="background:rgba(253,171,61,0.12);color:#fdab3d;">&#9679; ${s.amber} Amber</span>`;
-        doc += `<span class="tag" style="background:rgba(223,47,74,0.12);color:#df2f4a;">&#9679; ${s.red} Red</span>`;
-        doc += `<span class="tag" style="background:rgba(255,255,255,0.06);color:#888;">Billing: ${s.billingActive}/${s.total} active</span>`;
+        doc += `<span class="tag" style="background:rgba(0,200,117,0.12);color:#00c875;">&#128179; ${s.billingActive}/${s.total} Billing</span>`;
+        doc += `<span class="tag" style="background:rgba(87,155,252,0.12);color:#579bfc;">&#128236; ${s.emailsSent}↑ ${s.emailsReceived}↓ Email</span>`;
+        doc += `<span class="tag" style="background:rgba(120,75,209,0.12);color:#a78bfa;">&#128172; ${s.teamsSent}↑ ${s.teamsReceived}↓ Teams</span>`;
+        doc += `<span class="tag" style="background:rgba(255,255,255,0.06);color:#888;">&#127908; ${s.meetingsList.length} Meetings</span>`;
         doc += `</div>`;
 
-        doc += `<div class="section-title">Client Details</div>`;
+        // Attention
+        if (s.needsAttention.length > 0) {
+            doc += `<div class="section-title" style="color:#df2f4a;">&#9888; Needs Attention</div>`;
+            s.needsAttention.forEach(n => {
+                doc += `<div class="attention"><strong style="color:#fff;">${n.name}</strong> <span style="color:#999;">— ${n.reason} (Health: ${n.health})</span></div>`;
+            });
+        }
 
+        // Client cards
+        doc += `<div class="section-title">Client Status</div>`;
         sorted.forEach(c => {
             const health = State.calcHealth(c);
             const hColor = healthColor(health);
             const ragC = this._ragColor(c.rag);
             const ragCls = c.rag === 'Green' ? 'green' : c.rag === 'Amber' ? 'amber' : c.rag === 'Red' ? 'red' : '';
+            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
 
-            doc += `<div class="client ${ragCls}">`;
-            doc += `<div class="client-header">`;
-            doc += `<div class="rag-dot" style="background:${ragC};"></div>`;
-            doc += `<div class="client-name">${c.name}</div>`;
-            doc += `<div class="health-badge" style="color:${hColor}">Health: ${health}</div>`;
-            doc += `</div>`;
+            doc += `<div class="client ${ragCls}"><div class="client-header">`;
+            doc += `<div class="rag-dot" style="background:${ragC};"></div><div class="client-name">${c.name}</div>`;
+            doc += `<div class="health-badge" style="color:${hColor}">Health: ${health}</div></div>`;
 
             doc += `<div class="metrics">`;
             doc += `<div class="metric"><span class="metric-label">RAG</span><span class="metric-value" style="color:${ragC}">${c.rag}</span></div>`;
@@ -12876,17 +13467,16 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
             doc += `<div class="metric"><span class="metric-label">Agents</span><span class="metric-value">${c.agentCount}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">AIOS Days</span><span class="metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(c.lastContact)}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Commencement</span><span class="metric-value">${this._formatDate(c.commencement)}</span></div>`;
+            doc += `<div class="metric"><span class="metric-label">Email</span><span class="metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>`;
             doc += `</div>`;
 
             if (c.agents && c.agents.length > 0) {
                 doc += `<div class="agents-row">`;
                 c.agents.forEach(a => {
-                    doc += `<span class="agent-tag">&#129302; ${a.name} — ${a.stage}</span>`;
+                    doc += `<span class="agent-tag">${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
                 });
                 doc += `</div>`;
             }
-
             if (c.summary) {
                 const sum = c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary;
                 doc += `<div class="summary">${sum}</div>`;
@@ -12894,20 +13484,40 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
             doc += `</div>`;
         });
 
-        doc += `<div class="footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; ${dateStr} at ${timeStr}</div>`;
+        // Meetings
+        if (s.meetingsList.length > 0) {
+            doc += `<div class="section-title">&#127908; Recent Meetings</div>`;
+            s.meetingsList.forEach(m => {
+                const mDate = new Date(m.date);
+                const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+                const actionCount = (m.actions || []).length;
+                doc += `<div class="meeting-row"><span style="color:#888;min-width:50px;">${dateLabel}</span><span style="flex:1;color:#e0e0e0;">${m.title || 'Untitled'}</span>${actionCount > 0 ? `<span style="color:#a78bfa;font-weight:600;">${actionCount} actions</span>` : ''}</div>`;
+            });
+        }
+
+        // Upcoming
+        if (s.upcoming.length > 0) {
+            doc += `<div class="section-title">&#128197; Upcoming Key Dates</div>`;
+            s.upcoming.forEach(u => {
+                const d = new Date(u.date);
+                const daysLeft = Math.ceil((d - now) / 86400000);
+                doc += `<div class="meeting-row"><span style="color:${daysLeft <= 7 ? '#df2f4a' : '#888'};font-weight:600;min-width:50px;">${daysLeft}d</span><span style="flex:1;color:#e0e0e0;">${u.client}</span><span style="color:#888;">${u.type} — ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>`;
+            });
+        }
+
+        doc += `<div class="footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Weekly Report ${dateStr} at ${timeStr}</div>`;
         doc += `</body></html>`;
 
-        // Download the file
         const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `IAI_Pod_B_Snapshot_${now.toISOString().slice(0,10)}.html`;
+        a.download = `IAI_Pod_B_Weekly_Report_${now.toISOString().slice(0,10)}.html`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        showToast('Snapshot exported as HTML file', 'info');
+        showToast('Weekly report exported as HTML file', 'info');
     },
 
     // Export as PDF via print dialog (print-optimised layout)
@@ -12916,25 +13526,32 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
+        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} - ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
         const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
         let doc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`;
-        doc += `<title>IAI ${RUNTIME.podName || 'Pod B'} Snapshot — ${dateStr}</title>`;
+        doc += `<title>IAI ${RUNTIME.podName || 'Pod B'} Weekly Report — ${weekRange}</title>`;
         doc += `<style>
 @page { margin: 18mm 14mm; size: A4; }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;padding:0;max-width:100%;line-height:1.4;}
 h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
-.subtitle{font-size:11px;color:#777;margin-bottom:18px;}
-.kpi-row{display:flex;gap:8px;margin-bottom:16px;}
-.kpi{flex:1;background:#f7f7fa;border:1px solid #e0e0e0;border-radius:8px;padding:12px 8px;text-align:center;}
-.kpi-value{font-size:22px;font-weight:800;color:#1a1a2e;}
-.kpi-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
+.subtitle{font-size:11px;color:#777;margin-bottom:16px;}
+.exec-summary{background:#f0ebff;border:1px solid #e0d6ff;border-radius:8px;padding:12px 16px;margin-bottom:16px;}
+.exec-label{font-size:10px;font-weight:700;color:#6B30FF;margin-bottom:3px;}
+.exec-text{font-size:11px;color:#333;line-height:1.5;}
+.kpi-row{display:flex;gap:6px;margin-bottom:14px;}
+.kpi{flex:1;background:#f7f7fa;border:1px solid #e0e0e0;border-radius:8px;padding:10px 6px;text-align:center;}
+.kpi-value{font-size:20px;font-weight:800;color:#1a1a2e;}
+.kpi-label{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
 .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
 .tag{font-size:10px;padding:3px 10px;border-radius:10px;font-weight:600;border:1px solid #ddd;}
 .section-title{font-size:13px;font-weight:700;color:#1a1a2e;margin:16px 0 10px;padding-bottom:5px;border-bottom:1.5px solid #e0e0e0;}
+.attention{border:1px solid #f5c6cb;border-radius:6px;padding:8px 12px;margin-bottom:6px;border-left:3px solid #c9252d;background:#ffeaee;page-break-inside:avoid;}
 .client{border:1px solid #e0e0e0;border-radius:8px;padding:12px 14px;margin-bottom:8px;border-left:3px solid #bbb;page-break-inside:avoid;}
-.client.green{border-left-color:#00c875;} .client.amber{border-left-color:#e8a020;} .client.red{border-left-color:#df2f4a;}
+.client.green{border-left-color:#00875a;} .client.amber{border-left-color:#c07800;} .client.red{border-left-color:#c9252d;}
 .client-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
 .rag-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
 .client-name{font-size:14px;font-weight:700;color:#1a1a2e;flex:1;}
@@ -12945,40 +13562,56 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
 .agents-row{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;}
 .agent-tag{font-size:9px;padding:2px 8px;border-radius:10px;background:#f0ebff;color:#6B30FF;border:1px solid #e0d6ff;}
 .summary{font-size:10px;color:#555;line-height:1.5;margin-top:5px;padding:6px 10px;background:#f9f9fb;border-radius:4px;border-left:2px solid #ddd;}
+.meeting-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f7f7fa;border:1px solid #e8e8e8;border-radius:4px;margin-bottom:3px;font-size:10px;}
 .footer{text-align:center;font-size:9px;color:#aaa;margin-top:20px;padding-top:12px;border-top:1px solid #e0e0e0;}
 </style></head><body>`;
 
-        doc += `<h1>IAI ${RUNTIME.podName || 'Pod B'} — Client Progress Snapshot</h1>`;
-        doc += `<div class="subtitle">Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
+        doc += `<h1>IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</h1>`;
+        doc += `<div class="subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
 
+        // Exec Summary
+        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${this._generateExecSummary(s)}</div></div>`;
+
+        // KPIs
         doc += `<div class="kpi-row">`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.total}</div><div class="kpi-label">Total Clients</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:${s.avgHealth >= 75 ? '#00875a' : s.avgHealth >= 50 ? '#c07800' : '#c9252d'}">${s.avgHealth}</div><div class="kpi-label">Avg Health</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#00875a">${s.green}</div><div class="kpi-label">Green RAG</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.totalAgents}</div><div class="kpi-label">Total Agents</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value">${s.total}</div><div class="kpi-label">Clients</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:${s.avgHealth >= 75 ? '#00875a' : s.avgHealth >= 50 ? '#c07800' : '#c9252d'}">${s.avgHealth}</div><div class="kpi-label">Health</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:#00875a">${s.green}</div><div class="kpi-label">Green</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:#c07800">${s.amber}</div><div class="kpi-label">Amber</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value" style="color:#c9252d">${s.red}</div><div class="kpi-label">Red</div></div>`;
+        doc += `<div class="kpi"><div class="kpi-value">${s.totalAgents}</div><div class="kpi-label">Agents</div></div>`;
         doc += `</div>`;
 
+        // Tags
         doc += `<div class="tags">`;
-        doc += `<span class="tag" style="background:#e6f9f0;color:#00875a;">● ${s.green} Green</span>`;
-        doc += `<span class="tag" style="background:#fff3e0;color:#c07800;">● ${s.amber} Amber</span>`;
-        doc += `<span class="tag" style="background:#ffeaee;color:#c9252d;">● ${s.red} Red</span>`;
-        doc += `<span class="tag" style="background:#f5f5f5;color:#777;">Billing: ${s.billingActive}/${s.total} active</span>`;
+        doc += `<span class="tag" style="background:#e6f9f0;color:#00875a;">Billing: ${s.billingActive}/${s.total}</span>`;
+        doc += `<span class="tag" style="background:#e8f4fd;color:#1a73e8;">Email: ${s.emailsSent}↑ ${s.emailsReceived}↓</span>`;
+        doc += `<span class="tag" style="background:#f0ebff;color:#6B30FF;">Teams: ${s.teamsSent}↑ ${s.teamsReceived}↓</span>`;
+        doc += `<span class="tag" style="background:#f5f5f5;color:#777;">Meetings: ${s.meetingsList.length}</span>`;
         doc += `</div>`;
 
-        doc += `<div class="section-title">Client Details</div>`;
+        // Attention
+        if (s.needsAttention.length > 0) {
+            doc += `<div class="section-title" style="color:#c9252d;">Needs Attention</div>`;
+            s.needsAttention.forEach(n => {
+                const ragC = n.rag === 'Green' ? '#00875a' : n.rag === 'Amber' ? '#c07800' : '#c9252d';
+                doc += `<div class="attention"><strong>${n.name}</strong> <span style="color:#666;">— ${n.reason} (Health: ${n.health})</span></div>`;
+            });
+        }
 
+        // Client cards
+        doc += `<div class="section-title">Client Status</div>`;
         sorted.forEach(c => {
             const health = State.calcHealth(c);
             const hColor = health >= 75 ? '#00875a' : health >= 50 ? '#c07800' : '#c9252d';
             const ragC = c.rag === 'Green' ? '#00875a' : c.rag === 'Amber' ? '#c07800' : c.rag === 'Red' ? '#c9252d' : '#888';
             const ragCls = c.rag === 'Green' ? 'green' : c.rag === 'Amber' ? 'amber' : c.rag === 'Red' ? 'red' : '';
+            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
 
-            doc += `<div class="client ${ragCls}">`;
-            doc += `<div class="client-header">`;
-            doc += `<div class="rag-dot" style="background:${ragC};"></div>`;
-            doc += `<div class="client-name">${c.name}</div>`;
-            doc += `<div class="health-badge" style="color:${hColor}">Health: ${health}</div>`;
-            doc += `</div>`;
+            doc += `<div class="client ${ragCls}"><div class="client-header">`;
+            doc += `<div class="rag-dot" style="background:${ragC};"></div><div class="client-name">${c.name}</div>`;
+            doc += `<div class="health-badge" style="color:${hColor}">Health: ${health}</div></div>`;
 
             doc += `<div class="metrics">`;
             doc += `<div class="metric"><span class="metric-label">RAG</span><span class="metric-value" style="color:${ragC}">${c.rag}</span></div>`;
@@ -12988,17 +13621,16 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
             doc += `<div class="metric"><span class="metric-label">Agents</span><span class="metric-value">${c.agentCount}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">AIOS Days</span><span class="metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(c.lastContact)}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Commencement</span><span class="metric-value">${this._formatDate(c.commencement)}</span></div>`;
+            doc += `<div class="metric"><span class="metric-label">Email</span><span class="metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>`;
             doc += `</div>`;
 
             if (c.agents && c.agents.length > 0) {
                 doc += `<div class="agents-row">`;
                 c.agents.forEach(a => {
-                    doc += `<span class="agent-tag">${a.name} — ${a.stage}</span>`;
+                    doc += `<span class="agent-tag">${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
                 });
                 doc += `</div>`;
             }
-
             if (c.summary) {
                 const sum = c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary;
                 doc += `<div class="summary">${sum}</div>`;
@@ -13006,10 +13638,30 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
             doc += `</div>`;
         });
 
-        doc += `<div class="footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; ${dateStr} at ${timeStr}</div>`;
+        // Meetings
+        if (s.meetingsList.length > 0) {
+            doc += `<div class="section-title">Recent Meetings</div>`;
+            s.meetingsList.forEach(m => {
+                const mDate = new Date(m.date);
+                const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+                const actionCount = (m.actions || []).length;
+                doc += `<div class="meeting-row"><span style="color:#888;min-width:45px;">${dateLabel}</span><span style="flex:1;">${m.title || 'Untitled'}</span>${actionCount > 0 ? `<span style="color:#6B30FF;font-weight:600;">${actionCount} actions</span>` : ''}</div>`;
+            });
+        }
+
+        // Upcoming
+        if (s.upcoming.length > 0) {
+            doc += `<div class="section-title">Upcoming Key Dates</div>`;
+            s.upcoming.forEach(u => {
+                const d = new Date(u.date);
+                const daysLeft = Math.ceil((d - now) / 86400000);
+                doc += `<div class="meeting-row"><span style="color:${daysLeft <= 7 ? '#c9252d' : '#888'};font-weight:600;min-width:45px;">${daysLeft}d</span><span style="flex:1;">${u.client}</span><span style="color:#888;">${u.type} — ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>`;
+            });
+        }
+
+        doc += `<div class="footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Weekly Report ${dateStr} at ${timeStr}</div>`;
         doc += `</body></html>`;
 
-        // Open in hidden iframe and trigger print → Save as PDF
         const iframe = document.createElement('iframe');
         iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:800px;height:600px;border:none;';
         document.body.appendChild(iframe);
@@ -13018,14 +13670,12 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
         iframeDoc.write(doc);
         iframeDoc.close();
 
-        // Wait for content to render, then print
         iframe.contentWindow.addEventListener('afterprint', () => {
             setTimeout(() => iframe.remove(), 500);
         });
         setTimeout(() => {
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
-            // Fallback cleanup if afterprint never fires
             setTimeout(() => { if (iframe.parentNode) iframe.remove(); }, 60000);
         }, 300);
 
