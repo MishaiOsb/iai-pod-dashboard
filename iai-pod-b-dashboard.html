@@ -5790,11 +5790,29 @@ const TeamsSync = {
         return null;
     },
 
+    // Count a message as sent/received and add to lists
+    _countMessage(m, myEmail, msgList, counts) {
+        const fromEmail = m.from?.user?.email?.toLowerCase() || '';
+        const isFromMe = fromEmail === myEmail;
+        if (isFromMe) counts.sent++; else counts.received++;
+        msgList.push({
+            from: fromEmail || m.from?.user?.displayName || 'unknown',
+            date: m.createdDateTime,
+            isFromMe,
+            preview: (m.body?.content || '').replace(/<[^>]+>/g, '').substring(0, 100)
+        });
+    },
+
     // ── Fetch Channel Messages ──
     async fetchChannelData() {
         // 1. Get joined teams
+        console.log('[TeamsSync] Fetching joined teams...');
         const teamsData = await this._graphFetch('/me/joinedTeams');
-        if (!teamsData || !teamsData.value) return null;
+        if (!teamsData || !teamsData.value) {
+            console.warn('[TeamsSync] Failed to fetch teams:', this._error);
+            return null;
+        }
+        console.log('[TeamsSync] Found', teamsData.value.length, 'teams:', teamsData.value.map(t => t.displayName));
 
         const daysBack = 14;
         const since = new Date(Date.now() - daysBack * 86400000).toISOString();
@@ -5805,47 +5823,65 @@ const TeamsSync = {
         for (const team of teamsData.value) {
             const clientName = this._matchTeamToClient(team.displayName);
             if (!clientName) continue;
+            console.log(`[TeamsSync] Team "${team.displayName}" matched to client "${clientName}"`);
 
             // 3. Get all channels in matched team
             const channelsData = await this._graphFetch(`/teams/${team.id}/channels`);
             if (!channelsData || !channelsData.value) continue;
+            console.log(`[TeamsSync]   ${channelsData.value.length} channels:`, channelsData.value.map(c => c.displayName));
 
             // 4. Fetch messages from every channel in this team
             for (const channel of channelsData.value) {
+                // Note: $orderby is NOT supported on channel messages endpoint
                 const messagesData = await this._graphFetch(
                     `/teams/${team.id}/channels/${channel.id}/messages`,
-                    { '$top': '50', '$orderby': 'lastModifiedDateTime desc' }
+                    { '$top': '50' }
                 );
-                if (!messagesData || !messagesData.value) continue;
+                if (!messagesData || !messagesData.value) {
+                    console.warn(`[TeamsSync]   Channel "${channel.displayName}": fetch failed (${this._error})`);
+                    continue;
+                }
 
-                // 5. Filter to last 14 days and count sent vs received
-                const messages = messagesData.value.filter(m => {
-                    if (m.messageType !== 'message') return false;
-                    const msgDate = new Date(m.createdDateTime);
-                    return msgDate >= new Date(since);
-                });
-
-                let sent = 0, received = 0;
+                const counts = { sent: 0, received: 0 };
                 const msgList = [];
-                messages.forEach(m => {
-                    const fromEmail = m.from?.user?.email?.toLowerCase() || '';
-                    const isFromMe = fromEmail === myEmail;
-                    if (isFromMe) sent++; else received++;
-                    msgList.push({
-                        from: fromEmail || m.from?.user?.displayName || 'unknown',
-                        date: m.createdDateTime,
-                        isFromMe,
-                        preview: (m.body?.content || '').replace(/<[^>]+>/g, '').substring(0, 100)
-                    });
-                });
+
+                // 5. Process top-level messages + their replies
+                for (const m of messagesData.value) {
+                    const msgDate = new Date(m.createdDateTime);
+                    const inRange = msgDate >= new Date(since);
+
+                    // Count top-level message if it's a real message in range
+                    if (m.messageType === 'message' && inRange) {
+                        this._countMessage(m, myEmail, msgList, counts);
+                    }
+
+                    // Fetch replies (thread messages) for this top-level message
+                    if (m.id) {
+                        const repliesData = await this._graphFetch(
+                            `/teams/${team.id}/channels/${channel.id}/messages/${m.id}/replies`,
+                            { '$top': '50' }
+                        );
+                        if (repliesData && repliesData.value) {
+                            for (const reply of repliesData.value) {
+                                if (reply.messageType !== 'message') continue;
+                                const replyDate = new Date(reply.createdDateTime);
+                                if (replyDate >= new Date(since)) {
+                                    this._countMessage(reply, myEmail, msgList, counts);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                console.log(`[TeamsSync]   Channel "${channel.displayName}": ${counts.sent} sent, ${counts.received} received`);
 
                 // Merge across channels within same team/client
                 if (results[clientName]) {
                     results[clientName].messages.push(...msgList);
-                    results[clientName].sent += sent;
-                    results[clientName].received += received;
+                    results[clientName].sent += counts.sent;
+                    results[clientName].received += counts.received;
                 } else {
-                    results[clientName] = { messages: msgList, sent, received };
+                    results[clientName] = { messages: msgList, sent: counts.sent, received: counts.received };
                 }
             }
         }
