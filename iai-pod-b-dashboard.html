@@ -5779,12 +5779,13 @@ const TeamsSync = {
     },
 
     // ── Channel → Client Matching ──
-    _matchChannelToClient(channelName) {
-        const cn = channelName.toLowerCase();
+    // Match team name to dashboard client (e.g. "Townhouse - IAI" → "Townhouse")
+    _matchTeamToClient(teamName) {
+        const tn = teamName.toLowerCase().replace(/[-\s]/g, '');
         const clients = State.clients.length > 0 ? State.clients : [];
         for (const client of clients) {
-            const name = client.name.toLowerCase();
-            if (cn.includes(name) || name.includes(cn)) return client.name;
+            const cn = client.name.toLowerCase().replace(/[-\s]/g, '');
+            if (tn.includes(cn) || cn.includes(tn)) return client.name;
         }
         return null;
     },
@@ -5800,17 +5801,17 @@ const TeamsSync = {
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL).toLowerCase();
         const results = {};
 
-        // 2. For each team, get channels
+        // 2. Match team names to dashboard clients
         for (const team of teamsData.value) {
+            const clientName = this._matchTeamToClient(team.displayName);
+            if (!clientName) continue;
+
+            // 3. Get all channels in matched team
             const channelsData = await this._graphFetch(`/teams/${team.id}/channels`);
             if (!channelsData || !channelsData.value) continue;
 
+            // 4. Fetch messages from every channel in this team
             for (const channel of channelsData.value) {
-                // 3. Match channel name to a dashboard client
-                const clientName = this._matchChannelToClient(channel.displayName);
-                if (!clientName) continue;
-
-                // 4. Fetch recent messages from matched channel
                 const messagesData = await this._graphFetch(
                     `/teams/${team.id}/channels/${channel.id}/messages`,
                     { '$top': '50', '$orderby': 'lastModifiedDateTime desc' }
@@ -5838,7 +5839,7 @@ const TeamsSync = {
                     });
                 });
 
-                // Merge if multiple channels match same client
+                // Merge across channels within same team/client
                 if (results[clientName]) {
                     results[clientName].messages.push(...msgList);
                     results[clientName].sent += sent;
