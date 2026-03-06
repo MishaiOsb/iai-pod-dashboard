@@ -2447,6 +2447,25 @@ input, textarea, select { font-family: inherit; outline: none; }
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .ff-mc-actions { display: flex; gap: 8px; }
+.btn-ff-dismiss {
+    width: 22px; height: 22px; border-radius: 50%; border: none; background: transparent;
+    color: var(--text-muted); font-size: 14px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; transition: all var(--transition-fast);
+    opacity: 0;
+}
+.ff-meeting-card-v2:hover .btn-ff-dismiss { opacity: 1; }
+.btn-ff-dismiss:hover { background: rgba(223,47,74,0.12); color: var(--rag-red); }
+.btn-ff-restore {
+    padding: 3px 10px; font-size: 10px; font-weight: 600; border-radius: var(--radius-md);
+    background: rgba(107,48,255,0.08); color: var(--accent-purple-light); border: 1px solid rgba(107,48,255,0.2);
+    cursor: pointer; transition: all var(--transition-fast);
+}
+.btn-ff-restore:hover { background: rgba(107,48,255,0.18); }
+.ff-dismissed-toggle {
+    font-size: 11px; color: var(--text-muted); cursor: pointer; background: none; border: none;
+    padding: 4px 8px; transition: color var(--transition-fast);
+}
+.ff-dismissed-toggle:hover { color: var(--accent-purple-light); }
 .btn-ff-view-notes {
     padding: 5px 12px; font-size: 11px; font-weight: 600; border-radius: var(--radius-md);
     background: var(--accent-purple); color: #fff; border: none; cursor: pointer;
@@ -5791,16 +5810,26 @@ const TeamsSync = {
     },
 
     // Count a message as sent/received and add to lists
-    _countMessage(m, myEmail, msgList, counts) {
-        const fromEmail = m.from?.user?.email?.toLowerCase() || '';
+    // Returns false if message was skipped (bot/system/empty), true if counted
+    _countMessage(m, myEmail, msgList, counts, seenIds) {
+        // Skip if no human sender (bots, connectors, apps)
+        if (!m.from || !m.from.user) return false;
+        // Skip if we've already seen this message (dedup)
+        if (seenIds && m.id) { if (seenIds.has(m.id)) return false; seenIds.add(m.id); }
+        // Skip messages with empty content (system noise)
+        const textContent = (m.body?.content || '').replace(/<[^>]+>/g, '').trim();
+        if (!textContent) return false;
+
+        const fromEmail = m.from.user.email?.toLowerCase() || '';
         const isFromMe = fromEmail === myEmail;
         if (isFromMe) counts.sent++; else counts.received++;
         msgList.push({
-            from: fromEmail || m.from?.user?.displayName || 'unknown',
+            from: fromEmail || m.from.user.displayName || 'unknown',
             date: m.createdDateTime,
             isFromMe,
-            preview: (m.body?.content || '').replace(/<[^>]+>/g, '').substring(0, 100)
+            preview: textContent.substring(0, 100)
         });
+        return true;
     },
 
     // ── Fetch Channel Messages ──
@@ -5815,9 +5844,15 @@ const TeamsSync = {
         console.log('[TeamsSync] Found', teamsData.value.length, 'teams:', teamsData.value.map(t => t.displayName));
 
         const daysBack = 14;
-        const since = new Date(Date.now() - daysBack * 86400000).toISOString();
+        const sinceDate = new Date(Date.now() - daysBack * 86400000);
+        const since = sinceDate.toISOString();
+        // Extended window for reply-fetching: fetch replies for messages up to 30 days old
+        // (someone might reply today to a 3-week-old thread)
+        const replyWindowDate = new Date(Date.now() - 30 * 86400000);
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL).toLowerCase();
         const results = {};
+        const seenIds = new Set(); // Global dedup across all channels
+        let totalApiCalls = 0;
 
         // 2. Match team names to dashboard clients
         for (const team of teamsData.value) {
@@ -5827,6 +5862,7 @@ const TeamsSync = {
 
             // 3. Get all channels in matched team
             const channelsData = await this._graphFetch(`/teams/${team.id}/channels`);
+            totalApiCalls++;
             if (!channelsData || !channelsData.value) continue;
             console.log(`[TeamsSync]   ${channelsData.value.length} channels:`, channelsData.value.map(c => c.displayName));
 
@@ -5837,6 +5873,7 @@ const TeamsSync = {
                     `/teams/${team.id}/channels/${channel.id}/messages`,
                     { '$top': '50' }
                 );
+                totalApiCalls++;
                 if (!messagesData || !messagesData.value) {
                     console.warn(`[TeamsSync]   Channel "${channel.displayName}": fetch failed (${this._error})`);
                     continue;
@@ -5844,36 +5881,41 @@ const TeamsSync = {
 
                 const counts = { sent: 0, received: 0 };
                 const msgList = [];
+                let skippedSystem = 0;
 
                 // 5. Process top-level messages + their replies
                 for (const m of messagesData.value) {
                     const msgDate = new Date(m.createdDateTime);
-                    const inRange = msgDate >= new Date(since);
+                    const inRange = msgDate >= sinceDate;
 
-                    // Count top-level message if it's a real message in range
+                    // Count top-level message if it's a real human message in range
                     if (m.messageType === 'message' && inRange) {
-                        this._countMessage(m, myEmail, msgList, counts);
+                        if (!this._countMessage(m, myEmail, msgList, counts, seenIds)) skippedSystem++;
                     }
 
-                    // Fetch replies (thread messages) for this top-level message
-                    if (m.id) {
+                    // Only fetch replies for messages within extended window (30 days)
+                    // AND that are real conversation starters (have a human sender)
+                    // This prevents hundreds of wasted API calls on old/system messages
+                    if (m.id && msgDate >= replyWindowDate && m.from?.user) {
                         const repliesData = await this._graphFetch(
                             `/teams/${team.id}/channels/${channel.id}/messages/${m.id}/replies`,
                             { '$top': '50' }
                         );
+                        totalApiCalls++;
                         if (repliesData && repliesData.value) {
                             for (const reply of repliesData.value) {
                                 if (reply.messageType !== 'message') continue;
                                 const replyDate = new Date(reply.createdDateTime);
-                                if (replyDate >= new Date(since)) {
-                                    this._countMessage(reply, myEmail, msgList, counts);
+                                if (replyDate >= sinceDate) {
+                                    if (!this._countMessage(reply, myEmail, msgList, counts, seenIds)) skippedSystem++;
                                 }
                             }
                         }
                     }
                 }
 
-                console.log(`[TeamsSync]   Channel "${channel.displayName}": ${counts.sent} sent, ${counts.received} received`);
+                if (skippedSystem > 0) console.log(`[TeamsSync]   Channel "${channel.displayName}": skipped ${skippedSystem} bot/system/empty messages`);
+                console.log(`[TeamsSync]   Channel "${channel.displayName}": ${counts.sent} sent, ${counts.received} received (${msgList.length} total human messages)`);
 
                 // Merge across channels within same team/client
                 if (results[clientName]) {
@@ -5885,6 +5927,11 @@ const TeamsSync = {
                 }
             }
         }
+
+        // Summary log for data verification
+        const clientSummary = Object.entries(results).map(([name, d]) => `${name}: ${d.sent} sent + ${d.received} received = ${d.messages.length} msgs`);
+        console.log(`[TeamsSync] ✅ Complete — ${totalApiCalls} API calls, ${Object.keys(results).length} clients matched`);
+        clientSummary.forEach(s => console.log(`[TeamsSync]   ${s}`));
 
         return results;
     },
@@ -5927,12 +5974,13 @@ const TeamsSync = {
             this._lastSync = new Date();
             ConnectionStatus.setTeams('connected');
 
-            // Refresh communication volume chart if on overview
+            // Refresh both charts if on overview
             if (typeof Router !== 'undefined' && Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
                 const clients = State.clients.length > 0 ? State.clients : [];
                 if (clients.length > 0) {
                     OverviewCharts.renderCommVolume(clients);
                 }
+                OverviewCharts.renderActivityTrend();
             }
         } catch (err) {
             console.error('[TeamsSync] Sync failed:', err);
@@ -5997,14 +6045,15 @@ const FirefliesSync = {
     },
     hasToken() { return !!this.getToken(); },
 
-    // Cache: { transcripts: [], actions: { transcriptId: [...] }, importedIds: [] }
-    _cache: { transcripts: [], actions: {}, importedIds: [] },
+    // Cache: { transcripts: [], actions: { transcriptId: [...] }, importedIds: [], dismissedIds: [] }
+    _cache: { transcripts: [], actions: {}, importedIds: [], dismissedIds: [] },
     loadCache() {
         try {
             const raw = localStorage.getItem(this._sk(this._cacheKey));
-            this._cache = raw ? JSON.parse(raw) : { transcripts: [], actions: {}, importedIds: [] };
-        } catch { this._cache = { transcripts: [], actions: {}, importedIds: [] }; }
+            this._cache = raw ? JSON.parse(raw) : { transcripts: [], actions: {}, importedIds: [], dismissedIds: [] };
+        } catch { this._cache = { transcripts: [], actions: {}, importedIds: [], dismissedIds: [] }; }
         if (!this._cache.importedIds) this._cache.importedIds = [];
+        if (!this._cache.dismissedIds) this._cache.dismissedIds = [];
     },
     saveCache() { localStorage.setItem(this._sk(this._cacheKey), JSON.stringify(this._cache)); },
 
@@ -6165,13 +6214,42 @@ const FirefliesSync = {
         return count;
     },
 
-    // Get all meetings (with summary data)
+    // Dismiss/undismiss meetings from planner view
+    isDismissed(transcriptId) { return this._cache.dismissedIds.includes(transcriptId); },
+    dismissMeeting(transcriptId) {
+        if (!this._cache.dismissedIds.includes(transcriptId)) {
+            this._cache.dismissedIds.push(transcriptId);
+            this.saveCache();
+        }
+    },
+    undismissMeeting(transcriptId) {
+        this._cache.dismissedIds = this._cache.dismissedIds.filter(id => id !== transcriptId);
+        this.saveCache();
+    },
+    getDismissedCount() {
+        return this._cache.dismissedIds.length;
+    },
+
+    // Get all meetings (with summary data) — excludes dismissed meetings
     getMeetings() {
         return this._cache.transcripts
+            .filter(t => !this.isDismissed(t.id))
             .map(t => ({
                 ...t,
                 actions: this._cache.actions[t.id] || [],
                 importedCount: (this._cache.actions[t.id] || []).filter(a => this.isImported(a.id)).length
+            }))
+            .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    },
+
+    // Get ALL meetings including dismissed (for "show dismissed" view)
+    getAllMeetings() {
+        return this._cache.transcripts
+            .map(t => ({
+                ...t,
+                actions: this._cache.actions[t.id] || [],
+                importedCount: (this._cache.actions[t.id] || []).filter(a => this.isImported(a.id)).length,
+                dismissed: this.isDismissed(t.id)
             }))
             .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     },
@@ -10192,7 +10270,8 @@ document.addEventListener('click', (e) => {
 function buildFirefliesSection() {
     if (!FirefliesSync.hasToken()) return '';
     const meetings = FirefliesSync.getMeetings();
-    if (meetings.length === 0) {
+    const dismissedCount = FirefliesSync.getDismissedCount();
+    if (meetings.length === 0 && dismissedCount === 0) {
         return `
         <div class="fireflies-section">
             <div class="fireflies-section-header">
@@ -10214,6 +10293,7 @@ function buildFirefliesSection() {
             <div class="ff-mc-header">
                 <span class="ff-mc-title">${m.title || 'Untitled Meeting'}</span>
                 <span class="ff-mc-date">${dateStr}</span>
+                <button class="btn-ff-dismiss" onclick="dismissFirefliesMeeting('${m.id}')" title="Dismiss meeting">✕</button>
             </div>
             <div class="ff-mc-badges">
                 ${clientBadges}
@@ -10226,14 +10306,64 @@ function buildFirefliesSection() {
             </div>
         </div>`;
     }).join('');
+
+    // Build dismissed meetings section (collapsed by default)
+    let dismissedHTML = '';
+    if (dismissedCount > 0) {
+        dismissedHTML = `
+        <div style="text-align:center;margin-top:4px;">
+            <button class="ff-dismissed-toggle" onclick="toggleDismissedMeetings()">
+                ${dismissedCount} dismissed meeting${dismissedCount !== 1 ? 's' : ''} — <span id="ffDismissedToggleLabel">show</span>
+            </button>
+        </div>
+        <div id="ffDismissedContainer" style="display:none;">
+            ${buildDismissedMeetings()}
+        </div>`;
+    }
+
     return `
     <div class="fireflies-section">
         <div class="fireflies-section-header">
             <h3>🎙️ Meeting Notes <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(${meetings.length} meeting${meetings.length !== 1 ? 's' : ''}${totalActions > 0 ? ' · ' + totalActions + ' new actions' : ''})</span></h3>
             <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
         </div>
-        ${meetingHTML}
+        ${meetings.length === 0 ? '<div class="ff-empty">All meetings dismissed. Use the toggle below to restore.</div>' : meetingHTML}
+        ${dismissedHTML}
     </div>`;
+}
+
+function buildDismissedMeetings() {
+    const all = FirefliesSync.getAllMeetings().filter(m => m.dismissed);
+    return all.map(m => {
+        const dateStr = m.date ? new Date(m.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        return `
+        <div class="ff-meeting-card-v2" style="opacity:0.6;">
+            <div class="ff-mc-header">
+                <span class="ff-mc-title" style="text-decoration:line-through;">${m.title || 'Untitled Meeting'}</span>
+                <span class="ff-mc-date">${dateStr}</span>
+                <button class="btn-ff-restore" onclick="restoreFirefliesMeeting('${m.id}')">Restore</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function dismissFirefliesMeeting(transcriptId) {
+    FirefliesSync.dismissMeeting(transcriptId);
+    renderPlannerPage();
+}
+
+function restoreFirefliesMeeting(transcriptId) {
+    FirefliesSync.undismissMeeting(transcriptId);
+    renderPlannerPage();
+}
+
+function toggleDismissedMeetings() {
+    const container = document.getElementById('ffDismissedContainer');
+    const label = document.getElementById('ffDismissedToggleLabel');
+    if (!container) return;
+    const visible = container.style.display !== 'none';
+    container.style.display = visible ? 'none' : 'block';
+    if (label) label.textContent = visible ? 'show' : 'hide';
 }
 
 function toggleFirefliesMeeting(meetingId) {
