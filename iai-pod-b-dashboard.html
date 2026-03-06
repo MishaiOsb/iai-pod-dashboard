@@ -8190,6 +8190,8 @@ const OverviewCharts = {
         const typeConfig = {
             'email-in': { label: 'Emails In', color: '#579bfc' },
             'email-out': { label: 'Emails Out', color: '#007eb5' },
+            'teams-in': { label: 'Teams In', color: '#66ccff' },
+            'teams-out': { label: 'Teams Out', color: '#0d9488' },
             'calendar': { label: 'Calendar', color: '#9d50dd' },
             'data-change': { label: 'Data Changes', color: '#00c875' },
             'todo': { label: 'Todos', color: '#fdab3d' },
@@ -8205,6 +8207,17 @@ const OverviewCharts = {
             const t = typeKeys.includes(ev.type) ? ev.type : (ev.type === 'alert' || ev.type === 'note' || ev.type === 'override' || ev.type === 'target' || ev.type === 'status-change') ? 'system' : 'system';
             matrix[t][dayIdx]++;
         });
+        // Inject Teams channel messages from TEAMS_DATA into the trend
+        if (TEAMS_DATA && TEAMS_DATA.clients) {
+            Object.values(TEAMS_DATA.clients).forEach(cd => {
+                (cd.messages || []).forEach(m => {
+                    const mDate = new Date(m.date); mDate.setHours(0,0,0,0);
+                    const dayIdx = days.findIndex(d => d.getTime() === mDate.getTime());
+                    if (dayIdx < 0) return;
+                    matrix[m.isFromMe ? 'teams-out' : 'teams-in'][dayIdx]++;
+                });
+            });
+        }
         const datasets = typeKeys
             .filter(t => matrix[t].some(v => v > 0))
             .map(t => ({ label: typeConfig[t].label, data: matrix[t], backgroundColor: typeConfig[t].color, borderRadius: 2 }));
