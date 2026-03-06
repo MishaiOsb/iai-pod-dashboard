@@ -3425,14 +3425,9 @@ input, textarea, select { font-family: inherit; outline: none; }
                     <span class="conn-svc-name">monday.com</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
-                <div class="conn-dropdown-row" id="connRow-outlook">
+                <div class="conn-dropdown-row" id="connRow-microsoft">
                     <span class="conn-svc-dot gray"></span>
-                    <span class="conn-svc-name">Outlook</span>
-                    <span class="conn-svc-label gray">Pending</span>
-                </div>
-                <div class="conn-dropdown-row" id="connRow-calendar">
-                    <span class="conn-svc-dot gray"></span>
-                    <span class="conn-svc-name">Calendar</span>
+                    <span class="conn-svc-name">Microsoft</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
                 <div class="conn-dropdown-row" id="connRow-fireflies" style="display:none;">
@@ -5399,7 +5394,7 @@ const OutlookSync = {
         if (typeof Router !== 'undefined' && Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
             const clients = State.clients.length > 0 ? State.clients : [];
             if (clients.length > 0) {
-                OverviewCharts.renderEmailVolume(clients);
+                OverviewCharts.renderCommVolume(clients);
             }
         }
     },
@@ -5731,6 +5726,212 @@ const CalendarSync = {
             // Always load cached calendar data — even if the token has expired,
             // the cache is still the most recent snapshot of real calendar activity
             CALENDAR_DATA = cached;
+            this._lastSync = new Date(cached.snapshotDate);
+        }
+        this.startAutoSync();
+    }
+};
+
+/* ================================================================
+   TEAMS SYNC — Teams channel message integration
+   Fetches channel messages via MS Graph API, matches channels to
+   dashboard clients, counts sent/received for communication volume.
+   Reuses OutlookSync's MS Graph token (no separate token needed).
+   Required permissions: Team.ReadBasic.All, Channel.ReadBasic.All,
+   ChannelMessage.Read.All
+   ================================================================ */
+const TeamsSync = {
+    _cacheKey: 'iai_teams_cache',
+    _csk() { return UserSession.podKey(this._cacheKey); },
+    _syncInterval: null,
+    _lastSync: null,
+    _syncing: false,
+    _error: null,
+    SYNC_INTERVAL_MS: 600000, // 10 minutes
+
+    // ── Token Management (delegates to OutlookSync) ──
+    getToken() { return OutlookSync.getToken(); },
+    hasToken() { return OutlookSync.hasToken(); },
+
+    // ── Microsoft Graph API ──
+    async _graphFetch(endpoint, params) {
+        const token = this.getToken();
+        if (!token) { this._error = 'no-token'; return null; }
+        try {
+            let url = 'https://graph.microsoft.com/v1.0' + endpoint;
+            if (params && Object.keys(params).length > 0) {
+                const qs = Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+                url += '?' + qs;
+            }
+            const resp = await fetch(url, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (resp.status === 401) { this._error = 'token-expired'; return null; }
+            if (resp.status === 403) { this._error = 'no-permission'; return null; }
+            if (!resp.ok) { this._error = 'api-error'; return null; }
+            this._error = null;
+            return await resp.json();
+        } catch (err) {
+            this._error = 'network';
+            console.error('[TeamsSync] Network error:', err.message);
+            return null;
+        }
+    },
+
+    // ── Channel → Client Matching ──
+    _matchChannelToClient(channelName) {
+        const cn = channelName.toLowerCase();
+        const clients = State.clients.length > 0 ? State.clients : [];
+        for (const client of clients) {
+            const name = client.name.toLowerCase();
+            if (cn.includes(name) || name.includes(cn)) return client.name;
+        }
+        return null;
+    },
+
+    // ── Fetch Channel Messages ──
+    async fetchChannelData() {
+        // 1. Get joined teams
+        const teamsData = await this._graphFetch('/me/joinedTeams');
+        if (!teamsData || !teamsData.value) return null;
+
+        const daysBack = 14;
+        const since = new Date(Date.now() - daysBack * 86400000).toISOString();
+        const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL).toLowerCase();
+        const results = {};
+
+        // 2. For each team, get channels
+        for (const team of teamsData.value) {
+            const channelsData = await this._graphFetch(`/teams/${team.id}/channels`);
+            if (!channelsData || !channelsData.value) continue;
+
+            for (const channel of channelsData.value) {
+                // 3. Match channel name to a dashboard client
+                const clientName = this._matchChannelToClient(channel.displayName);
+                if (!clientName) continue;
+
+                // 4. Fetch recent messages from matched channel
+                const messagesData = await this._graphFetch(
+                    `/teams/${team.id}/channels/${channel.id}/messages`,
+                    { '$top': '50', '$orderby': 'lastModifiedDateTime desc' }
+                );
+                if (!messagesData || !messagesData.value) continue;
+
+                // 5. Filter to last 14 days and count sent vs received
+                const messages = messagesData.value.filter(m => {
+                    if (m.messageType !== 'message') return false;
+                    const msgDate = new Date(m.createdDateTime);
+                    return msgDate >= new Date(since);
+                });
+
+                let sent = 0, received = 0;
+                const msgList = [];
+                messages.forEach(m => {
+                    const fromEmail = m.from?.user?.email?.toLowerCase() || '';
+                    const isFromMe = fromEmail === myEmail;
+                    if (isFromMe) sent++; else received++;
+                    msgList.push({
+                        from: fromEmail || m.from?.user?.displayName || 'unknown',
+                        date: m.createdDateTime,
+                        isFromMe,
+                        preview: (m.body?.content || '').replace(/<[^>]+>/g, '').substring(0, 100)
+                    });
+                });
+
+                // Merge if multiple channels match same client
+                if (results[clientName]) {
+                    results[clientName].messages.push(...msgList);
+                    results[clientName].sent += sent;
+                    results[clientName].received += received;
+                } else {
+                    results[clientName] = { messages: msgList, sent, received };
+                }
+            }
+        }
+
+        return results;
+    },
+
+    // ── Build TEAMS_DATA ──
+    buildTeamsData(channelResults) {
+        const clients = {};
+        for (const [clientName, data] of Object.entries(channelResults)) {
+            data.messages.sort((a, b) => new Date(b.date) - new Date(a.date));
+            clients[clientName] = data;
+        }
+        return { snapshotDate: new Date().toISOString(), clients };
+    },
+
+    // ── Sync Orchestration ──
+    async sync(manual = false) {
+        if (this._syncing) return;
+        if (!this.hasToken()) return;
+        this._syncing = true;
+        this._error = null;
+
+        try {
+            ConnectionStatus.setTeams('syncing');
+            const channelResults = await this.fetchChannelData();
+
+            if (!channelResults) {
+                // Permission error or API failure — fail gracefully
+                if (this._error === 'no-permission') {
+                    ConnectionStatus.setTeams('no-permission');
+                    console.warn('[TeamsSync] Missing permissions — add Team.ReadBasic.All, Channel.ReadBasic.All, ChannelMessage.Read.All scopes');
+                } else {
+                    ConnectionStatus.setTeams('error');
+                }
+                this._syncing = false;
+                return;
+            }
+
+            TEAMS_DATA = this.buildTeamsData(channelResults);
+            this._saveCache(TEAMS_DATA);
+            this._lastSync = new Date();
+            ConnectionStatus.setTeams('connected');
+
+            // Refresh communication volume chart if on overview
+            if (typeof Router !== 'undefined' && Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
+                const clients = State.clients.length > 0 ? State.clients : [];
+                if (clients.length > 0) {
+                    OverviewCharts.renderCommVolume(clients);
+                }
+            }
+        } catch (err) {
+            console.error('[TeamsSync] Sync failed:', err);
+            ConnectionStatus.setTeams('error');
+        }
+
+        this._syncing = false;
+    },
+
+    // ── Cache ──
+    _saveCache(data) {
+        try { localStorage.setItem(this._csk(), JSON.stringify(data)); } catch (e) { /* quota */ }
+    },
+    _loadCache() {
+        try {
+            const raw = localStorage.getItem(this._csk());
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    },
+
+    // ── Auto-Sync Timer ──
+    startAutoSync() {
+        this.stopAutoSync();
+        if (this.hasToken()) {
+            this._syncInterval = setInterval(() => this.sync(false), this.SYNC_INTERVAL_MS);
+        }
+    },
+    stopAutoSync() {
+        if (this._syncInterval) { clearInterval(this._syncInterval); this._syncInterval = null; }
+    },
+
+    // ── Init ──
+    init() {
+        const cached = this._loadCache();
+        if (cached) {
+            TEAMS_DATA = cached;
             this._lastSync = new Date(cached.snapshotDate);
         }
         this.startAutoSync();
@@ -7123,6 +7324,11 @@ let CALENDAR_DATA = {
 };
 
 /* ================================================================
+   TEAMS CHANNEL DATA (populated by TeamsSync from MS Graph API)
+   ================================================================ */
+let TEAMS_DATA = { snapshotDate: null, clients: {} };
+
+/* ================================================================
    MONDAY.COM API MODULE
    ================================================================ */
 const MondayAPI = {
@@ -7888,39 +8094,47 @@ const OverviewCharts = {
         });
     },
 
-    /** Email Volume by Client — horizontal bar: email count per client, split by sent/received */
-    renderEmailVolume(clients) {
-        this.destroy('ovEmailVol');
+    /** Communication Volume by Client — horizontal stacked bar: email + Teams messages per client */
+    renderCommVolume(clients) {
+        this.destroy('ovCommVol');
         const data = clients
             .map(c => {
                 const ed = EMAIL_DATA.clients?.[c.name];
                 const emails = ed?.emails || [];
-                const received = emails.filter(e => !e.isFromMe).length;
-                const sent = emails.filter(e => e.isFromMe).length;
-                return { name: c.name, received, sent, total: received + sent };
+                const emailRx = emails.filter(e => !e.isFromMe).length;
+                const emailTx = emails.filter(e => e.isFromMe).length;
+                const td = TEAMS_DATA.clients?.[c.name];
+                const teamsRx = td?.received || 0;
+                const teamsTx = td?.sent || 0;
+                return { name: c.name, emailRx, emailTx, teamsRx, teamsTx, total: emailRx + emailTx + teamsRx + teamsTx };
             })
             .sort((a, b) => b.total - a.total);
         if (data.length === 0) return;
-        const ctx = document.getElementById('ovEmailVolChart');
+        const ctx = document.getElementById('ovCommVolChart');
         if (!ctx) return;
-        this._instances['ovEmailVol'] = new Chart(ctx, {
+        const hasTeams = data.some(d => d.teamsRx > 0 || d.teamsTx > 0);
+        const datasets = [
+            { label: 'Email Received', data: data.map(d => d.emailRx), backgroundColor: '#579bfc', borderRadius: 4, barThickness: 14 },
+            { label: 'Email Sent', data: data.map(d => d.emailTx), backgroundColor: '#00c875', borderRadius: 4, barThickness: 14 }
+        ];
+        if (hasTeams) {
+            datasets.push(
+                { label: 'Teams Received', data: data.map(d => d.teamsRx), backgroundColor: '#66ccff', borderRadius: 4, barThickness: 14 },
+                { label: 'Teams Sent', data: data.map(d => d.teamsTx), backgroundColor: '#0d9488', borderRadius: 4, barThickness: 14 }
+            );
+        }
+        this._instances['ovCommVol'] = new Chart(ctx, {
             type: 'bar',
-            data: {
-                labels: data.map(d => d.name),
-                datasets: [
-                    { label: 'Received', data: data.map(d => d.received), backgroundColor: '#579bfc', borderRadius: 4, barThickness: 14 },
-                    { label: 'Sent', data: data.map(d => d.sent), backgroundColor: '#00c875', borderRadius: 4, barThickness: 14 }
-                ]
-            },
+            data: { labels: data.map(d => d.name), datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 indexAxis: 'y',
                 plugins: {
                     legend: { display: true, position: 'top', labels: { boxWidth: 10, padding: 8, font: { size: 10 }, color: ThemeManager.isDark() ? '#ccc' : '#555' } },
-                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.x} emails` } }
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.x}` } }
                 },
                 scales: {
-                    x: { stacked: true, grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, title: { display: true, text: 'Emails', font: { size: 10 } }, ticks: { stepSize: 1 } },
+                    x: { stacked: true, grid: { color: ThemeManager.isDark() ? '#222' : '#e4e6ea' }, title: { display: true, text: 'Messages', font: { size: 10 } }, ticks: { stepSize: 1 } },
                     y: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
                 }
             }
@@ -9405,8 +9619,8 @@ function renderOverviewPage() {
                 <div style="position:relative;height:220px;"><canvas id="ovPlanChart"></canvas></div>
             </div>
             <div class="chart-card">
-                <h4>&#128232; Email Volume by Client</h4>
-                <div style="position:relative;height:220px;"><canvas id="ovEmailVolChart"></canvas></div>
+                <h4>&#128172; Communication Volume</h4>
+                <div style="position:relative;height:220px;"><canvas id="ovCommVolChart"></canvas></div>
             </div>
             <div class="chart-card">
                 <h4>&#128197; Upcoming Deadlines</h4>
@@ -9504,7 +9718,7 @@ function renderOverviewPage() {
         OverviewCharts.destroyAll();
         OverviewCharts.renderHealthDistribution(clients);
         OverviewCharts.renderPlanDistribution(clients);
-        OverviewCharts.renderEmailVolume(clients);
+        OverviewCharts.renderCommVolume(clients);
         OverviewCharts.renderActivityTrend();
     }, 80);
 }
@@ -12700,6 +12914,11 @@ async function loadData(showOverlay = true) {
             CalendarSync.sync(false);
         }
 
+        // Trigger Teams channel sync on initial load
+        if (showOverlay && TeamsSync.hasToken() && !TeamsSync._lastSync) {
+            TeamsSync.sync(false);
+        }
+
     } catch (err) {
         ConnectionStatus.setMonday('error');
         showToast(`Data load failed: ${err.message}`, 'error');
@@ -12714,8 +12933,9 @@ async function refreshData() {
     btn.classList.add('spinning');
     btn.disabled = true;
     await loadData(false);
-    // Also trigger calendar sync on refresh
+    // Also trigger calendar + teams sync on refresh
     if (CalendarSync.hasToken()) CalendarSync.sync(false);
+    if (TeamsSync.hasToken()) TeamsSync.sync(false);
     btn.classList.remove('spinning');
     btn.disabled = false;
     showToast('Data refreshed from monday.com', 'info');
@@ -12914,24 +13134,34 @@ const ConnectionStatus = {
     monday: 'unknown',       // 'ok' | 'error' | 'unknown'
     outlook: 'unknown',      // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
     calendar: 'unknown',     // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
+    teams: 'unknown',        // 'connected' | 'syncing' | 'error' | 'no-permission' | 'unknown'
     fireflies: 'unknown',   // 'connected' | 'syncing' | 'error' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
     setCalendar(status) { this.calendar = status; updateConnectionIndicator(); },
+    setTeams(status) { this.teams = status; updateConnectionIndicator(); },
     setFireflies(status) { this.fireflies = status; updateConnectionIndicator(); },
+
+    // Consolidated Microsoft status: best of outlook, calendar, teams
+    getMicrosoftStatus() {
+        if (!OutlookSync.hasToken()) return 'no-token';
+        const statuses = [this.outlook, this.calendar];
+        if (statuses.some(s => s === 'ok')) return 'ok';
+        if (statuses.some(s => s === 'token-expired')) return 'token-expired';
+        if (statuses.some(s => s === 'error')) return 'error';
+        return 'unknown';
+    },
 
     // Overall health: green if monday OK, amber if any issues, red if monday down
     getOverall() {
         if (getConnectionMode() === 'offline') return 'offline';
         if (this.monday === 'error') return 'disconnected';
         if (this.monday === 'unknown') return 'online';
-        const outlookIssue = this.outlook === 'error' || this.outlook === 'token-expired';
-        const calendarIssue = this.calendar === 'error' || this.calendar === 'token-expired';
-        const firefliesIssue = this.fireflies === 'error';
-        if ((outlookIssue && OutlookSync.hasToken()) || (calendarIssue && CalendarSync.hasToken()) || (firefliesIssue && FirefliesSync.hasToken())) {
-            return 'issues';
-        }
+        const msStatus = this.getMicrosoftStatus();
+        const msIssue = (msStatus === 'error' || msStatus === 'token-expired') && OutlookSync.hasToken();
+        const firefliesIssue = this.fireflies === 'error' && FirefliesSync.hasToken();
+        if (msIssue || firefliesIssue) return 'issues';
         return 'online';
     },
 
@@ -12941,12 +13171,10 @@ const ConnectionStatus = {
         const parts = [];
         parts.push(`monday.com: ${this.monday === 'ok' ? 'Connected' : this.monday === 'error' ? 'Failed' : 'Pending'}`);
         if (OutlookSync.hasToken()) {
-            const oStatus = this.outlook === 'ok' ? 'Connected' : this.outlook === 'token-expired' ? 'Token expired' : this.outlook === 'error' ? 'Failed' : 'Pending';
-            parts.push(`Outlook: ${oStatus}`);
-        }
-        if (CalendarSync.hasToken()) {
-            const cStatus = this.calendar === 'ok' ? 'Connected' : this.calendar === 'token-expired' ? 'Token expired' : this.calendar === 'error' ? 'Failed' : 'Pending';
-            parts.push(`Calendar: ${cStatus}`);
+            const msStatus = this.getMicrosoftStatus();
+            const msLabel = msStatus === 'ok' ? 'Connected' : msStatus === 'token-expired' ? 'Token expired' : msStatus === 'error' ? 'Failed' : 'Pending';
+            const teamsSuffix = this.teams === 'connected' ? ' (+ Teams)' : this.teams === 'no-permission' ? ' (Teams: no permission)' : '';
+            parts.push(`Microsoft: ${msLabel}${teamsSuffix}`);
         }
         if (FirefliesSync.hasToken()) {
             const fStatus = this.fireflies === 'connected' ? 'Connected' : this.fireflies === 'syncing' ? 'Syncing...' : this.fireflies === 'error' ? 'Failed' : 'Pending';
@@ -12981,12 +13209,12 @@ function updateConnectionIndicator() {
     _updateConnRow('connRow-monday', ConnectionStatus.monday, {
         ok: 'Connected', error: 'Failed', unknown: 'Pending'
     });
-    _updateConnRow('connRow-outlook', ConnectionStatus.outlook, {
-        ok: 'Connected', error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
+    const msStatus = ConnectionStatus.getMicrosoftStatus();
+    const msLabel = msStatus === 'ok' ? 'Connected' : msStatus === 'token-expired' ? 'Token expired' : msStatus === 'error' ? 'Failed' : msStatus === 'no-token' ? 'Not configured' : 'Pending';
+    _updateConnRow('connRow-microsoft', msStatus, {
+        ok: msLabel + (ConnectionStatus.teams === 'connected' ? ' + Teams' : ''),
+        error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
     }, !OutlookSync.hasToken());
-    _updateConnRow('connRow-calendar', ConnectionStatus.calendar, {
-        ok: 'Connected', error: 'Failed', 'no-token': 'Not configured', 'token-expired': 'Token expired', unknown: 'Pending'
-    }, !CalendarSync.hasToken());
     _updateConnRow('connRow-fireflies', ConnectionStatus.fireflies, {
         connected: 'Connected', syncing: 'Syncing...', error: 'Failed', unknown: 'Pending'
     }, !FirefliesSync.hasToken());
@@ -13130,6 +13358,7 @@ async function testConnection() {
                 if (outlookToken && OutlookSync.hasToken()) {
                     OutlookSync.sync(true);
                     CalendarSync.sync(true);
+                    TeamsSync.sync(true);
                 }
                 if (firefliesToken && FirefliesSync.hasToken()) {
                     FirefliesSync.sync(true);
@@ -13208,6 +13437,7 @@ async function selectPod(slug, index, name) {
         if (OutlookSync.hasToken()) {
             OutlookSync.sync(false);
             CalendarSync.sync(false);
+            TeamsSync.sync(false);
         }
     }
 }
@@ -13225,6 +13455,7 @@ async function dismissSplash() {
     if (OutlookSync.hasToken()) {
         OutlookSync.sync(false);
         CalendarSync.sync(false);
+        TeamsSync.sync(false);
     }
 }
 
@@ -13249,6 +13480,7 @@ function reloadNamespacedModules() {
     LocalEditManager.load();
     OutlookSync.init();
     CalendarSync.init();
+    TeamsSync.init();
     FirefliesSync.init();
 }
 
@@ -13320,6 +13552,7 @@ async function init() {
     LocalEditManager.load();
     OutlookSync.init();
     CalendarSync.init();
+    TeamsSync.init();
     FirefliesSync.init();
 
     // Handle EMAIL_DATA and CALENDAR_DATA for non-Pod-B users
