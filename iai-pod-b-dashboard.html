@@ -2874,6 +2874,9 @@ input, textarea, select { font-family: inherit; outline: none; }
     opacity: 0; pointer-events: none; transition: opacity 0.25s;
 }
 .share-overlay.open { opacity: 1; pointer-events: auto; }
+[contenteditable="true"] { cursor:text; border-radius:var(--radius-sm); transition:background 0.15s,box-shadow 0.15s; }
+[contenteditable="true"]:hover { background:rgba(107,48,255,0.04); }
+[contenteditable="true"]:focus { background:rgba(107,48,255,0.07); box-shadow:0 0 0 2px rgba(107,48,255,0.25); outline:none; }
 .share-modal {
     background: var(--bg-card); border: 1px solid var(--border-default);
     border-radius: var(--radius-lg); width: 94%; max-width: 780px;
@@ -3389,7 +3392,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 <div class="share-overlay" id="shareOverlay" onclick="if(event.target===this)ShareSnapshot.close()">
     <div class="share-modal">
         <div class="share-modal-header">
-            <h3>&#128202; Weekly Report</h3>
+            <div><h3 style="margin:0;">&#128202; Weekly Report</h3><span style="font-size:10px;color:var(--text-muted);font-weight:400;">Click any highlighted text to edit before exporting</span></div>
             <button class="share-modal-close" onclick="ShareSnapshot.close()" title="Close">&times;</button>
         </div>
         <div class="share-modal-actions">
@@ -7799,8 +7802,8 @@ const State = {
         else if (client.rag === 'Amber') score += 15;
         else if (client.rag === 'Red') score -= 10;
 
-        // Last contact recency (20 points)
-        const daysSince = getDaysSinceContact(client.lastContact);
+        // Last contact recency (20 points) — considers email + Teams
+        const daysSince = getDaysSinceContact(getEffectiveLastContact(client));
         if (daysSince !== null) {
             if (daysSince <= 3) score += 20;
             else if (daysSince <= 7) score += 12;
@@ -7840,8 +7843,8 @@ const State = {
         score += ragPts;
         factors.push({ name: 'RAG Status', points: ragPts, detail: client.rag || 'Unknown', max: 30 });
 
-        // Last contact recency (20 points)
-        const daysSince = getDaysSinceContact(client.lastContact);
+        // Last contact recency (20 points) — considers email + Teams
+        const daysSince = getDaysSinceContact(getEffectiveLastContact(client));
         let contactPts = 0;
         let contactDetail = 'No data';
         if (daysSince !== null) {
@@ -7909,7 +7912,7 @@ const State = {
             // Skip all operational alerts for discontinued clients
             if (isDiscontinued(c.name)) return;
 
-            const daysSince = getDaysSinceContact(c.lastContact);
+            const daysSince = getDaysSinceContact(getEffectiveLastContact(c));
 
             // Critical: No contact in 14+ days
             if (daysSince !== null && daysSince >= CONFIG.STALE_CRITICAL_DAYS) {
@@ -8509,6 +8512,27 @@ function daysAgoClass(dateStr) {
     return '';
 }
 
+/** Return the most recent contact date across monday.com, email, and Teams */
+function getEffectiveLastContact(client) {
+    let best = client.lastContact || '';
+    try {
+        const td = TEAMS_DATA.clients?.[client.name];
+        if (td && td.messages && td.messages.length > 0) {
+            const teamsDate = td.messages[0].date;
+            if (teamsDate) {
+                const tDate = new Date(teamsDate).toISOString().split('T')[0];
+                if (!best || new Date(tDate) > new Date(best)) best = tDate;
+            }
+        }
+        const ed = EMAIL_DATA.clients?.[client.name];
+        if (ed && ed.lastEmailDate) {
+            const eDate = new Date(ed.lastEmailDate).toISOString().split('T')[0];
+            if (!best || new Date(eDate) > new Date(best)) best = eDate;
+        }
+    } catch(e) { /* graceful fallback to original */ }
+    return best;
+}
+
 function confidenceColor(v) {
     if (v < 33) return '#df2f4a';
     if (v < 66) return '#fdab3d';
@@ -8882,7 +8906,7 @@ function renderClients(clientsArg) {
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Last Contact</span>
-                    <span class="stat-value" style="color:${daysAgoClass(c.lastContact) === 'danger' ? 'var(--rag-red)' : daysAgoClass(c.lastContact) === 'warning' ? 'var(--rag-amber)' : 'inherit'}">${daysAgo(c.lastContact)}</span>
+                    <span class="stat-value" style="color:${daysAgoClass(getEffectiveLastContact(c)) === 'danger' ? 'var(--rag-red)' : daysAgoClass(getEffectiveLastContact(c)) === 'warning' ? 'var(--rag-amber)' : 'inherit'}">${daysAgo(getEffectiveLastContact(c))}</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Platform</span>
@@ -9169,7 +9193,7 @@ function openDetail(clientId) {
                 </div>
                 <div class="detail-field">
                     <label>Days Since Contact</label>
-                    <div class="read-only" style="color:${daysAgoClass(c.lastContact) === 'danger' ? 'var(--rag-red)' : daysAgoClass(c.lastContact) === 'warning' ? 'var(--rag-amber)' : 'var(--text-secondary)'}">${daysAgo(c.lastContact)}</div>
+                    <div class="read-only" style="color:${daysAgoClass(getEffectiveLastContact(c)) === 'danger' ? 'var(--rag-red)' : daysAgoClass(getEffectiveLastContact(c)) === 'warning' ? 'var(--rag-amber)' : 'var(--text-secondary)'}">${daysAgo(getEffectiveLastContact(c))}</div>
                 </div>
             </div>
             <div class="detail-field-row">
@@ -9234,6 +9258,8 @@ function openDetail(clientId) {
                 }).join('')}
             </div>` : '<div style="color:var(--text-muted);font-size:13px;font-style:italic">No agents configured</div>'}
         </div>
+
+        ${buildTeamsMessagesSection(c.name)}
 
         <div class="detail-section">
             <h3>&#128236; Recent Emails</h3>
@@ -10010,6 +10036,35 @@ function buildClientMeetingsSection(clientName) {
     </div>`;
 }
 
+/** Build "Teams Channel Messages" section for a client detail page */
+function buildTeamsMessagesSection(clientName) {
+    const td = TEAMS_DATA.clients?.[clientName];
+    if (!td || !td.messages || td.messages.length === 0) return '';
+    const msgs = td.messages.slice(0, 10);
+    const cards = msgs.map(m => {
+        const dateStr = m.date ? new Date(m.date).toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+        const sender = (m.from || 'Unknown').replace(/</g,'&lt;').split('@')[0];
+        const preview = m.text ? m.text.replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').trim() : (m.subject || 'No content');
+        const truncated = preview.length > 140 ? preview.substring(0, 140) + '...' : preview;
+        return `<div style="padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);margin-bottom:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:12px;font-weight:600;color:var(--text-primary);">${sender}</span>
+                <span style="font-size:10px;color:var(--text-muted);">${dateStr}</span>
+            </div>
+            ${m.subject ? `<div style="font-size:11px;font-weight:500;color:var(--text-primary);margin-bottom:2px;">${m.subject.replace(/</g,'&lt;')}</div>` : ''}
+            <div style="font-size:11px;color:var(--text-secondary);line-height:1.4;">${truncated.replace(/</g,'&lt;')}</div>
+        </div>`;
+    }).join('');
+    return `<div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
+            &#128172; Teams Channel Updates (${td.messages.length})
+            <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— ${td.sent || 0} sent, ${td.received || 0} received</span>
+        </h3>
+        ${cards}
+        ${td.messages.length > 10 ? `<div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;">Showing latest 10 of ${td.messages.length} messages</div>` : ''}
+    </div>`;
+}
+
 function agentStageClass(stage) {
     const s = (stage || '').toLowerCase();
     if (s === 'live') return 'live';
@@ -10267,7 +10322,7 @@ function renderClientFullPage(clientId) {
             </div>
             <div class="detail-metric-card" style="cursor:pointer;" onclick="inlineFieldEdit('${c.id}','lastContact','${c.lastContact||''}','date','',event)">
                 <div class="metric-label">Last Contact ${ChangeTracker.inlineBadge(c.id, 'Last Contact')} <span class="ef-pencil" style="font-size:10px;opacity:0.5;">&#9998;</span></div>
-                <div class="metric-value" style="font-size:16px;color:${daysAgoClass(c.lastContact) === 'danger' ? 'var(--rag-red)' : daysAgoClass(c.lastContact) === 'warning' ? 'var(--rag-amber)' : 'inherit'}">${daysAgo(c.lastContact)}</div>
+                <div class="metric-value" style="font-size:16px;color:${daysAgoClass(getEffectiveLastContact(c)) === 'danger' ? 'var(--rag-red)' : daysAgoClass(getEffectiveLastContact(c)) === 'warning' ? 'var(--rag-amber)' : 'inherit'}">${daysAgo(getEffectiveLastContact(c))}</div>
                 <div class="metric-sub">${c.lastContact || 'click to set'}</div>
             </div>
             <div class="detail-metric-card" style="cursor:pointer;" onclick="inlineFieldEdit('${c.id}','industry','${(c.industry||'').replace(/'/g,"\\'")}','text','',event)">
@@ -10309,6 +10364,8 @@ function renderClientFullPage(clientId) {
             <h3>&#128221; Notes (${NotesManager.get(c.id).length})</h3>
             ${NotesManager.renderInDetail(c.id)}
         </div>
+
+        ${buildTeamsMessagesSection(c.name)}
 
         <div class="client-detail-emails">
             <h3>&#128236; Email Activity</h3>
@@ -10521,7 +10578,7 @@ function renderComparisonTable() {
             <td>${c.agentCount}</td>
             <td>${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : '--'}</td>
             <td>${c.platform || '--'}</td>
-            <td>${daysAgo(c.lastContact)}</td>
+            <td>${daysAgo(getEffectiveLastContact(c))}</td>
             <td>${c.commencement || '--'}</td>
         </tr>`;
     }).join('');
@@ -12858,12 +12915,12 @@ const ShareSnapshot = {
         // Clients needing attention (Red RAG or stale contact)
         const needsAttention = clients.filter(c => {
             if (c.rag === 'Red') return true;
-            const days = getDaysSinceContact(c.lastContact);
+            const days = getDaysSinceContact(getEffectiveLastContact(c));
             return days !== null && days > 14;
         }).map(c => ({
             name: c.name, rag: c.rag, health: State.calcHealth(c),
-            daysSinceContact: getDaysSinceContact(c.lastContact),
-            reason: c.rag === 'Red' ? 'Red RAG' : 'Stale contact (' + getDaysSinceContact(c.lastContact) + 'd)',
+            daysSinceContact: getDaysSinceContact(getEffectiveLastContact(c)),
+            reason: c.rag === 'Red' ? 'Red RAG' : 'Stale contact (' + getDaysSinceContact(getEffectiveLastContact(c)) + 'd)',
         }));
 
         // Email totals
@@ -12938,6 +12995,34 @@ const ShareSnapshot = {
         return parts.join(' ');
     },
 
+    _generateClientProgress(client) {
+        const parts = [];
+        if (client.agents && client.agents.length > 0) {
+            const stageMap = {};
+            client.agents.forEach(a => { if (!stageMap[a.stage]) stageMap[a.stage] = []; stageMap[a.stage].push(a.name); });
+            const descs = Object.entries(stageMap).map(([stage, names]) => `${names.join(', ')} (${stage})`);
+            parts.push(`Agents: ${descs.join('; ')}.`);
+        }
+        const effectiveLC = getEffectiveLastContact(client);
+        const days = getDaysSinceContact(effectiveLC);
+        if (days !== null) {
+            if (days === 0) parts.push('Active contact today.');
+            else if (days <= 3) parts.push(`Recent contact (${days}d ago).`);
+            else if (days > 14) parts.push(`No contact in ${days} days.`);
+        }
+        const td = TEAMS_DATA.clients?.[client.name];
+        if (td && (td.sent + td.received) > 0) parts.push(`Teams: ${td.sent + td.received} msgs (${td.sent} sent, ${td.received} received).`);
+        const ed = EMAIL_DATA.clients?.[client.name];
+        if (ed && ed.emails && ed.emails.length > 0) {
+            const sent = ed.emails.filter(e => e.isFromMe).length;
+            const recv = ed.emails.length - sent;
+            parts.push(`Email: ${sent} sent, ${recv} received.`);
+        }
+        const notes = NotesManager.get(client.id);
+        if (notes.length > 0) parts.push(`${notes.length} internal note${notes.length > 1 ? 's' : ''}.`);
+        return parts.join(' ');
+    },
+
     render() {
         const body = document.getElementById('shareSnapshotBody');
         const s = this._summary();
@@ -12958,7 +13043,7 @@ const ShareSnapshot = {
         const execSummary = this._generateExecSummary(s);
         html += `<div style="background:rgba(107,48,255,0.08);border:1px solid rgba(107,48,255,0.2);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px;">
             <div style="font-size:12px;font-weight:700;color:var(--brand-purple);margin-bottom:6px;">&#128161; Executive Summary</div>
-            <div style="font-size:12px;color:var(--text-primary);line-height:1.6;">${execSummary}</div>
+            <div contenteditable="true" data-snap-field="execSummary" style="font-size:12px;color:var(--text-primary);line-height:1.6;padding:2px 4px;">${execSummary}</div>
         </div>`;
 
         // KPI Grid (6 columns)
@@ -13035,22 +13120,31 @@ const ShareSnapshot = {
                     <div class="snap-metric"><span class="snap-metric-label">Update</span><span class="snap-metric-value">${c.updateStatus}</span></div>
                     <div class="snap-metric"><span class="snap-metric-label">Agents</span><span class="snap-metric-value">${c.agentCount}</span></div>
                     <div class="snap-metric"><span class="snap-metric-label">AIOS Days</span><span class="snap-metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>
-                    <div class="snap-metric"><span class="snap-metric-label">Last Contact</span><span class="snap-metric-value">${daysAgo(c.lastContact)}</span></div>
+                    <div class="snap-metric"><span class="snap-metric-label">Last Contact</span><span class="snap-metric-value">${daysAgo(getEffectiveLastContact(c))}</span></div>
                     <div class="snap-metric"><span class="snap-metric-label">Email Status</span><span class="snap-metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>
                 </div>`;
 
             if (c.agents && c.agents.length > 0) {
-                html += `<div class="snap-agents-row">`;
+                html += `<div style="margin-top:8px;"><div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Agent Details:</div>`;
                 c.agents.forEach(a => {
                     const cls = agentStageClass(a.stage);
                     const colors = { live:'#00c875', production:'#579bfc', onboarding:'#fdab3d', ready:'#9cd326', building:'#784bd1', stuck:'#df2f4a' };
                     const col = colors[cls] || '#888';
-                    html += `<span class="snap-agent-tag" style="background:${col}18;color:${col};border:1px solid ${col}30;">&#129302; ${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
+                    html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px dashed var(--border-subtle);">
+                        <span style="font-size:12px;font-weight:600;color:var(--text-primary);flex:1;">&#129302; ${a.name}</span>
+                        <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${col}18;color:${col};border:1px solid ${col}30;">${a.stage}</span>
+                        ${a.platform ? `<span style="font-size:10px;color:var(--text-muted);">${a.platform}</span>` : ''}
+                    </div>`;
                 });
                 html += `</div>`;
             }
 
-            if (summaryText) html += `<div class="snap-client-summary">${summaryText}</div>`;
+            if (summaryText) html += `<div class="snap-client-summary" contenteditable="true" data-snap-field="clientSummary" data-client="${c.name}">${summaryText}</div>`;
+
+            const progressNote = this._generateClientProgress(c);
+            if (progressNote) {
+                html += `<div class="snap-client-progress" contenteditable="true" data-snap-field="clientProgress" data-client="${c.name}" style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:6px;padding:8px 10px;background:rgba(107,48,255,0.04);border-radius:var(--radius-sm);border-left:2px solid var(--accent-purple);">${progressNote}</div>`;
+            }
             html += `</div>`;
         });
         html += `</div>`;
@@ -13165,7 +13259,7 @@ const ShareSnapshot = {
 
             txt += `${c.rag.toUpperCase()} | ${c.name}  (Health: ${health})\n`;
             txt += `  Plan: ${c.plan || 'N/A'}  |  Billing: ${c.billing}  |  Update: ${c.updateStatus}\n`;
-            txt += `  Agents: ${c.agentCount}  |  AIOS Days: ${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}  |  Last Contact: ${daysAgo(c.lastContact)}\n`;
+            txt += `  Agents: ${c.agentCount}  |  AIOS Days: ${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}  |  Last Contact: ${daysAgo(getEffectiveLastContact(c))}\n`;
             if (emailLabel) txt += `  Email: ${emailLabel.text}\n`;
 
             if (c.agents && c.agents.length > 0) {
@@ -13176,6 +13270,8 @@ const ShareSnapshot = {
                 const sum = c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary;
                 txt += `  Summary: ${sum}\n`;
             }
+            const progressNote = this._generateClientProgress(c);
+            if (progressNote) txt += `  Progress: ${progressNote}\n`;
             txt += `\n`;
         });
 
@@ -13207,11 +13303,73 @@ const ShareSnapshot = {
         return txt;
     },
 
+    // Capture user edits from the modal DOM
+    _captureEdits() {
+        const edits = {};
+        const body = document.getElementById('shareSnapshotBody');
+        if (!body) return edits;
+        const execEl = body.querySelector('[data-snap-field="execSummary"]');
+        if (execEl) edits.execSummary = execEl.innerText.trim();
+        body.querySelectorAll('[data-snap-field="clientSummary"]').forEach(el => {
+            const client = el.getAttribute('data-client');
+            if (client) edits['clientSummary_' + client] = el.innerText.trim();
+        });
+        body.querySelectorAll('[data-snap-field="clientProgress"]').forEach(el => {
+            const client = el.getAttribute('data-client');
+            if (client) edits['clientProgress_' + client] = el.innerText.trim();
+        });
+        return edits;
+    },
+
+    // Generate plain text from DOM (respects user edits)
+    _domToPlainText() {
+        const s = this._summary();
+        const edits = this._captureEdits();
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
+        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
+        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} — ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
+        const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
+
+        let txt = `📊 IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report\n`;
+        txt += `Week of ${weekRange} | Generated: ${dateStr}\n`;
+        txt += `${'═'.repeat(60)}\n\n`;
+        txt += `💡 EXECUTIVE SUMMARY\n`;
+        txt += `${edits.execSummary || this._generateExecSummary(s)}\n\n`;
+        txt += `📈 KPI: ${s.total} clients | Avg Health: ${s.avgHealth} | ${s.green}G / ${s.amber}A / ${s.red}R | ${s.totalAgents} agents\n\n`;
+
+        if (s.needsAttention.length > 0) {
+            txt += `⚠ NEEDS ATTENTION\n`;
+            s.needsAttention.forEach(n => { txt += `  • ${n.name} (Health: ${n.health}) — ${n.reason}\n`; });
+            txt += `\n`;
+        }
+
+        txt += `${'─'.repeat(60)}\nCLIENT STATUS\n${'─'.repeat(60)}\n`;
+        sorted.forEach(c => {
+            const health = State.calcHealth(c);
+            txt += `\n▸ ${c.name} [${c.rag}] — Health: ${health}\n`;
+            txt += `  Plan: ${c.plan || 'N/A'} | Billing: ${c.billing} | Update: ${c.updateStatus} | Agents: ${c.agentCount}\n`;
+            txt += `  AIOS Days: ${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'} | Last Contact: ${daysAgo(getEffectiveLastContact(c))}\n`;
+            if (c.agents && c.agents.length > 0) {
+                c.agents.forEach(a => { txt += `    🤖 ${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}\n`; });
+            }
+            const clientSummary = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '');
+            if (clientSummary) txt += `  Summary: ${clientSummary}\n`;
+            const clientProgress = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
+            if (clientProgress) txt += `  Progress: ${clientProgress}\n`;
+        });
+
+        txt += `\n${'═'.repeat(60)}\n`;
+        txt += `IAI ${RUNTIME.podName || 'Pod B'} Dashboard | ImplementAI | Weekly Report ${dateStr}\n`;
+        return txt;
+    },
+
     // Copy plain text to clipboard
     async copyText() {
         const btn = document.getElementById('btnCopyText');
         try {
-            const text = this._toPlainText();
+            const text = this._domToPlainText();
             await navigator.clipboard.writeText(text);
             btn.classList.add('copied');
             btn.innerHTML = '&#10003; Copied!';
@@ -13229,9 +13387,10 @@ const ShareSnapshot = {
     async copyHTML() {
         const btn = document.getElementById('btnCopyHTML');
         try {
-            const htmlContent = this._toRichHTML();
+            const edits = this._captureEdits();
+            const htmlContent = this._toRichHTML(edits);
             const blob = new Blob([htmlContent], { type: 'text/html' });
-            const textBlob = new Blob([this._toPlainText()], { type: 'text/plain' });
+            const textBlob = new Blob([this._domToPlainText()], { type: 'text/plain' });
             await navigator.clipboard.write([
                 new ClipboardItem({
                     'text/html': blob,
@@ -13248,7 +13407,7 @@ const ShareSnapshot = {
         } catch (err) {
             // Fallback: copy plain text
             try {
-                await navigator.clipboard.writeText(this._toPlainText());
+                await navigator.clipboard.writeText(this._domToPlainText());
                 showToast('Copied as plain text (rich format not supported in this browser)', 'info');
             } catch {
                 showToast('Copy failed — try Export instead', 'error');
@@ -13256,8 +13415,9 @@ const ShareSnapshot = {
         }
     },
 
-    // Generate styled HTML for rich paste
-    _toRichHTML() {
+    // Generate styled HTML for rich paste (accepts optional edits map from _captureEdits)
+    _toRichHTML(edits) {
+        edits = edits || {};
         const s = this._summary();
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -13272,9 +13432,10 @@ const ShareSnapshot = {
         html += `<p style="margin:0 0 14px;font-size:12px;color:#888;">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</p>`;
 
         // Executive Summary
+        const execText = edits.execSummary || this._generateExecSummary(s);
         html += `<div style="background:#f0ebff;border:1px solid #e0d6ff;border-radius:6px;padding:10px 14px;margin-bottom:14px;">`;
         html += `<strong style="font-size:11px;color:#6B30FF;">Executive Summary</strong><br>`;
-        html += `<span style="font-size:12px;color:#333;">${this._generateExecSummary(s)}</span></div>`;
+        html += `<span style="font-size:12px;color:#333;">${execText}</span></div>`;
 
         // KPI Table
         html += `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;"><tr>`;
@@ -13322,7 +13483,7 @@ const ShareSnapshot = {
             html += `<td style="color:#888;padding:2px 8px 2px 16px;">Billing</td><td style="font-weight:600;">${c.billing}</td></tr>`;
             html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">Update</td><td style="font-weight:600;">${c.updateStatus}</td>`;
             html += `<td style="color:#888;padding:2px 8px 2px 16px;">Agents</td><td style="font-weight:600;">${c.agentCount}</td></tr>`;
-            html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">Last Contact</td><td style="font-weight:600;">${daysAgo(c.lastContact)}</td>`;
+            html += `<tr><td style="color:#888;padding:2px 8px 2px 0;">Last Contact</td><td style="font-weight:600;">${daysAgo(getEffectiveLastContact(c))}</td>`;
             html += `<td style="color:#888;padding:2px 8px 2px 16px;">Email</td><td style="font-weight:600;">${emailLabel ? emailLabel.text : 'N/A'}</td></tr>`;
             html += `</table>`;
 
@@ -13334,9 +13495,13 @@ const ShareSnapshot = {
                 html += `</div>`;
             }
 
-            if (c.summary) {
-                const sum = c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary;
-                html += `<div style="margin-top:6px;font-size:11px;color:#555;padding:6px 8px;background:#f0f0f0;border-radius:4px;border-left:2px solid #ddd;">${sum}</div>`;
+            const clientSum = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary) : '');
+            if (clientSum) {
+                html += `<div style="margin-top:6px;font-size:11px;color:#555;padding:6px 8px;background:#f0f0f0;border-radius:4px;border-left:2px solid #ddd;">${clientSum}</div>`;
+            }
+            const clientProg = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
+            if (clientProg) {
+                html += `<div style="margin-top:6px;font-size:11px;color:#444;line-height:1.5;padding:6px 8px;background:#f9f7ff;border-radius:4px;border-left:2px solid #6B30FF;">${clientProg}</div>`;
             }
             html += `</div>`;
         });
@@ -13368,6 +13533,7 @@ const ShareSnapshot = {
 
     // Export as standalone HTML file
     exportHTML() {
+        const edits = this._captureEdits();
         const s = this._summary();
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -13417,7 +13583,8 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
         doc += `<div class="subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
 
         // Executive Summary
-        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${this._generateExecSummary(s)}</div></div>`;
+        const execText = edits.execSummary || this._generateExecSummary(s);
+        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${execText}</div></div>`;
 
         // KPIs
         doc += `<div class="kpi-row">`;
@@ -13466,7 +13633,7 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
             doc += `<div class="metric"><span class="metric-label">Update</span><span class="metric-value">${c.updateStatus}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">Agents</span><span class="metric-value">${c.agentCount}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">AIOS Days</span><span class="metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(c.lastContact)}</span></div>`;
+            doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(getEffectiveLastContact(c))}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">Email</span><span class="metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>`;
             doc += `</div>`;
 
@@ -13477,9 +13644,13 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
                 });
                 doc += `</div>`;
             }
-            if (c.summary) {
-                const sum = c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary;
-                doc += `<div class="summary">${sum}</div>`;
+            const clientSum = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '');
+            if (clientSum) {
+                doc += `<div class="summary">${clientSum}</div>`;
+            }
+            const clientProg = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
+            if (clientProg) {
+                doc += `<div class="summary" style="border-left-color:#6B30FF;background:#1a1528;">${clientProg}</div>`;
             }
             doc += `</div>`;
         });
@@ -13522,6 +13693,7 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
 
     // Export as PDF via print dialog (print-optimised layout)
     exportPDF() {
+        const edits = this._captureEdits();
         const s = this._summary();
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -13570,7 +13742,8 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
         doc += `<div class="subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
 
         // Exec Summary
-        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${this._generateExecSummary(s)}</div></div>`;
+        const execText = edits.execSummary || this._generateExecSummary(s);
+        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${execText}</div></div>`;
 
         // KPIs
         doc += `<div class="kpi-row">`;
@@ -13620,7 +13793,7 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
             doc += `<div class="metric"><span class="metric-label">Update</span><span class="metric-value">${c.updateStatus}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">Agents</span><span class="metric-value">${c.agentCount}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">AIOS Days</span><span class="metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(c.lastContact)}</span></div>`;
+            doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(getEffectiveLastContact(c))}</span></div>`;
             doc += `<div class="metric"><span class="metric-label">Email</span><span class="metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>`;
             doc += `</div>`;
 
@@ -13631,9 +13804,13 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
                 });
                 doc += `</div>`;
             }
-            if (c.summary) {
-                const sum = c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary;
-                doc += `<div class="summary">${sum}</div>`;
+            const clientSum = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '');
+            if (clientSum) {
+                doc += `<div class="summary">${clientSum}</div>`;
+            }
+            const clientProg = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
+            if (clientProg) {
+                doc += `<div class="summary" style="border-left-color:#6B30FF;background:#f9f7ff;">${clientProg}</div>`;
             }
             doc += `</div>`;
         });
