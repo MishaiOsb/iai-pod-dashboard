@@ -2874,9 +2874,33 @@ input, textarea, select { font-family: inherit; outline: none; }
     opacity: 0; pointer-events: none; transition: opacity 0.25s;
 }
 .share-overlay.open { opacity: 1; pointer-events: auto; }
-[contenteditable="true"] { cursor:text; border-radius:var(--radius-sm); transition:background 0.15s,box-shadow 0.15s; }
-[contenteditable="true"]:hover { background:rgba(107,48,255,0.04); }
-[contenteditable="true"]:focus { background:rgba(107,48,255,0.07); box-shadow:0 0 0 2px rgba(107,48,255,0.25); outline:none; }
+#shareSnapshotBody[contenteditable="true"] { cursor:text; outline:none; }
+#shareSnapshotBody[contenteditable="true"]:focus { box-shadow:none; background:transparent; outline:none; }
+#shareSnapshotBody *::selection { background:rgba(107,48,255,0.2); }
+.snap-reset-btn { position:absolute;top:8px;right:8px;font-size:11px;padding:4px 10px;background:rgba(255,255,255,0.06);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;z-index:2; }
+.snap-reset-btn:hover { background:rgba(255,255,255,0.12);color:var(--text-primary); }
+/* Teams Picker overlay */
+.teams-picker-overlay { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10002;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.15s ease; }
+.teams-picker { background:var(--bg-card);border:1px solid var(--border-default);border-radius:var(--radius-lg);width:400px;max-height:500px;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,0.5); }
+.teams-picker-header { display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid var(--border-subtle); }
+.teams-picker-header h3 { font-size:15px;font-weight:700;color:var(--text-primary);margin:0; }
+.teams-picker-tabs { display:flex;gap:0;border-bottom:1px solid var(--border-subtle); }
+.teams-picker-tab { flex:1;padding:10px 16px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;transition:all 0.15s; }
+.teams-picker-tab:hover { color:var(--text-secondary);background:rgba(255,255,255,0.03); }
+.teams-picker-tab.active { color:#6264a7;border-bottom-color:#6264a7; }
+.teams-picker-body { overflow-y:auto;flex:1;padding:8px 0; }
+.teams-picker-group { padding:6px 20px 2px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted); }
+.teams-picker-item { display:flex;align-items:center;gap:10px;padding:8px 20px;cursor:pointer;font-size:13px;color:var(--text-primary);transition:background 0.1s; }
+.teams-picker-item:hover { background:rgba(98,100,167,0.1); }
+.teams-picker-item .tp-icon { width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0; }
+.teams-picker-item .tp-channel .tp-icon { background:rgba(98,100,167,0.15);color:#6264a7; }
+.teams-picker-item .tp-chat .tp-icon { background:rgba(0,200,117,0.12);color:#00c875; }
+.teams-picker-item .tp-label { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.teams-picker-item .tp-type { font-size:10px;color:var(--text-muted); }
+.teams-picker-footer { padding:10px 20px;border-top:1px solid var(--border-subtle);text-align:right; }
+.teams-picker-footer button { font-size:12px;padding:6px 16px;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);background:transparent;color:var(--text-muted);cursor:pointer; }
+.teams-picker-footer button:hover { background:rgba(255,255,255,0.06);color:var(--text-primary); }
+.teams-picker-loading { padding:32px;text-align:center;color:var(--text-muted);font-size:13px; }
 .share-modal {
     background: var(--bg-card); border: 1px solid var(--border-default);
     border-radius: var(--radius-lg); width: 94%; max-width: 780px;
@@ -3392,7 +3416,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 <div class="share-overlay" id="shareOverlay" onclick="if(event.target===this)ShareSnapshot.close()">
     <div class="share-modal">
         <div class="share-modal-header">
-            <div><h3 style="margin:0;">&#128202; Weekly Report</h3><span style="font-size:10px;color:var(--text-muted);font-weight:400;">Click any highlighted text to edit before exporting</span></div>
+            <div><h3 style="margin:0;">&#128202; Weekly Report</h3><span style="font-size:10px;color:var(--text-muted);font-weight:400;">Click any text to edit before exporting</span></div>
             <button class="share-modal-close" onclick="ShareSnapshot.close()" title="Close">&times;</button>
         </div>
         <div class="share-modal-actions">
@@ -3400,8 +3424,9 @@ input, textarea, select { font-family: inherit; outline: none; }
             <button class="share-action-btn" onclick="ShareSnapshot.copyHTML()" id="btnCopyHTML">&#128196; Copy Rich Format</button>
             <button class="share-action-btn" onclick="ShareSnapshot.exportHTML()" id="btnExportHTML">&#128190; Export as HTML</button>
             <button class="share-action-btn" onclick="ShareSnapshot.exportPDF()" id="btnExportPDF">&#128462; Export as PDF</button>
+            <button class="share-action-btn" onclick="ShareSnapshot.shareToTeams()" id="btnShareTeams" style="background:rgba(98,100,167,0.15);color:#6264a7;border-color:rgba(98,100,167,0.3);">&#128172; Share to Teams</button>
         </div>
-        <div class="share-modal-body" id="shareSnapshotBody">
+        <div class="share-modal-body" id="shareSnapshotBody" contenteditable="true">
             <!-- Snapshot content rendered here by JS -->
         </div>
     </div>
@@ -6096,6 +6121,104 @@ const TeamsSync = {
     },
     stopAutoSync() {
         if (this._syncInterval) { clearInterval(this._syncInterval); this._syncInterval = null; }
+    },
+
+    // ── Microsoft Graph POST (for sending messages) ──
+    async _graphPost(endpoint, body) {
+        const token = this.getToken();
+        if (!token) { this._error = 'no-token'; return null; }
+        try {
+            const url = 'https://graph.microsoft.com/v1.0' + endpoint;
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
+            if (resp.status === 401) { this._error = 'token-expired'; return null; }
+            if (resp.status === 403) { this._error = 'no-permission'; return null; }
+            if (!resp.ok) {
+                const errText = await resp.text().catch(() => '');
+                console.error('[TeamsSync] POST error:', resp.status, errText);
+                this._error = 'api-error';
+                return null;
+            }
+            this._error = null;
+            return await resp.json();
+        } catch (err) {
+            this._error = 'network';
+            console.error('[TeamsSync] POST network error:', err.message);
+            return null;
+        }
+    },
+
+    // ── Fetch Teams & Channels for picker ──
+    async fetchTeamsAndChannels() {
+        const teamsData = await this._graphFetch('/me/joinedTeams');
+        if (!teamsData || !teamsData.value) return [];
+        const teams = [];
+        for (const t of teamsData.value) {
+            const channelsData = await this._graphFetch(`/teams/${t.id}/channels`);
+            const channels = (channelsData?.value || []).map(ch => ({ id: ch.id, name: ch.displayName }));
+            teams.push({ id: t.id, name: t.displayName, channels });
+        }
+        return teams;
+    },
+
+    // ── Fetch Recent Chats for picker ──
+    async fetchRecentChats() {
+        const chatsData = await this._graphFetch('/me/chats', {
+            '$top': '30',
+            '$orderby': 'lastMessagePreview/createdDateTime desc'
+        });
+        if (!chatsData || !chatsData.value) return [];
+        const chats = [];
+        for (const c of chatsData.value) {
+            let label = c.topic || '';
+            const chatType = c.chatType || 'unknown'; // oneOnOne, group, meeting
+            // For 1:1 and unnamed group chats, fetch member names
+            if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
+                try {
+                    const membersData = await this._graphFetch(`/me/chats/${c.id}/members`);
+                    if (membersData?.value) {
+                        const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
+                        const others = membersData.value
+                            .filter(m => (m.email || '').toLowerCase() !== myEmail)
+                            .map(m => m.displayName || m.email || 'Unknown');
+                        label = chatType === 'oneOnOne'
+                            ? `Chat with ${others[0] || 'Unknown'}`
+                            : others.length > 0 ? others.join(', ') : 'Group Chat';
+                    }
+                } catch (e) { label = chatType === 'oneOnOne' ? 'Direct Message' : 'Group Chat'; }
+            }
+            if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
+            chats.push({ id: c.id, label, type: chatType });
+        }
+        return chats;
+    },
+
+    // ── Send message to a Teams channel ──
+    async sendChannelMessage(teamId, channelId, htmlContent) {
+        if (htmlContent.length > 25000) {
+            console.warn('[TeamsSync] Message truncated — exceeds 25KB');
+            htmlContent = htmlContent.substring(0, 25000) + '<p><em>... (report truncated due to Teams message size limit)</em></p>';
+        }
+        return this._graphPost(`/teams/${teamId}/channels/${channelId}/messages`, {
+            body: { content: htmlContent, contentType: 'html' }
+        });
+    },
+
+    // ── Send message to a Teams chat ──
+    async sendChatMessage(chatId, htmlContent) {
+        if (htmlContent.length > 25000) {
+            console.warn('[TeamsSync] Message truncated — exceeds 25KB');
+            htmlContent = htmlContent.substring(0, 25000) + '<p><em>... (report truncated due to Teams message size limit)</em></p>';
+        }
+        return this._graphPost(`/me/chats/${chatId}/messages`, {
+            body: { content: htmlContent, contentType: 'html' }
+        });
     },
 
     // ── Init ──
@@ -13034,16 +13157,19 @@ const ShareSnapshot = {
         const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} — ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
 
         let html = `
-            <div class="snap-header">
-                <div class="snap-title">&#128202; IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</div>
-                <div class="snap-subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>
+            <div style="position:relative;">
+                <button class="snap-reset-btn" onclick="event.preventDefault();ShareSnapshot.render();" title="Reset all edits">&#8635; Reset</button>
+                <div class="snap-header">
+                    <div class="snap-title">&#128202; IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</div>
+                    <div class="snap-subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>
+                </div>
             </div>`;
 
         // Executive Summary
         const execSummary = this._generateExecSummary(s);
         html += `<div style="background:rgba(107,48,255,0.08);border:1px solid rgba(107,48,255,0.2);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px;">
             <div style="font-size:12px;font-weight:700;color:var(--brand-purple);margin-bottom:6px;">&#128161; Executive Summary</div>
-            <div contenteditable="true" data-snap-field="execSummary" style="font-size:12px;color:var(--text-primary);line-height:1.6;padding:2px 4px;">${execSummary}</div>
+            <div style="font-size:12px;color:var(--text-primary);line-height:1.6;padding:2px 4px;">${execSummary}</div>
         </div>`;
 
         // KPI Grid (6 columns)
@@ -13139,11 +13265,11 @@ const ShareSnapshot = {
                 html += `</div>`;
             }
 
-            if (summaryText) html += `<div class="snap-client-summary" contenteditable="true" data-snap-field="clientSummary" data-client="${c.name}">${summaryText}</div>`;
+            if (summaryText) html += `<div class="snap-client-summary">${summaryText}</div>`;
 
             const progressNote = this._generateClientProgress(c);
             if (progressNote) {
-                html += `<div class="snap-client-progress" contenteditable="true" data-snap-field="clientProgress" data-client="${c.name}" style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:6px;padding:8px 10px;background:rgba(107,48,255,0.04);border-radius:var(--radius-sm);border-left:2px solid var(--accent-purple);">${progressNote}</div>`;
+                html += `<div class="snap-client-progress" style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-top:6px;padding:8px 10px;background:rgba(107,48,255,0.04);border-radius:var(--radius-sm);border-left:2px solid var(--accent-purple);">${progressNote}</div>`;
             }
             html += `</div>`;
         });
@@ -13303,73 +13429,15 @@ const ShareSnapshot = {
         return txt;
     },
 
-    // Capture user edits from the modal DOM
-    _captureEdits() {
-        const edits = {};
-        const body = document.getElementById('shareSnapshotBody');
-        if (!body) return edits;
-        const execEl = body.querySelector('[data-snap-field="execSummary"]');
-        if (execEl) edits.execSummary = execEl.innerText.trim();
-        body.querySelectorAll('[data-snap-field="clientSummary"]').forEach(el => {
-            const client = el.getAttribute('data-client');
-            if (client) edits['clientSummary_' + client] = el.innerText.trim();
-        });
-        body.querySelectorAll('[data-snap-field="clientProgress"]').forEach(el => {
-            const client = el.getAttribute('data-client');
-            if (client) edits['clientProgress_' + client] = el.innerText.trim();
-        });
-        return edits;
-    },
+    // Legacy: kept for backward compat — now a no-op since whole body is contenteditable
+    _captureEdits() { return {}; },
 
-    // Generate plain text from DOM (respects user edits)
-    _domToPlainText() {
-        const s = this._summary();
-        const edits = this._captureEdits();
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
-        const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
-        const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} — ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
-        const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
-
-        let txt = `📊 IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report\n`;
-        txt += `Week of ${weekRange} | Generated: ${dateStr}\n`;
-        txt += `${'═'.repeat(60)}\n\n`;
-        txt += `💡 EXECUTIVE SUMMARY\n`;
-        txt += `${edits.execSummary || this._generateExecSummary(s)}\n\n`;
-        txt += `📈 KPI: ${s.total} clients | Avg Health: ${s.avgHealth} | ${s.green}G / ${s.amber}A / ${s.red}R | ${s.totalAgents} agents\n\n`;
-
-        if (s.needsAttention.length > 0) {
-            txt += `⚠ NEEDS ATTENTION\n`;
-            s.needsAttention.forEach(n => { txt += `  • ${n.name} (Health: ${n.health}) — ${n.reason}\n`; });
-            txt += `\n`;
-        }
-
-        txt += `${'─'.repeat(60)}\nCLIENT STATUS\n${'─'.repeat(60)}\n`;
-        sorted.forEach(c => {
-            const health = State.calcHealth(c);
-            txt += `\n▸ ${c.name} [${c.rag}] — Health: ${health}\n`;
-            txt += `  Plan: ${c.plan || 'N/A'} | Billing: ${c.billing} | Update: ${c.updateStatus} | Agents: ${c.agentCount}\n`;
-            txt += `  AIOS Days: ${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'} | Last Contact: ${daysAgo(getEffectiveLastContact(c))}\n`;
-            if (c.agents && c.agents.length > 0) {
-                c.agents.forEach(a => { txt += `    🤖 ${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}\n`; });
-            }
-            const clientSummary = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '');
-            if (clientSummary) txt += `  Summary: ${clientSummary}\n`;
-            const clientProgress = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
-            if (clientProgress) txt += `  Progress: ${clientProgress}\n`;
-        });
-
-        txt += `\n${'═'.repeat(60)}\n`;
-        txt += `IAI ${RUNTIME.podName || 'Pod B'} Dashboard | ImplementAI | Weekly Report ${dateStr}\n`;
-        return txt;
-    },
-
-    // Copy plain text to clipboard
+    // Copy plain text to clipboard (reads directly from the editable DOM)
     async copyText() {
         const btn = document.getElementById('btnCopyText');
         try {
-            const text = this._domToPlainText();
+            const body = document.getElementById('shareSnapshotBody');
+            const text = body ? body.innerText : this._domToPlainText();
             await navigator.clipboard.writeText(text);
             btn.classList.add('copied');
             btn.innerHTML = '&#10003; Copied!';
@@ -13383,19 +13451,49 @@ const ShareSnapshot = {
         }
     },
 
-    // Copy rich HTML to clipboard (for pasting into Teams/Outlook/etc)
+    // Resolve CSS var() references in cloned DOM to computed inline values
+    _resolveVars(clone) {
+        const body = document.getElementById('shareSnapshotBody');
+        if (!body) return;
+        const computed = getComputedStyle(body);
+        clone.querySelectorAll('*').forEach(el => {
+            const style = el.getAttribute('style');
+            if (style && style.includes('var(')) {
+                let resolved = style;
+                const vars = style.match(/var\(--[^)]+\)/g) || [];
+                vars.forEach(v => {
+                    const prop = v.match(/var\((--[^)]+)\)/);
+                    if (prop) resolved = resolved.replace(v, computed.getPropertyValue(prop[1]).trim() || '#888');
+                });
+                el.setAttribute('style', resolved);
+            }
+        });
+    },
+
+    // Clone the modal body, strip editing artifacts, return clean HTML
+    _cloneBody() {
+        const body = document.getElementById('shareSnapshotBody');
+        if (!body) return null;
+        const clone = body.cloneNode(true);
+        clone.removeAttribute('contenteditable');
+        clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+        // Remove the reset button from export
+        clone.querySelectorAll('.snap-reset-btn').forEach(el => el.remove());
+        return clone;
+    },
+
+    // Copy rich HTML to clipboard (reads directly from the editable DOM)
     async copyHTML() {
         const btn = document.getElementById('btnCopyHTML');
         try {
-            const edits = this._captureEdits();
-            const htmlContent = this._toRichHTML(edits);
+            const clone = this._cloneBody();
+            if (clone) this._resolveVars(clone);
+            const htmlContent = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:700px;">${clone ? clone.innerHTML : ''}</div>`;
+            const body = document.getElementById('shareSnapshotBody');
             const blob = new Blob([htmlContent], { type: 'text/html' });
-            const textBlob = new Blob([this._domToPlainText()], { type: 'text/plain' });
+            const textBlob = new Blob([body ? body.innerText : ''], { type: 'text/plain' });
             await navigator.clipboard.write([
-                new ClipboardItem({
-                    'text/html': blob,
-                    'text/plain': textBlob
-                })
+                new ClipboardItem({ 'text/html': blob, 'text/plain': textBlob })
             ]);
             btn.classList.add('copied');
             btn.innerHTML = '&#10003; Copied!';
@@ -13405,9 +13503,9 @@ const ShareSnapshot = {
                 btn.innerHTML = '&#128196; Copy Rich Format';
             }, 2000);
         } catch (err) {
-            // Fallback: copy plain text
             try {
-                await navigator.clipboard.writeText(this._domToPlainText());
+                const body = document.getElementById('shareSnapshotBody');
+                await navigator.clipboard.writeText(body ? body.innerText : '');
                 showToast('Copied as plain text (rich format not supported in this browser)', 'info');
             } catch {
                 showToast('Copy failed — try Export instead', 'error');
@@ -13531,152 +13629,42 @@ const ShareSnapshot = {
         return html;
     },
 
-    // Export as standalone HTML file
+    // CSS for standalone export documents (dark theme with print overrides)
+    _exportCSS() {
+        return `*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d0d1a;color:#e0e0e0;padding:32px;max-width:800px;margin:0 auto;}
+:root{--bg-primary:#0a0a0a;--bg-secondary:#111;--bg-card:#1a1a1a;--bg-elevated:#252525;--bg-hover:#2a2a2a;--bg-input:#1e1e1e;--border-subtle:#2a2a2a;--border-default:#333;--border-focus:#6B30FF;--text-primary:#e0e0e0;--text-secondary:#999;--text-muted:#666;--text-white:#fff;--accent-purple:#6B30FF;--accent-purple-light:#8B50FF;--rag-green:#00c875;--rag-amber:#fdab3d;--rag-red:#df2f4a;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--brand-purple:#6B30FF;--shadow-card:0 2px 8px rgba(0,0,0,0.3);}
+.snap-header{text-align:center;margin-bottom:16px;} .snap-title{font-size:20px;font-weight:800;color:#fff;} .snap-subtitle{font-size:11px;color:#888;margin-top:4px;}
+.snap-kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:16px;} .snap-kpi{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:12px 8px;text-align:center;} .snap-kpi-value{font-size:20px;font-weight:800;color:#fff;} .snap-kpi-label{font-size:9px;color:#888;text-transform:uppercase;}
+.snap-section-title{font-size:13px;font-weight:700;color:#fff;margin:16px 0 10px;padding-bottom:4px;border-bottom:1px solid #2a2a4a;}
+.snap-clients-grid{display:grid;gap:10px;margin-bottom:16px;}
+.snap-client-card{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:14px;border-left:3px solid #444;}
+.snap-client-card.rag-green{border-left-color:#00c875;} .snap-client-card.rag-amber{border-left-color:#fdab3d;} .snap-client-card.rag-red{border-left-color:#df2f4a;}
+.snap-client-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;} .snap-rag-dot{width:10px;height:10px;border-radius:50%;} .snap-client-name{font-size:14px;font-weight:700;color:#fff;flex:1;} .snap-health-badge{font-size:12px;font-weight:700;}
+.snap-client-metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:3px 14px;} .snap-metric{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px dashed #2a2a4a;} .snap-metric-label{color:#888;} .snap-metric-value{font-weight:600;color:#e0e0e0;}
+.snap-client-summary{font-size:11px;color:#999;line-height:1.5;margin-top:8px;padding:6px 10px;background:#0d0d1a;border-radius:6px;border-left:2px solid #2a2a4a;}
+.snap-client-progress{font-size:11px;color:#999;line-height:1.5;margin-top:6px;padding:8px 10px;background:rgba(107,48,255,0.04);border-radius:6px;border-left:2px solid #6B30FF;}
+.snap-footer{text-align:center;font-size:10px;color:#555;margin-top:20px;padding-top:12px;border-top:1px solid #2a2a4a;}
+.snap-reset-btn{display:none !important;}
+@media(max-width:600px){.snap-kpi-row{grid-template-columns:repeat(3,1fr);} .snap-client-metrics{grid-template-columns:1fr;}}
+@media print{body{background:#fff;color:#222;padding:16px;} .snap-kpi,.snap-client-card{background:#f9f9f9;border-color:#ddd;} .snap-title,.snap-client-name,.snap-section-title{color:#111;} .snap-metric-value,.snap-kpi-value{color:#222;}}`;
+    },
+
+    // Export as standalone HTML file (reads edited content from DOM)
     exportHTML() {
-        const edits = this._captureEdits();
-        const s = this._summary();
+        const clone = this._cloneBody();
+        if (!clone) { showToast('No report content to export', 'error'); return; }
+        this._resolveVars(clone);
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
         const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
         const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
         const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} - ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
-        const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
         let doc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">`;
         doc += `<title>IAI ${RUNTIME.podName || 'Pod B'} Weekly Report — ${weekRange}</title>`;
-        doc += `<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d0d1a;color:#e0e0e0;padding:32px;max-width:800px;margin:0 auto;}
-h1{font-size:22px;color:#fff;margin-bottom:4px;}
-.subtitle{font-size:12px;color:#888;margin-bottom:20px;}
-.exec-summary{background:rgba(107,48,255,0.1);border:1px solid rgba(107,48,255,0.25);border-radius:10px;padding:14px 18px;margin-bottom:20px;}
-.exec-label{font-size:11px;font-weight:700;color:#a78bfa;margin-bottom:4px;}
-.exec-text{font-size:12px;color:#e0e0e0;line-height:1.6;}
-.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px;}
-.kpi{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:14px 8px;text-align:center;}
-.kpi-value{font-size:22px;font-weight:800;color:#fff;}
-.kpi-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px;}
-.tags{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
-.tag{font-size:11px;padding:4px 12px;border-radius:12px;font-weight:600;}
-.section-title{font-size:14px;font-weight:700;color:#fff;margin:20px 0 12px;padding-bottom:6px;border-bottom:1px solid #2a2a4a;}
-.attention{background:rgba(223,47,74,0.08);border:1px solid rgba(223,47,74,0.2);border-radius:8px;padding:10px 14px;margin-bottom:8px;border-left:3px solid #df2f4a;}
-.client{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:10px;padding:16px;margin-bottom:10px;border-left:3px solid #444;}
-.client.green{border-left-color:#00c875;} .client.amber{border-left-color:#fdab3d;} .client.red{border-left-color:#df2f4a;}
-.client-header{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-.rag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-.client-name{font-size:15px;font-weight:700;color:#fff;flex:1;}
-.health-badge{font-size:12px;font-weight:700;padding:2px 10px;border-radius:10px;background:rgba(255,255,255,0.06);}
-.metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px 16px;margin-bottom:8px;}
-.metric{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px dashed #2a2a4a;}
-.metric-label{color:#888;} .metric-value{color:#e0e0e0;font-weight:600;}
-.agents-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-.agent-tag{font-size:10px;padding:3px 10px;border-radius:12px;background:rgba(107,48,255,0.12);color:#a78bfa;border:1px solid rgba(107,48,255,0.2);}
-.summary{font-size:11px;color:#999;line-height:1.6;margin-top:8px;padding:8px 12px;background:#0d0d1a;border-radius:6px;border-left:2px solid #2a2a4a;}
-.meeting-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#1a1a2e;border:1px solid #2a2a4a;border-radius:6px;margin-bottom:4px;font-size:11px;}
-.footer{text-align:center;font-size:10px;color:#555;margin-top:24px;padding-top:16px;border-top:1px solid #2a2a4a;}
-@media(max-width:600px){.kpi-row{grid-template-columns:repeat(3,1fr);}.metrics{grid-template-columns:1fr;}}
-@media print{body{background:#fff;color:#222;padding:16px;} .kpi,.client,.meeting-row{background:#f9f9f9;border-color:#ddd;} h1,.client-name,.section-title{color:#111;} .metric-value,.kpi-value{color:#222;} .exec-summary{background:#f0ebff;border-color:#e0d6ff;} .exec-text{color:#333;}}
-</style></head><body>`;
-
-        doc += `<h1>&#128202; IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</h1>`;
-        doc += `<div class="subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
-
-        // Executive Summary
-        const execText = edits.execSummary || this._generateExecSummary(s);
-        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${execText}</div></div>`;
-
-        // KPIs
-        doc += `<div class="kpi-row">`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.total}</div><div class="kpi-label">Clients</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:${healthColor(s.avgHealth)}">${s.avgHealth}</div><div class="kpi-label">Health</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#00c875">${s.green}</div><div class="kpi-label">Green</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#fdab3d">${s.amber}</div><div class="kpi-label">Amber</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#df2f4a">${s.red}</div><div class="kpi-label">Red</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.totalAgents}</div><div class="kpi-label">Agents</div></div>`;
-        doc += `</div>`;
-
-        // Stat pills
-        doc += `<div class="tags">`;
-        doc += `<span class="tag" style="background:rgba(0,200,117,0.12);color:#00c875;">&#128179; ${s.billingActive}/${s.total} Billing</span>`;
-        doc += `<span class="tag" style="background:rgba(87,155,252,0.12);color:#579bfc;">&#128236; ${s.emailsSent}↑ ${s.emailsReceived}↓ Email</span>`;
-        doc += `<span class="tag" style="background:rgba(120,75,209,0.12);color:#a78bfa;">&#128172; ${s.teamsSent}↑ ${s.teamsReceived}↓ Teams</span>`;
-        doc += `<span class="tag" style="background:rgba(255,255,255,0.06);color:#888;">&#127908; ${s.meetingsList.length} Meetings</span>`;
-        doc += `</div>`;
-
-        // Attention
-        if (s.needsAttention.length > 0) {
-            doc += `<div class="section-title" style="color:#df2f4a;">&#9888; Needs Attention</div>`;
-            s.needsAttention.forEach(n => {
-                doc += `<div class="attention"><strong style="color:#fff;">${n.name}</strong> <span style="color:#999;">— ${n.reason} (Health: ${n.health})</span></div>`;
-            });
-        }
-
-        // Client cards
-        doc += `<div class="section-title">Client Status</div>`;
-        sorted.forEach(c => {
-            const health = State.calcHealth(c);
-            const hColor = healthColor(health);
-            const ragC = this._ragColor(c.rag);
-            const ragCls = c.rag === 'Green' ? 'green' : c.rag === 'Amber' ? 'amber' : c.rag === 'Red' ? 'red' : '';
-            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
-            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
-
-            doc += `<div class="client ${ragCls}"><div class="client-header">`;
-            doc += `<div class="rag-dot" style="background:${ragC};"></div><div class="client-name">${c.name}</div>`;
-            doc += `<div class="health-badge" style="color:${hColor}">Health: ${health}</div></div>`;
-
-            doc += `<div class="metrics">`;
-            doc += `<div class="metric"><span class="metric-label">RAG</span><span class="metric-value" style="color:${ragC}">${c.rag}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Plan</span><span class="metric-value">${c.plan || 'N/A'}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Billing</span><span class="metric-value">${c.billing}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Update</span><span class="metric-value">${c.updateStatus}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Agents</span><span class="metric-value">${c.agentCount}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">AIOS Days</span><span class="metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(getEffectiveLastContact(c))}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Email</span><span class="metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>`;
-            doc += `</div>`;
-
-            if (c.agents && c.agents.length > 0) {
-                doc += `<div class="agents-row">`;
-                c.agents.forEach(a => {
-                    doc += `<span class="agent-tag">${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
-                });
-                doc += `</div>`;
-            }
-            const clientSum = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '');
-            if (clientSum) {
-                doc += `<div class="summary">${clientSum}</div>`;
-            }
-            const clientProg = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
-            if (clientProg) {
-                doc += `<div class="summary" style="border-left-color:#6B30FF;background:#1a1528;">${clientProg}</div>`;
-            }
-            doc += `</div>`;
-        });
-
-        // Meetings
-        if (s.meetingsList.length > 0) {
-            doc += `<div class="section-title">&#127908; Recent Meetings</div>`;
-            s.meetingsList.forEach(m => {
-                const mDate = new Date(m.date);
-                const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
-                const actionCount = (m.actions || []).length;
-                doc += `<div class="meeting-row"><span style="color:#888;min-width:50px;">${dateLabel}</span><span style="flex:1;color:#e0e0e0;">${m.title || 'Untitled'}</span>${actionCount > 0 ? `<span style="color:#a78bfa;font-weight:600;">${actionCount} actions</span>` : ''}</div>`;
-            });
-        }
-
-        // Upcoming
-        if (s.upcoming.length > 0) {
-            doc += `<div class="section-title">&#128197; Upcoming Key Dates</div>`;
-            s.upcoming.forEach(u => {
-                const d = new Date(u.date);
-                const daysLeft = Math.ceil((d - now) / 86400000);
-                doc += `<div class="meeting-row"><span style="color:${daysLeft <= 7 ? '#df2f4a' : '#888'};font-weight:600;min-width:50px;">${daysLeft}d</span><span style="flex:1;color:#e0e0e0;">${u.client}</span><span style="color:#888;">${u.type} — ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>`;
-            });
-        }
-
-        doc += `<div class="footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Weekly Report ${dateStr} at ${timeStr}</div>`;
+        doc += `<style>${this._exportCSS()}</style></head><body>`;
+        doc += clone.innerHTML;
         doc += `</body></html>`;
 
         const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
@@ -13691,152 +13679,39 @@ h1{font-size:22px;color:#fff;margin-bottom:4px;}
         showToast('Weekly report exported as HTML file', 'info');
     },
 
-    // Export as PDF via print dialog (print-optimised layout)
+    // Export as PDF via print dialog (reads edited content from DOM)
     exportPDF() {
-        const edits = this._captureEdits();
-        const s = this._summary();
+        const clone = this._cloneBody();
+        if (!clone) { showToast('No report content to export', 'error'); return; }
+        this._resolveVars(clone);
         const now = new Date();
-        const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
         const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() + 1);
         const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
         const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} - ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
-        const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
+
+        // Print-optimised CSS: light theme overrides for paper
+        const printCSS = `@page{margin:18mm 14mm;size:A4;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;padding:0;max-width:100%;line-height:1.4;background:#fff;}
+.snap-header{text-align:center;margin-bottom:16px;} .snap-title{font-size:20px;font-weight:800;color:#1a1a2e;} .snap-subtitle{font-size:11px;color:#777;margin-top:4px;}
+.snap-kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px;} .snap-kpi{background:#f7f7fa;border:1px solid #e0e0e0;border-radius:8px;padding:10px 6px;text-align:center;} .snap-kpi-value{font-size:20px;font-weight:800;color:#1a1a2e;} .snap-kpi-label{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
+.snap-section-title{font-size:13px;font-weight:700;color:#1a1a2e;margin:16px 0 10px;padding-bottom:5px;border-bottom:1.5px solid #e0e0e0;}
+.snap-clients-grid{display:grid;gap:8px;margin-bottom:16px;}
+.snap-client-card{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:12px 14px;border-left:3px solid #bbb;page-break-inside:avoid;}
+.snap-client-card.rag-green{border-left-color:#00875a;} .snap-client-card.rag-amber{border-left-color:#c07800;} .snap-client-card.rag-red{border-left-color:#c9252d;}
+.snap-client-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;} .snap-rag-dot{width:9px;height:9px;border-radius:50%;} .snap-client-name{font-size:14px;font-weight:700;color:#1a1a2e;flex:1;} .snap-health-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:#f0f0f0;}
+.snap-client-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 12px;margin-bottom:6px;} .snap-metric{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px dashed #e8e8e8;} .snap-metric-label{color:#888;} .snap-metric-value{color:#222;font-weight:600;}
+.snap-client-summary{font-size:10px;color:#555;line-height:1.5;margin-top:5px;padding:6px 10px;background:#f9f9fb;border-radius:4px;border-left:2px solid #ddd;}
+.snap-client-progress{font-size:11px;color:#555;line-height:1.5;margin-top:6px;padding:8px 10px;background:#f9f7ff;border-radius:6px;border-left:2px solid #6B30FF;}
+.snap-footer{text-align:center;font-size:9px;color:#aaa;margin-top:20px;padding-top:12px;border-top:1px solid #e0e0e0;}
+.snap-reset-btn{display:none !important;}
+[style*="background"]{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+@media(max-width:600px){.snap-kpi-row{grid-template-columns:repeat(3,1fr);} .snap-client-metrics{grid-template-columns:1fr;}}`;
 
         let doc = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">`;
         doc += `<title>IAI ${RUNTIME.podName || 'Pod B'} Weekly Report — ${weekRange}</title>`;
-        doc += `<style>
-@page { margin: 18mm 14mm; size: A4; }
-*{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;padding:0;max-width:100%;line-height:1.4;}
-h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
-.subtitle{font-size:11px;color:#777;margin-bottom:16px;}
-.exec-summary{background:#f0ebff;border:1px solid #e0d6ff;border-radius:8px;padding:12px 16px;margin-bottom:16px;}
-.exec-label{font-size:10px;font-weight:700;color:#6B30FF;margin-bottom:3px;}
-.exec-text{font-size:11px;color:#333;line-height:1.5;}
-.kpi-row{display:flex;gap:6px;margin-bottom:14px;}
-.kpi{flex:1;background:#f7f7fa;border:1px solid #e0e0e0;border-radius:8px;padding:10px 6px;text-align:center;}
-.kpi-value{font-size:20px;font-weight:800;color:#1a1a2e;}
-.kpi-label{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
-.tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
-.tag{font-size:10px;padding:3px 10px;border-radius:10px;font-weight:600;border:1px solid #ddd;}
-.section-title{font-size:13px;font-weight:700;color:#1a1a2e;margin:16px 0 10px;padding-bottom:5px;border-bottom:1.5px solid #e0e0e0;}
-.attention{border:1px solid #f5c6cb;border-radius:6px;padding:8px 12px;margin-bottom:6px;border-left:3px solid #c9252d;background:#ffeaee;page-break-inside:avoid;}
-.client{border:1px solid #e0e0e0;border-radius:8px;padding:12px 14px;margin-bottom:8px;border-left:3px solid #bbb;page-break-inside:avoid;}
-.client.green{border-left-color:#00875a;} .client.amber{border-left-color:#c07800;} .client.red{border-left-color:#c9252d;}
-.client-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
-.rag-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
-.client-name{font-size:14px;font-weight:700;color:#1a1a2e;flex:1;}
-.health-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;background:#f0f0f0;}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 12px;margin-bottom:6px;}
-.metric{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px dashed #e8e8e8;}
-.metric-label{color:#888;} .metric-value{color:#222;font-weight:600;}
-.agents-row{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;}
-.agent-tag{font-size:9px;padding:2px 8px;border-radius:10px;background:#f0ebff;color:#6B30FF;border:1px solid #e0d6ff;}
-.summary{font-size:10px;color:#555;line-height:1.5;margin-top:5px;padding:6px 10px;background:#f9f9fb;border-radius:4px;border-left:2px solid #ddd;}
-.meeting-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f7f7fa;border:1px solid #e8e8e8;border-radius:4px;margin-bottom:3px;font-size:10px;}
-.footer{text-align:center;font-size:9px;color:#aaa;margin-top:20px;padding-top:12px;border-top:1px solid #e0e0e0;}
-</style></head><body>`;
-
-        doc += `<h1>IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</h1>`;
-        doc += `<div class="subtitle">Week of ${weekRange} &middot; Generated: ${dateStr} at ${timeStr} &middot; Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
-
-        // Exec Summary
-        const execText = edits.execSummary || this._generateExecSummary(s);
-        doc += `<div class="exec-summary"><div class="exec-label">Executive Summary</div><div class="exec-text">${execText}</div></div>`;
-
-        // KPIs
-        doc += `<div class="kpi-row">`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.total}</div><div class="kpi-label">Clients</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:${s.avgHealth >= 75 ? '#00875a' : s.avgHealth >= 50 ? '#c07800' : '#c9252d'}">${s.avgHealth}</div><div class="kpi-label">Health</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#00875a">${s.green}</div><div class="kpi-label">Green</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#c07800">${s.amber}</div><div class="kpi-label">Amber</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value" style="color:#c9252d">${s.red}</div><div class="kpi-label">Red</div></div>`;
-        doc += `<div class="kpi"><div class="kpi-value">${s.totalAgents}</div><div class="kpi-label">Agents</div></div>`;
-        doc += `</div>`;
-
-        // Tags
-        doc += `<div class="tags">`;
-        doc += `<span class="tag" style="background:#e6f9f0;color:#00875a;">Billing: ${s.billingActive}/${s.total}</span>`;
-        doc += `<span class="tag" style="background:#e8f4fd;color:#1a73e8;">Email: ${s.emailsSent}↑ ${s.emailsReceived}↓</span>`;
-        doc += `<span class="tag" style="background:#f0ebff;color:#6B30FF;">Teams: ${s.teamsSent}↑ ${s.teamsReceived}↓</span>`;
-        doc += `<span class="tag" style="background:#f5f5f5;color:#777;">Meetings: ${s.meetingsList.length}</span>`;
-        doc += `</div>`;
-
-        // Attention
-        if (s.needsAttention.length > 0) {
-            doc += `<div class="section-title" style="color:#c9252d;">Needs Attention</div>`;
-            s.needsAttention.forEach(n => {
-                const ragC = n.rag === 'Green' ? '#00875a' : n.rag === 'Amber' ? '#c07800' : '#c9252d';
-                doc += `<div class="attention"><strong>${n.name}</strong> <span style="color:#666;">— ${n.reason} (Health: ${n.health})</span></div>`;
-            });
-        }
-
-        // Client cards
-        doc += `<div class="section-title">Client Status</div>`;
-        sorted.forEach(c => {
-            const health = State.calcHealth(c);
-            const hColor = health >= 75 ? '#00875a' : health >= 50 ? '#c07800' : '#c9252d';
-            const ragC = c.rag === 'Green' ? '#00875a' : c.rag === 'Amber' ? '#c07800' : c.rag === 'Red' ? '#c9252d' : '#888';
-            const ragCls = c.rag === 'Green' ? 'green' : c.rag === 'Amber' ? 'amber' : c.rag === 'Red' ? 'red' : '';
-            const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
-            const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
-
-            doc += `<div class="client ${ragCls}"><div class="client-header">`;
-            doc += `<div class="rag-dot" style="background:${ragC};"></div><div class="client-name">${c.name}</div>`;
-            doc += `<div class="health-badge" style="color:${hColor}">Health: ${health}</div></div>`;
-
-            doc += `<div class="metrics">`;
-            doc += `<div class="metric"><span class="metric-label">RAG</span><span class="metric-value" style="color:${ragC}">${c.rag}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Plan</span><span class="metric-value">${c.plan || 'N/A'}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Billing</span><span class="metric-value">${c.billing}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Update</span><span class="metric-value">${c.updateStatus}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Agents</span><span class="metric-value">${c.agentCount}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">AIOS Days</span><span class="metric-value">${c.aiosDays ? Math.round(parseFloat(c.aiosDays)) : 'N/A'}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Last Contact</span><span class="metric-value">${daysAgo(getEffectiveLastContact(c))}</span></div>`;
-            doc += `<div class="metric"><span class="metric-label">Email</span><span class="metric-value">${emailLabel ? emailLabel.text : 'N/A'}</span></div>`;
-            doc += `</div>`;
-
-            if (c.agents && c.agents.length > 0) {
-                doc += `<div class="agents-row">`;
-                c.agents.forEach(a => {
-                    doc += `<span class="agent-tag">${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
-                });
-                doc += `</div>`;
-            }
-            const clientSum = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 250 ? c.summary.substring(0, 250) + '...' : c.summary) : '');
-            if (clientSum) {
-                doc += `<div class="summary">${clientSum}</div>`;
-            }
-            const clientProg = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
-            if (clientProg) {
-                doc += `<div class="summary" style="border-left-color:#6B30FF;background:#f9f7ff;">${clientProg}</div>`;
-            }
-            doc += `</div>`;
-        });
-
-        // Meetings
-        if (s.meetingsList.length > 0) {
-            doc += `<div class="section-title">Recent Meetings</div>`;
-            s.meetingsList.forEach(m => {
-                const mDate = new Date(m.date);
-                const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
-                const actionCount = (m.actions || []).length;
-                doc += `<div class="meeting-row"><span style="color:#888;min-width:45px;">${dateLabel}</span><span style="flex:1;">${m.title || 'Untitled'}</span>${actionCount > 0 ? `<span style="color:#6B30FF;font-weight:600;">${actionCount} actions</span>` : ''}</div>`;
-            });
-        }
-
-        // Upcoming
-        if (s.upcoming.length > 0) {
-            doc += `<div class="section-title">Upcoming Key Dates</div>`;
-            s.upcoming.forEach(u => {
-                const d = new Date(u.date);
-                const daysLeft = Math.ceil((d - now) / 86400000);
-                doc += `<div class="meeting-row"><span style="color:${daysLeft <= 7 ? '#c9252d' : '#888'};font-weight:600;min-width:45px;">${daysLeft}d</span><span style="flex:1;">${u.client}</span><span style="color:#888;">${u.type} — ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>`;
-            });
-        }
-
-        doc += `<div class="footer">IAI ${RUNTIME.podName || 'Pod B'} Dashboard &middot; ImplementAI &middot; Weekly Report ${dateStr} at ${timeStr}</div>`;
+        doc += `<style>${printCSS}</style></head><body>`;
+        doc += clone.innerHTML;
         doc += `</body></html>`;
 
         const iframe = document.createElement('iframe');
@@ -13857,6 +13732,145 @@ h1{font-size:20px;color:#1a1a2e;margin-bottom:2px;}
         }, 300);
 
         showToast('PDF print dialog opened — select "Save as PDF"', 'info');
+    },
+
+    // ── Share to Teams ──
+    async shareToTeams() {
+        if (!TeamsSync.hasToken()) {
+            showToast('Connect Microsoft account first (Settings → Outlook/Teams)', 'error');
+            return;
+        }
+        const btn = document.getElementById('btnShareTeams');
+        if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Loading...'; }
+        try {
+            const [teams, chats] = await Promise.all([
+                TeamsSync.fetchTeamsAndChannels(),
+                TeamsSync.fetchRecentChats()
+            ]);
+            if (btn) { btn.disabled = false; btn.innerHTML = '&#128172; Share to Teams'; }
+            if (teams.length === 0 && chats.length === 0) {
+                showToast('No Teams channels or chats found', 'error');
+                return;
+            }
+            this._showTeamsPicker(teams, chats);
+        } catch (err) {
+            console.error('[ShareSnapshot] Teams fetch error:', err);
+            if (btn) { btn.disabled = false; btn.innerHTML = '&#128172; Share to Teams'; }
+            showToast('Failed to load Teams destinations: ' + (err.message || 'Unknown error'), 'error');
+        }
+    },
+
+    _showTeamsPicker(teams, chats) {
+        // Remove any existing picker
+        document.querySelectorAll('.teams-picker-overlay').forEach(el => el.remove());
+
+        const overlay = document.createElement('div');
+        overlay.className = 'teams-picker-overlay';
+        overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+
+        let channelsHTML = '';
+        teams.forEach(t => {
+            channelsHTML += `<div class="teams-picker-group">${t.name}</div>`;
+            t.channels.forEach(ch => {
+                channelsHTML += `<div class="teams-picker-item" onclick="ShareSnapshot._sendToDestination('channel','${t.id}','${ch.id}',this)" title="${t.name} → #${ch.name}">
+                    <div class="tp-icon" style="background:rgba(98,100,167,0.15);color:#6264a7;">#</div>
+                    <div class="tp-label">${ch.name}</div>
+                </div>`;
+            });
+        });
+        if (!channelsHTML) channelsHTML = '<div class="teams-picker-loading">No channels found</div>';
+
+        let chatsHTML = '';
+        chats.forEach(c => {
+            const icon = c.type === 'oneOnOne' ? '👤' : c.type === 'group' ? '👥' : '📅';
+            const typeLabel = c.type === 'oneOnOne' ? 'DM' : c.type === 'group' ? 'Group' : 'Meeting';
+            chatsHTML += `<div class="teams-picker-item" onclick="ShareSnapshot._sendToDestination('chat','${c.id}','',this)" title="${c.label}">
+                <div class="tp-icon" style="background:rgba(0,200,117,0.12);color:#00c875;">${icon}</div>
+                <div class="tp-label">${c.label}</div>
+                <div class="tp-type">${typeLabel}</div>
+            </div>`;
+        });
+        if (!chatsHTML) chatsHTML = '<div class="teams-picker-loading">No recent chats found</div>';
+
+        overlay.innerHTML = `<div class="teams-picker">
+            <div class="teams-picker-header">
+                <h3>💬 Share Report to Teams</h3>
+                <button onclick="this.closest('.teams-picker-overlay').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:4px;">&times;</button>
+            </div>
+            <div class="teams-picker-tabs">
+                <div class="teams-picker-tab active" data-tab="channels" onclick="ShareSnapshot._switchPickerTab(this,'channels')">📢 Channels (${teams.reduce((n,t)=>n+t.channels.length,0)})</div>
+                <div class="teams-picker-tab" data-tab="chats" onclick="ShareSnapshot._switchPickerTab(this,'chats')">💬 Chats (${chats.length})</div>
+            </div>
+            <div class="teams-picker-body">
+                <div id="tpChannels">${channelsHTML}</div>
+                <div id="tpChats" style="display:none;">${chatsHTML}</div>
+            </div>
+            <div class="teams-picker-footer">
+                <button onclick="this.closest('.teams-picker-overlay').remove()">Cancel</button>
+            </div>
+        </div>`;
+
+        document.body.appendChild(overlay);
+    },
+
+    _switchPickerTab(tabEl, tabName) {
+        const picker = tabEl.closest('.teams-picker');
+        picker.querySelectorAll('.teams-picker-tab').forEach(t => t.classList.remove('active'));
+        tabEl.classList.add('active');
+        const channelsDiv = picker.querySelector('#tpChannels');
+        const chatsDiv = picker.querySelector('#tpChats');
+        if (tabName === 'channels') {
+            channelsDiv.style.display = '';
+            chatsDiv.style.display = 'none';
+        } else {
+            channelsDiv.style.display = 'none';
+            chatsDiv.style.display = '';
+        }
+    },
+
+    async _sendToDestination(type, id1, id2, clickedEl) {
+        // Show sending state
+        const overlay = clickedEl?.closest('.teams-picker-overlay');
+        const label = clickedEl?.querySelector('.tp-label')?.textContent || 'destination';
+        if (clickedEl) {
+            clickedEl.style.opacity = '0.5';
+            clickedEl.style.pointerEvents = 'none';
+            clickedEl.querySelector('.tp-label').textContent = 'Sending...';
+        }
+
+        try {
+            // Generate the rich HTML content (light-theme, inline-styled for Teams)
+            const htmlContent = this._toRichHTML({});
+            let result;
+            if (type === 'channel') {
+                result = await TeamsSync.sendChannelMessage(id1, id2, htmlContent);
+            } else {
+                result = await TeamsSync.sendChatMessage(id1, htmlContent);
+            }
+
+            if (result) {
+                showToast(`Report shared to ${label}`, 'info');
+                if (overlay) overlay.remove();
+            } else {
+                const errMsg = TeamsSync._error === 'token-expired' ? 'Token expired — reconnect in Settings'
+                    : TeamsSync._error === 'no-permission' ? 'Missing permission — need ChannelMessage.Send or Chat.ReadWrite'
+                    : 'Failed to send message';
+                showToast(errMsg, 'error');
+                if (clickedEl) {
+                    clickedEl.style.opacity = '1';
+                    clickedEl.style.pointerEvents = '';
+                    clickedEl.querySelector('.tp-label').textContent = label;
+                }
+            }
+        } catch (err) {
+            console.error('[ShareSnapshot] Send to Teams error:', err);
+            showToast('Error sending to Teams: ' + (err.message || 'Unknown'), 'error');
+            if (clickedEl) {
+                clickedEl.style.opacity = '1';
+                clickedEl.style.pointerEvents = '';
+                clickedEl.querySelector('.tp-label').textContent = label;
+            }
+        }
     }
 };
 
