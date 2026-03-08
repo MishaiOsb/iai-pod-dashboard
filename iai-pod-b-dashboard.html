@@ -2901,6 +2901,10 @@ input, textarea, select { font-family: inherit; outline: none; }
 .teams-picker-footer button { font-size:12px;padding:6px 16px;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);background:transparent;color:var(--text-muted);cursor:pointer; }
 .teams-picker-footer button:hover { background:rgba(255,255,255,0.06);color:var(--text-primary); }
 .teams-picker-loading { padding:32px;text-align:center;color:var(--text-muted);font-size:13px; }
+.teams-picker-search { padding:8px 16px;border-bottom:1px solid var(--border-subtle); }
+.teams-picker-search input { width:100%;padding:8px 12px;border-radius:var(--radius-md);border:1px solid var(--border-default);background:var(--bg-main);color:var(--text-primary);font-size:12px;outline:none;transition:border-color 0.15s,box-shadow 0.15s; }
+.teams-picker-search input:focus { border-color:#6264a7;box-shadow:0 0 0 2px rgba(98,100,167,0.2); }
+.teams-picker-search input::placeholder { color:var(--text-muted); }
 .share-modal {
     background: var(--bg-card); border: 1px solid var(--border-default);
     border-radius: var(--radius-lg); width: 94%; max-width: 780px;
@@ -13227,7 +13231,7 @@ const ShareSnapshot = {
             const hColor = healthColor(health);
             const ragC = this._ragColor(c.rag);
             const ragCls = this._ragClass(c.rag);
-            const summaryText = c.summary ? (c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary) : '';
+            const summaryText = c.summary || '';
 
             // Email status for this client
             const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
@@ -13393,7 +13397,7 @@ const ShareSnapshot = {
             }
 
             if (c.summary) {
-                const sum = c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary;
+                const sum = c.summary;
                 txt += `  Summary: ${sum}\n`;
             }
             const progressNote = this._generateClientProgress(c);
@@ -13593,7 +13597,7 @@ const ShareSnapshot = {
                 html += `</div>`;
             }
 
-            const clientSum = edits['clientSummary_' + c.name] || (c.summary ? (c.summary.length > 200 ? c.summary.substring(0, 200) + '...' : c.summary) : '');
+            const clientSum = edits['clientSummary_' + c.name] || (c.summary || '');
             if (clientSum) {
                 html += `<div style="margin-top:6px;font-size:11px;color:#555;padding:6px 8px;background:#f0f0f0;border-radius:4px;border-left:2px solid #ddd;">${clientSum}</div>`;
             }
@@ -13770,9 +13774,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
 
         let channelsHTML = '';
         teams.forEach(t => {
-            channelsHTML += `<div class="teams-picker-group">${t.name}</div>`;
+            channelsHTML += `<div class="teams-picker-group" data-search-group="${t.name.toLowerCase()}">${t.name}</div>`;
             t.channels.forEach(ch => {
-                channelsHTML += `<div class="teams-picker-item" onclick="ShareSnapshot._sendToDestination('channel','${t.id}','${ch.id}',this)" title="${t.name} → #${ch.name}">
+                channelsHTML += `<div class="teams-picker-item" data-search="${(t.name + ' ' + ch.name).toLowerCase()}" onclick="ShareSnapshot._sendToDestination('channel','${t.id}','${ch.id}',this)" title="${t.name} → #${ch.name}">
                     <div class="tp-icon" style="background:rgba(98,100,167,0.15);color:#6264a7;">#</div>
                     <div class="tp-label">${ch.name}</div>
                 </div>`;
@@ -13784,7 +13788,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
         chats.forEach(c => {
             const icon = c.type === 'oneOnOne' ? '👤' : c.type === 'group' ? '👥' : '📅';
             const typeLabel = c.type === 'oneOnOne' ? 'DM' : c.type === 'group' ? 'Group' : 'Meeting';
-            chatsHTML += `<div class="teams-picker-item" onclick="ShareSnapshot._sendToDestination('chat','${c.id}','',this)" title="${c.label}">
+            chatsHTML += `<div class="teams-picker-item" data-search="${(c.label || '').toLowerCase()}" onclick="ShareSnapshot._sendToDestination('chat','${c.id}','',this)" title="${c.label}">
                 <div class="tp-icon" style="background:rgba(0,200,117,0.12);color:#00c875;">${icon}</div>
                 <div class="tp-label">${c.label}</div>
                 <div class="tp-type">${typeLabel}</div>
@@ -13801,6 +13805,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
                 <div class="teams-picker-tab active" data-tab="channels" onclick="ShareSnapshot._switchPickerTab(this,'channels')">📢 Channels (${teams.reduce((n,t)=>n+t.channels.length,0)})</div>
                 <div class="teams-picker-tab" data-tab="chats" onclick="ShareSnapshot._switchPickerTab(this,'chats')">💬 Chats (${chats.length})</div>
             </div>
+            <div class="teams-picker-search">
+                <input type="text" id="tpSearch" placeholder="Search channels or chats..." oninput="ShareSnapshot._filterPicker(this.value)" />
+            </div>
             <div class="teams-picker-body">
                 <div id="tpChannels">${channelsHTML}</div>
                 <div id="tpChats" style="display:none;">${chatsHTML}</div>
@@ -13811,6 +13818,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
         </div>`;
 
         document.body.appendChild(overlay);
+        // Auto-focus search input
+        const searchInput = overlay.querySelector('#tpSearch');
+        if (searchInput) setTimeout(() => searchInput.focus(), 100);
     },
 
     _switchPickerTab(tabEl, tabName) {
@@ -13826,6 +13836,33 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
             channelsDiv.style.display = 'none';
             chatsDiv.style.display = '';
         }
+        // Clear search when switching tabs
+        const searchInput = picker.querySelector('#tpSearch');
+        if (searchInput) { searchInput.value = ''; this._filterPicker(''); }
+    },
+
+    _filterPicker(query) {
+        const q = query.toLowerCase().trim();
+        const picker = document.querySelector('.teams-picker');
+        if (!picker) return;
+
+        // Filter items in both tabs
+        picker.querySelectorAll('.teams-picker-item').forEach(item => {
+            const searchText = item.getAttribute('data-search') || item.textContent.toLowerCase();
+            item.style.display = (!q || searchText.includes(q)) ? '' : 'none';
+        });
+
+        // Show/hide group headers based on whether any child items are visible
+        picker.querySelectorAll('.teams-picker-group').forEach(group => {
+            const groupText = group.getAttribute('data-search-group') || '';
+            let nextEl = group.nextElementSibling;
+            let anyVisible = false;
+            while (nextEl && !nextEl.classList.contains('teams-picker-group')) {
+                if (nextEl.classList.contains('teams-picker-item') && nextEl.style.display !== 'none') anyVisible = true;
+                nextEl = nextEl.nextElementSibling;
+            }
+            group.style.display = (anyVisible || (!q ? true : groupText.includes(q))) ? '' : 'none';
+        });
     },
 
     async _sendToDestination(type, id1, id2, clickedEl) {
