@@ -11035,6 +11035,8 @@ function renderPlannerPage() {
     const container = document.getElementById('plannerContent');
     if (!container) return;
 
+    try {
+
     DashTodo.load();
     AutoTodoGen.generate();
 
@@ -11135,6 +11137,7 @@ function renderPlannerPage() {
         : [...new Set([...Object.keys(EMAIL_DATA.clients), ...Object.keys(TEAMS_DATA.clients || {})])];
 
     // Build email action items with effective status (respects manual overrides)
+    console.log('[Planner Actions] Starting emailActions loop for', clientNames.length, 'clients');
     const emailActions = [];
     clientNames.forEach(name => {
         const ed = EMAIL_DATA.clients[name];
@@ -11296,14 +11299,17 @@ function renderPlannerPage() {
     // ---- EMAIL FOLLOW-UPS ----
     // Compute email follow-up items for all clients (clientNames already defined above)
     const emailFollowUps = [];
+    console.log('[Planner FollowUps] clientNames:', clientNames.length, '| EMAIL_DATA keys:', Object.keys(EMAIL_DATA.clients).length, '| TEAMS_DATA keys:', Object.keys(TEAMS_DATA.clients || {}).length);
+    console.log('[Planner FollowUps] TEAMS_DATA clients:', Object.keys(TEAMS_DATA.clients || {}));
     clientNames.forEach(name => {
         const ed = EMAIL_DATA.clients[name];
         const tdp = TEAMS_DATA.clients?.[name];
-        if (!ed && !tdp) return;
-        if (ed?.discontinued) return;
-        if (EmailHiddenCards.isHidden(name)) return;
+        if (!ed && !tdp) { console.log(`[Planner FollowUps] SKIP ${name}: no email or teams data`); return; }
+        if (ed?.discontinued) { console.log(`[Planner FollowUps] SKIP ${name}: discontinued`); return; }
+        if (EmailHiddenCards.isHidden(name)) { console.log(`[Planner FollowUps] SKIP ${name}: hidden card`); return; }
         const client = State.clients.find(c => c.name === name);
         const effectiveStatus = getEffectiveEmailStatus(name);
+        console.log(`[Planner FollowUps] ${name}: hasEmail=${!!ed}, hasTeams=${!!tdp}, status=${effectiveStatus}`);
         const latestEmail = ed?.emails?.[0] || null;
         const lastEmailDate = latestEmail ? new Date(latestEmail.date) : null;
         const hoursSince = ed ? getHoursSinceLastClientEmail(ed) : null;
@@ -11350,9 +11356,11 @@ function renderPlannerPage() {
             tag = 'Chase Up — No Reply'; tagClass = 'awaiting'; icon = '&#128228;'; iconClass = 'awaiting';
             detail = lastEmailDate ? `You sent on ${lastEmailDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — over 3 working days ago` : 'No reply received';
         } else {
+            console.log(`[Planner FollowUps] SKIP ${name}: status '${effectiveStatus}' not actionable`);
             return; // awaiting-grace (within 3 working days), teams-active, up-to-date, or other — skip
         }
 
+        console.log(`[Planner FollowUps] ✅ PUSH ${name}: status=${effectiveStatus}, urgency=${urgency}, tag=${tag}`);
         emailFollowUps.push({
             name, clientId: client?.id, effectiveStatus, urgency,
             tag, tagClass, icon, iconClass, detail,
@@ -11361,6 +11369,7 @@ function renderPlannerPage() {
         });
     });
 
+    console.log(`[Planner FollowUps] Total emailFollowUps: ${emailFollowUps.length}`, emailFollowUps.map(f => `${f.name}:${f.effectiveStatus}`));
     emailFollowUps.sort((a, b) => a.urgency - b.urgency);
 
     // Today's follow-ups: all actionable statuses (needs-response, within-grace, stale, no-recent, awaiting)
@@ -11555,6 +11564,10 @@ function renderPlannerPage() {
 
     // Update calendar sync status after rendering (so #calSyncText exists)
     CalendarSync._updateSyncStatusUI();
+
+    } catch (err) {
+        console.error('[renderPlannerPage] CRASH:', err.message, err.stack);
+    }
 }
 
 /* ================================================================
