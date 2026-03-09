@@ -1113,6 +1113,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 .email-card.stale-email {
     border-left: 3px solid var(--rag-red);
 }
+.email-card.teams-active {
+    border-left: 3px solid #6264a7;
+}
 .email-card-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     margin-bottom: 8px;
@@ -5939,7 +5942,10 @@ const TeamsSync = {
         if (!textContent) return false;
 
         const fromEmail = m.from.user.email?.toLowerCase() || '';
-        const isFromMe = fromEmail === myEmail;
+        const fromDisplay = (m.from.user.displayName || '').toLowerCase();
+        // Match by email or by display name containing user's email prefix
+        const myPrefix = myEmail.split('@')[0];
+        const isFromMe = fromEmail === myEmail || (myPrefix && fromEmail.startsWith(myPrefix + '@')) || (myPrefix && fromDisplay.includes(myPrefix));
         if (isFromMe) counts.sent++; else counts.received++;
         msgList.push({
             from: fromEmail || m.from.user.displayName || 'unknown',
@@ -8163,11 +8169,12 @@ const State = {
                     });
                 }
                 // within-grace: no alert — client just emailed, still within 48h window
-                if (ed.status === 'stale') {
+                // teams-active: no alert — active Teams communication suppresses email stale alerts
+                if (effectiveStatus === 'stale' || effectiveStatus === 'no-recent') {
                     this.alerts.push({
                         type: 'critical',
                         icon: '&#128232;',
-                        title: `${c.name} - Email thread stale`,
+                        title: `${c.name} - Communication stale`,
                         desc: `Last email exchange was ${ed.lastEmailDate} - re-engage client`,
                         clientId: c.id,
                         timestamp: ed.lastEmailDate,
@@ -9738,21 +9745,26 @@ function renderEmailActivity() {
     // Auto-unhide cards if new emails have arrived
     EmailHiddenCards.autoUnhideCheck();
 
-    // Match email data to loaded clients, using effective status (48h grace period)
-    const statusOrder = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'within-grace': 3, 'awaiting': 4, 'awaiting-grace': 5, 'discontinued': 6 };
+    // Match email + Teams data to loaded clients, using effective status
+    const statusOrder = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'within-grace': 3, 'awaiting': 4, 'awaiting-grace': 5, 'teams-active': 6, 'discontinued': 7 };
     const clientEmails = [];
 
-    // If clients are loaded, use them; otherwise use EMAIL_DATA keys
+    // If clients are loaded, use them; otherwise use EMAIL_DATA + TEAMS_DATA keys
     const clientNames = State.dataLoaded && State.clients.length > 0
         ? State.clients.map(c => c.name)
-        : Object.keys(EMAIL_DATA.clients);
+        : [...new Set([...Object.keys(EMAIL_DATA.clients), ...Object.keys(TEAMS_DATA.clients || {})])];
 
     clientNames.forEach(name => {
         const ed = EMAIL_DATA.clients[name];
-        if (ed) {
+        const td = TEAMS_DATA.clients?.[name];
+        if (ed || td) {
             const client = State.clients.find(c => c.name === name);
             const effectiveStatus = getEffectiveEmailStatus(name);
-            clientEmails.push({ name, clientId: client?.id, ...ed, effectiveStatus });
+            // Build a merged record — use email data if available, otherwise create a minimal entry
+            const record = ed
+                ? { name, clientId: client?.id, ...ed, effectiveStatus }
+                : { name, clientId: client?.id, emails: [], lastEmailDate: null, status: null, effectiveStatus };
+            clientEmails.push(record);
         }
     });
 
@@ -9773,6 +9785,7 @@ function renderEmailActivity() {
                           ce.effectiveStatus === 'stale' || ce.effectiveStatus === 'no-recent' ? 'stale-email' :
                           ce.effectiveStatus === 'awaiting' ? 'awaiting' :
                           ce.effectiveStatus === 'awaiting-grace' ? 'within-grace' :
+                          ce.effectiveStatus === 'teams-active' ? 'teams-active' :
                           ce.effectiveStatus === 'discontinued' ? 'discontinued' : '';
 
         let graceNote = '';
@@ -9792,7 +9805,17 @@ function renderEmailActivity() {
 
         const myLastEmail = getLastEmailFromMe(ce);
         const myLastDate = myLastEmail ? new Date(myLastEmail.date) : null;
-        const lastSentNote = myLastDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">&#128228; You last sent: ${myLastDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${myLastDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>` : '<div style="font-size:10px;color:var(--rag-amber);margin-top:2px;">&#9888; No outbound email tracked yet</div>';
+        const lastSentNote = myLastDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">&#128228; You last sent: ${myLastDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${myLastDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>` : (ce.effectiveStatus === 'teams-active' ? '' : '<div style="font-size:10px;color:var(--rag-amber);margin-top:2px;">&#9888; No outbound email tracked yet</div>');
+
+        // Teams info for teams-active cards
+        const td = TEAMS_DATA.clients?.[ce.name];
+        let teamsNote = '';
+        if (ce.effectiveStatus === 'teams-active' && td) {
+            const lastMsg = td.messages?.[0];
+            const lastDate = lastMsg ? new Date(lastMsg.date) : null;
+            const lastDateStr = lastDate ? lastDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'}) + ' ' + lastDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+            teamsNote = `<div style="font-size:10px;color:#6264a7;margin-top:4px;">&#128172; Teams: ${td.sent || 0} sent, ${td.received || 0} received${lastDateStr ? ' — last: ' + lastDateStr : ''}</div>`;
+        }
 
         const safeName = ce.name.replace(/'/g, "\\'");
         const hiddenClass = isHiddenCard ? ' email-card-hidden' : '';
@@ -9801,6 +9824,12 @@ function renderEmailActivity() {
             ? `<button class="email-restore-btn" onclick="event.stopPropagation();EmailHiddenCards.unhide('${safeName}');renderEmailActivity();">&#128065; Restore</button>`
             : `<button class="email-hide-btn" onclick="event.stopPropagation();EmailHiddenCards.hide('${safeName}');renderEmailActivity();" title="Hide this card">&#10005;</button>`;
 
+        // Show Teams info as primary content if no email data
+        const subjectLine = latestEmail?.subject || (td ? `Teams: ${td.sent + td.received} messages` : 'No emails found');
+        const metaLine = latestEmail
+            ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">${directionLabel}: <span style="color:var(--text-secondary)">${fullFrom}</span></div>`
+            : (td ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Communicating via Teams channel</div>` : '');
+
         return `
         <div class="email-card ${cardClass}${hiddenClass}" ${ce.clientId ? `onclick="openDetail('${ce.clientId}')"` : ''}>
             ${actionBtn}
@@ -9808,10 +9837,8 @@ function renderEmailActivity() {
                 <span class="email-client-name">${ce.name}</span>
                 <span class="email-status-tag ${st.class}">${st.text}</span>
             </div>
-            <div class="email-subject">${latestEmail?.subject || 'No emails found'}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">
-                ${directionLabel}: <span style="color:var(--text-secondary)">${fullFrom}</span>
-            </div>
+            <div class="email-subject">${subjectLine}</div>
+            ${metaLine}
             <div class="email-meta-row">
                 <span class="email-from">${directionIcon}</span>
                 <span>&#128197; ${dateStr}</span>
@@ -9820,6 +9847,7 @@ function renderEmailActivity() {
             </div>
             ${graceNote}
             ${lastSentNote}
+            ${teamsNote}
             ${EditManager.emailNoteHTML(ce.name)}
         </div>`;
     }
