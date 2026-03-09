@@ -3382,7 +3382,7 @@ input, textarea, select { font-family: inherit; outline: none; }
             <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;">
                 <span style="font-size:28px;flex-shrink:0;">&#128236;</span>
                 <div>
-                    <strong style="color:var(--text-primary);font-size:14px;">Live Email Activity</strong>
+                    <strong style="color:var(--text-primary);font-size:14px;">Live Communications Follow-Up</strong>
                     <p style="color:var(--text-muted);font-size:12px;margin-top:4px;line-height:1.5;">
                         Connect your <strong>Outlook</strong> via Settings to see live email sync with your clients.
                         This requires an MS Graph access token with <strong>Mail.Read</strong> scope.
@@ -3395,7 +3395,7 @@ input, textarea, select { font-family: inherit; outline: none; }
                 <div>
                     <strong style="color:var(--text-primary);font-size:14px;">Snapshot Fallback</strong>
                     <p style="color:var(--text-muted);font-size:12px;margin-top:4px;line-height:1.5;">
-                        Without Outlook connected, Email Activity shows a static snapshot (if available for your pod).
+                        Without Outlook connected, Communications Follow-Up shows a static snapshot (if available for your pod).
                         You can still use all other dashboard features — Outlook is fully optional.
                     </p>
                 </div>
@@ -3500,7 +3500,7 @@ input, textarea, select { font-family: inherit; outline: none; }
         <span class="nav-icon">&#128467;</span> Planner &amp; To-Do
     </a>
     <a class="sidebar-nav-item" data-route="emails" onclick="Router.navigate('emails')">
-        <span class="nav-icon">&#128236;</span> Email Activity
+        <span class="nav-icon">&#128236;</span> Communications Follow-Up
     </a>
     <a class="sidebar-nav-item" data-route="clients" onclick="Router.navigate('clients')">
         <span class="nav-icon">&#128101;</span> Client Portfolio
@@ -3778,7 +3778,7 @@ input, textarea, select { font-family: inherit; outline: none; }
     <div class="page-container" id="page-emails">
         <div class="email-section" id="emailSection">
             <div class="email-section-header">
-                <h2>&#128236; Email Activity</h2>
+                <h2>&#128236; Communications Follow-Up</h2>
                 <div class="email-sync-status">
                     <span class="email-sync-text" id="emailSyncText">Loading...</span>
                     <button class="email-sync-btn" id="btnEmailSync" onclick="OutlookSync.sync(true)" title="Sync now">&#128260; Sync</button>
@@ -5223,7 +5223,7 @@ const EmailHiddenCards = {
             lastEmailDate: ed?.lastEmailDate || ed?.emails?.[0]?.date || null
         };
         this.save();
-        ActivityFeed.log({ type: 'email-hide', title: `Hidden: ${clientName}`, desc: 'Card dismissed from email activity view', source: 'user-action' });
+        ActivityFeed.log({ type: 'email-hide', title: `Hidden: ${clientName}`, desc: 'Card dismissed from communications view', source: 'user-action' });
         UndoManager.push({
             label: `${clientName} hidden`,
             undo: () => { delete this._hidden[clientName]; this.save(); renderEmailActivity(); }
@@ -5234,7 +5234,7 @@ const EmailHiddenCards = {
         const prev = this._hidden[clientName] ? { ...this._hidden[clientName] } : null;
         delete this._hidden[clientName];
         this.save();
-        ActivityFeed.log({ type: 'email-unhide', title: `Restored: ${clientName}`, desc: 'Card restored to email activity view', source: 'user-action' });
+        ActivityFeed.log({ type: 'email-unhide', title: `Restored: ${clientName}`, desc: 'Card restored to communications view', source: 'user-action' });
         if (prev) {
             UndoManager.push({
                 label: `${clientName} restored`,
@@ -9722,7 +9722,7 @@ function renderEmailActivity() {
         grid.innerHTML = `
             <div style="grid-column:1/-1;text-align:center;padding:48px 20px;">
                 <div style="font-size:48px;margin-bottom:16px;">&#128236;</div>
-                <h3 style="margin-bottom:8px;color:var(--text-primary);">Connect Outlook for Email Activity</h3>
+                <h3 style="margin-bottom:8px;color:var(--text-primary);">Connect Outlook for Communications Follow-Up</h3>
                 <p style="color:var(--text-muted);font-size:13px;max-width:420px;margin:0 auto 20px;line-height:1.6;">
                     Connect your Outlook account via Settings to see live email
                     activity for your ${RUNTIME.podName || ''} clients. An MS Graph token with
@@ -10523,7 +10523,7 @@ function renderClientFullPage(clientId) {
         ${buildTeamsMessagesSection(c.name)}
 
         <div class="client-detail-emails">
-            <h3>&#128236; Email Activity</h3>
+            <h3>&#128236; Communications Follow-Up</h3>
             ${emailHTML}
         </div>
 
@@ -11255,7 +11255,7 @@ function renderPlannerPage() {
             ${f.clientId ? `<a class="email-followup-action" onclick="Router.navigate('client/${f.clientId}')">View &#8599;</a>` : ''}
             ${f.webLink ? `<a class="email-followup-action" href="${f.webLink}" target="_blank" onclick="event.stopPropagation()">Open &#128231;</a>` : ''}
         </div>
-    `).join('') : '<div class="week-no-events">No email follow-ups due today</div>';
+    `).join('') : '<div class="week-no-events">No follow-ups due today</div>';
 
     // Helper: compute which email follow-ups fall on which day of the week
     // Logic: needs-response → show on today; within-grace → show on expiry day; stale → show on today;
@@ -11371,10 +11371,10 @@ function renderPlannerPage() {
             ${todayCalendarHTML}
         </div>
 
-        <!-- Email Follow-Ups Due -->
+        <!-- Communications Follow-Ups Due -->
         <div class="email-followup-section">
             <div class="planner-section-title">
-                &#128231; Email Follow-Ups
+                &#128172; Communications Follow-Ups
                 <span class="section-count">${todayFollowUps.length} action${todayFollowUps.length !== 1 ? 's' : ''} needed</span>
             </div>
             ${todayEmailHTML}
