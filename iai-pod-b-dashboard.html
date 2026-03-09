@@ -1116,6 +1116,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 .email-card.teams-active {
     border-left: 3px solid #6264a7;
 }
+.email-card.teams-stale {
+    border-left: 3px solid var(--rag-amber);
+}
 .email-card-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     margin-bottom: 8px;
@@ -1144,6 +1147,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .email-status-tag.teams-active {
     background: rgba(98,100,167,0.15); color: #6264a7;
+}
+.email-status-tag.teams-stale {
+    background: var(--rag-amber-bg); color: var(--rag-amber);
 }
 .email-status-tag.discontinued {
     background: rgba(102,102,102,0.15); color: var(--text-muted);
@@ -7377,6 +7383,7 @@ const CONFIG = Object.freeze({
     STALE_CRITICAL_DAYS: 14,
     RESPONSE_GRACE_HOURS: 48, // hours before a client email becomes "needs response"
     AWAITING_GRACE_WORKING_DAYS: 3, // working days before an "awaiting reply" becomes actionable again
+    TEAMS_FOLLOWUP_DAYS: 5, // days before a Teams conversation needs follow-up
     USER_EMAIL: 'mishai@implementai.io', // Fallback Pod Lead email — overridden by RUNTIME.userEmail after login
 });
 
@@ -8178,6 +8185,19 @@ const State = {
                         desc: `Last email exchange was ${ed.lastEmailDate} - re-engage client`,
                         clientId: c.id,
                         timestamp: ed.lastEmailDate,
+                    });
+                }
+                if (effectiveStatus === 'teams-stale') {
+                    const td = TEAMS_DATA.clients?.[c.name];
+                    const lastMsg = td?.messages?.[0];
+                    const lastDate = lastMsg ? new Date(lastMsg.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : 'unknown';
+                    this.alerts.push({
+                        type: 'warning',
+                        icon: '&#128172;',
+                        title: `${c.name} - Teams follow-up needed`,
+                        desc: `Last Teams message was ${lastDate} — follow up with client`,
+                        clientId: c.id,
+                        timestamp: lastMsg?.date || null,
                     });
                 }
             }
@@ -9652,9 +9672,14 @@ function getEffectiveEmailStatus(clientName) {
 
     // If no email data at all, rely on Teams data
     if (!ed) {
-        if (teamsDaysSinceMyMsg !== null && teamsDaysSinceMyMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
-        if (teamsDaysSinceTheirMsg !== null && teamsDaysSinceTheirMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
-        return null;
+        const teamsNewest = Math.min(
+            teamsDaysSinceMyMsg ?? Infinity,
+            teamsDaysSinceTheirMsg ?? Infinity
+        );
+        if (teamsNewest === Infinity) return null; // no Teams data either
+        if (teamsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
+        if (teamsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
+        return 'stale';
     }
     if (ed.discontinued) return 'discontinued';
 
@@ -9692,12 +9717,18 @@ function getEffectiveEmailStatus(clientName) {
         }
     }
 
-    // Override with Teams data: if email says follow-up needed but Teams is active, suppress
+    // Override with Teams data: if email says follow-up needed but Teams is recent, suppress
     if (emailStatus === 'stale' || emailStatus === 'no-recent' || emailStatus === 'awaiting' || emailStatus === 'needs-response') {
-        // If user sent a Teams message within the staleness window, communication is active
-        if (teamsDaysSinceMyMsg !== null && teamsDaysSinceMyMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
-        // If client sent a Teams message recently, communication is active
-        if (teamsDaysSinceTheirMsg !== null && teamsDaysSinceTheirMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
+        const teamsNewest = Math.min(
+            teamsDaysSinceMyMsg ?? Infinity,
+            teamsDaysSinceTheirMsg ?? Infinity
+        );
+        if (teamsNewest !== Infinity) {
+            // Teams activity within follow-up window — communication is active, no follow-up needed
+            if (teamsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
+            // Teams activity is aging but exists — show as teams-stale so user sees a follow-up prompt
+            if (teamsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
+        }
     }
 
     return emailStatus;
@@ -9712,6 +9743,7 @@ function emailStatusLabel(status) {
         case 'stale': return { text: 'Stale - Outreach Needed', class: 'stale-email' };
         case 'no-recent': return { text: 'No Recent Email', class: 'stale-email' };
         case 'teams-active': return { text: 'Active on Teams', class: 'teams-active' };
+        case 'teams-stale': return { text: 'Teams Follow-Up Needed', class: 'teams-stale' };
         case 'discontinued': return { text: 'Discontinued', class: 'discontinued' };
         default: return { text: 'Up to Date', class: 'up-to-date' };
     }
@@ -9746,7 +9778,7 @@ function renderEmailActivity() {
     EmailHiddenCards.autoUnhideCheck();
 
     // Match email + Teams data to loaded clients, using effective status
-    const statusOrder = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'within-grace': 3, 'awaiting': 4, 'awaiting-grace': 5, 'teams-active': 6, 'discontinued': 7 };
+    const statusOrder = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'teams-stale': 3, 'within-grace': 4, 'awaiting': 5, 'awaiting-grace': 6, 'teams-active': 7, 'discontinued': 8 };
     const clientEmails = [];
 
     // If clients are loaded, use them; otherwise use EMAIL_DATA + TEAMS_DATA keys
@@ -9783,6 +9815,7 @@ function renderEmailActivity() {
         const cardClass = ce.effectiveStatus === 'needs-response' ? 'needs-response' :
                           ce.effectiveStatus === 'within-grace' ? 'within-grace' :
                           ce.effectiveStatus === 'stale' || ce.effectiveStatus === 'no-recent' ? 'stale-email' :
+                          ce.effectiveStatus === 'teams-stale' ? 'teams-stale' :
                           ce.effectiveStatus === 'awaiting' ? 'awaiting' :
                           ce.effectiveStatus === 'awaiting-grace' ? 'within-grace' :
                           ce.effectiveStatus === 'teams-active' ? 'teams-active' :
@@ -9805,16 +9838,21 @@ function renderEmailActivity() {
 
         const myLastEmail = getLastEmailFromMe(ce);
         const myLastDate = myLastEmail ? new Date(myLastEmail.date) : null;
-        const lastSentNote = myLastDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">&#128228; You last sent: ${myLastDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${myLastDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>` : (ce.effectiveStatus === 'teams-active' ? '' : '<div style="font-size:10px;color:var(--rag-amber);margin-top:2px;">&#9888; No outbound email tracked yet</div>');
+        const lastSentNote = myLastDate ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">&#128228; You last sent: ${myLastDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${myLastDate.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>` : (ce.effectiveStatus === 'teams-active' || ce.effectiveStatus === 'teams-stale' ? '' : '<div style="font-size:10px;color:var(--rag-amber);margin-top:2px;">&#9888; No outbound email tracked yet</div>');
 
-        // Teams info for teams-active cards
+        // Teams info for teams-active and teams-stale cards
         const td = TEAMS_DATA.clients?.[ce.name];
         let teamsNote = '';
-        if (ce.effectiveStatus === 'teams-active' && td) {
+        if ((ce.effectiveStatus === 'teams-active' || ce.effectiveStatus === 'teams-stale') && td) {
             const lastMsg = td.messages?.[0];
             const lastDate = lastMsg ? new Date(lastMsg.date) : null;
             const lastDateStr = lastDate ? lastDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'}) + ' ' + lastDate.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
-            teamsNote = `<div style="font-size:10px;color:#6264a7;margin-top:4px;">&#128172; Teams: ${td.sent || 0} sent, ${td.received || 0} received${lastDateStr ? ' — last: ' + lastDateStr : ''}</div>`;
+            if (ce.effectiveStatus === 'teams-stale') {
+                const daysSince = lastDate ? Math.floor((Date.now() - lastDate.getTime()) / 86400000) : null;
+                teamsNote = `<div style="font-size:10px;color:var(--rag-amber);margin-top:4px;">&#9888; Teams: last message ${daysSince !== null ? daysSince + ' days ago' : ''}${lastDateStr ? ' (' + lastDateStr + ')' : ''} — follow up needed</div>`;
+            } else {
+                teamsNote = `<div style="font-size:10px;color:#6264a7;margin-top:4px;">&#128172; Teams: ${td.sent || 0} sent, ${td.received || 0} received${lastDateStr ? ' — last: ' + lastDateStr : ''}</div>`;
+            }
         }
 
         const safeName = ce.name.replace(/'/g, "\\'");
@@ -11043,16 +11081,18 @@ function renderPlannerPage() {
         : '<div class="week-no-events">No meetings scheduled for today</div>';
 
     // ---- TO-DO LIST + EMAIL ACTIONS ----
-    // Client names list (shared between email actions and email follow-ups)
+    // Client names list (shared between email actions and email follow-ups) — includes Teams-only clients
     const clientNames = State.dataLoaded && State.clients.length > 0
         ? State.clients.map(c => c.name)
-        : Object.keys(EMAIL_DATA.clients);
+        : [...new Set([...Object.keys(EMAIL_DATA.clients), ...Object.keys(TEAMS_DATA.clients || {})])];
 
     // Build email action items with effective status (respects manual overrides)
     const emailActions = [];
     clientNames.forEach(name => {
         const ed = EMAIL_DATA.clients[name];
-        if (!ed || ed.discontinued) return;
+        const td = TEAMS_DATA.clients?.[name];
+        if (!ed && !td) return;
+        if (ed?.discontinued) return;
         if (EmailHiddenCards.isHidden(name)) return;
         const client = State.clients.find(c => c.name === name);
         // Check for manual override first
@@ -11088,6 +11128,15 @@ function renderPlannerPage() {
         } else if (effectiveStatus === 'stale' || effectiveStatus === 'no-recent') {
             actionLabel = effectiveStatus === 'stale' ? 'Stale' : 'No Recent'; statusClass = 'needs-action'; icon = '📭';
             detail = latestEmail ? `Last email: ${new Date(latestEmail.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : 'No email history';
+        } else if (effectiveStatus === 'teams-stale') {
+            actionLabel = 'Teams Follow-Up'; statusClass = 'needs-action'; icon = '💬';
+            const td = TEAMS_DATA.clients?.[name];
+            const lastMsg = td?.messages?.[0];
+            const daysSince = lastMsg ? Math.floor((Date.now() - new Date(lastMsg.date).getTime()) / 86400000) : null;
+            detail = daysSince !== null ? `Last Teams message ${daysSince} days ago — follow up needed` : 'Teams follow-up needed';
+        } else if (effectiveStatus === 'teams-active') {
+            actionLabel = 'Active on Teams'; statusClass = 'done'; icon = '✅'; isDone = true;
+            detail = 'Recent Teams communication — no action needed';
         } else {
             return; // discontinued or unknown
         }
@@ -11201,13 +11250,15 @@ function renderPlannerPage() {
     const emailFollowUps = [];
     clientNames.forEach(name => {
         const ed = EMAIL_DATA.clients[name];
-        if (!ed || ed.discontinued) return;
+        const tdp = TEAMS_DATA.clients?.[name];
+        if (!ed && !tdp) return;
+        if (ed?.discontinued) return;
         if (EmailHiddenCards.isHidden(name)) return;
         const client = State.clients.find(c => c.name === name);
         const effectiveStatus = getEffectiveEmailStatus(name);
-        const latestEmail = ed.emails[0];
+        const latestEmail = ed?.emails?.[0] || null;
         const lastEmailDate = latestEmail ? new Date(latestEmail.date) : null;
-        const hoursSince = getHoursSinceLastClientEmail(ed);
+        const hoursSince = ed ? getHoursSinceLastClientEmail(ed) : null;
 
         // Grace period: compute when grace expires (48h from last client email)
         let graceExpiresDate = null;
@@ -11239,12 +11290,19 @@ function renderPlannerPage() {
             urgency = 2;
             tag = effectiveStatus === 'stale' ? 'Stale' : 'No Recent Email'; tagClass = 'stale'; icon = '&#128249;'; iconClass = 'stale';
             detail = lastEmailDate ? `Last email: ${lastEmailDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : 'No email history';
+        } else if (effectiveStatus === 'teams-stale') {
+            urgency = 2;
+            const td = TEAMS_DATA.clients?.[name];
+            const lastMsg = td?.messages?.[0];
+            const daysSince = lastMsg ? Math.floor((Date.now() - new Date(lastMsg.date).getTime()) / 86400000) : null;
+            tag = 'Teams Follow-Up'; tagClass = 'stale'; icon = '&#128172;'; iconClass = 'stale';
+            detail = daysSince !== null ? `Last Teams message ${daysSince} days ago — follow up needed` : 'Teams follow-up needed';
         } else if (effectiveStatus === 'awaiting') {
             urgency = 3;
             tag = 'Chase Up — No Reply'; tagClass = 'awaiting'; icon = '&#128228;'; iconClass = 'awaiting';
             detail = lastEmailDate ? `You sent on ${lastEmailDate.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — over 3 working days ago` : 'No reply received';
         } else {
-            return; // awaiting-grace (within 3 working days), up-to-date, or other — skip
+            return; // awaiting-grace (within 3 working days), teams-active, up-to-date, or other — skip
         }
 
         emailFollowUps.push({
@@ -11266,6 +11324,7 @@ function renderPlannerPage() {
             f.effectiveStatus === 'within-grace' ||
             f.effectiveStatus === 'stale' ||
             f.effectiveStatus === 'no-recent' ||
+            f.effectiveStatus === 'teams-stale' ||
             f.effectiveStatus === 'awaiting';
     });
 
