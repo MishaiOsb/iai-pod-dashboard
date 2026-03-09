@@ -8153,14 +8153,17 @@ const State = {
             }
         });
 
-        // Email-based alerts (skip discontinued clients, respect 48h grace period)
+        // Communication alerts (email + Teams, skip discontinued clients)
         this.clients.forEach(c => {
             if (isDiscontinued(c.name)) return;
             const ed = EMAIL_DATA.clients[c.name];
-            if (ed) {
-                const effectiveStatus = getEffectiveEmailStatus(c.name);
+            const td = TEAMS_DATA.clients?.[c.name];
+            if (!ed && !td) return;
 
-                // Only alert if 48h grace period has passed
+            const effectiveStatus = getEffectiveEmailStatus(c.name);
+
+            // Email-specific alerts (only when email data exists)
+            if (ed) {
                 if (effectiveStatus === 'needs-response') {
                     const latestEmail = ed.emails[0];
                     const fromName = latestEmail?.from?.split('@')[0]?.replace(/\./g, ' ') || 'Client';
@@ -8175,8 +8178,6 @@ const State = {
                         timestamp: latestEmail?.date || ed.lastEmailDate,
                     });
                 }
-                // within-grace: no alert — client just emailed, still within 48h window
-                // teams-active: no alert — active Teams communication suppresses email stale alerts
                 if (effectiveStatus === 'stale' || effectiveStatus === 'no-recent') {
                     this.alerts.push({
                         type: 'critical',
@@ -8187,19 +8188,34 @@ const State = {
                         timestamp: ed.lastEmailDate,
                     });
                 }
-                if (effectiveStatus === 'teams-stale') {
-                    const td = TEAMS_DATA.clients?.[c.name];
-                    const lastMsg = td?.messages?.[0];
-                    const lastDate = lastMsg ? new Date(lastMsg.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : 'unknown';
-                    this.alerts.push({
-                        type: 'warning',
-                        icon: '&#128172;',
-                        title: `${c.name} - Teams follow-up needed`,
-                        desc: `Last Teams message was ${lastDate} — follow up with client`,
-                        clientId: c.id,
-                        timestamp: lastMsg?.date || null,
-                    });
-                }
+            }
+
+            // Teams follow-up alert (works for Teams-only AND email+Teams clients)
+            if (effectiveStatus === 'teams-stale') {
+                const lastMsg = td?.messages?.[0];
+                const lastDate = lastMsg ? new Date(lastMsg.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : 'unknown';
+                this.alerts.push({
+                    type: 'warning',
+                    icon: '&#128172;',
+                    title: `${c.name} - Teams follow-up needed`,
+                    desc: `Last Teams message was ${lastDate} — follow up with client`,
+                    clientId: c.id,
+                    timestamp: lastMsg?.date || null,
+                });
+            }
+
+            // Stale alert for Teams-only clients with very old messages
+            if (!ed && effectiveStatus === 'stale') {
+                const lastMsg = td?.messages?.[0];
+                const lastDate = lastMsg ? new Date(lastMsg.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : 'unknown';
+                this.alerts.push({
+                    type: 'critical',
+                    icon: '&#128232;',
+                    title: `${c.name} - Communication stale`,
+                    desc: `Last Teams message was ${lastDate} — re-engage client`,
+                    clientId: c.id,
+                    timestamp: lastMsg?.date || null,
+                });
             }
         });
 
