@@ -5201,6 +5201,41 @@ const EmailActionOverrides = {
         this._overrides = {};
         this.save();
     },
+
+    /**
+     * Auto-expire stale "done" overrides.
+     * If new email or Teams activity has arrived AFTER the override was set,
+     * and the auto-detected status is actionable, clear the override so the
+     * follow-up reappears in the planner and Communications Follow-Up page.
+     */
+    autoExpireCheck() {
+        let changed = false;
+        Object.entries(this._overrides).forEach(([name, override]) => {
+            if (override.status !== 'done') return;
+            const setAt = new Date(override.setAt);
+
+            // Find most recent activity date (email or Teams)
+            const ed = EMAIL_DATA.clients[name];
+            const td = TEAMS_DATA.clients?.[name];
+            const latestEmailDate = ed?.emails?.[0] ? new Date(ed.emails[0].date) : null;
+            const latestTeamsDate = td?.messages?.[0] ? new Date(td.messages[0].date) : null;
+            const latestActivity = [latestEmailDate, latestTeamsDate]
+                .filter(Boolean)
+                .sort((a, b) => b - a)[0] || null;
+
+            // If new activity arrived after the override was set, check if status is actionable
+            if (latestActivity && latestActivity > setAt) {
+                const autoStatus = getEffectiveEmailStatus(name);
+                const actionable = ['needs-response', 'stale', 'no-recent', 'teams-stale', 'awaiting'];
+                if (actionable.includes(autoStatus)) {
+                    delete this._overrides[name];
+                    changed = true;
+                    console.log(`[AutoExpire] Cleared "done" override for ${name}: new activity on ${latestActivity.toISOString()} (override set ${setAt.toISOString()}), auto status: ${autoStatus}`);
+                }
+            }
+        });
+        if (changed) this.save();
+    },
 };
 
 /* ================================================================
@@ -8076,6 +8111,8 @@ const State = {
     // Generate smart alerts
     generateAlerts() {
         this.alerts = [];
+        // Auto-expire stale "done" overrides before generating alerts
+        EmailActionOverrides.autoExpireCheck();
 
         // Check if a client is discontinued (no longer active for agent building)
         const isDiscontinued = (clientName) => {
@@ -9803,6 +9840,8 @@ function renderEmailActivity() {
 
     // Update sync status in header
     OutlookSync._updateSyncStatusUI();
+    // Auto-expire stale "done" overrides if new activity has arrived
+    EmailActionOverrides.autoExpireCheck();
 
     // Empty state: no email data, no Teams data, and no Outlook token
     if (Object.keys(EMAIL_DATA.clients).length === 0 && Object.keys(TEAMS_DATA.clients || {}).length === 0 && !OutlookSync.hasToken()) {
@@ -11039,6 +11078,8 @@ function renderPlannerPage() {
 
     DashTodo.load();
     AutoTodoGen.generate();
+    // Auto-expire stale "done" overrides if new activity has arrived
+    EmailActionOverrides.autoExpireCheck();
 
     const today = new Date();
     const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
