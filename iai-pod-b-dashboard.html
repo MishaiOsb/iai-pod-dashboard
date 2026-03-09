@@ -4013,6 +4013,105 @@ const Router = {
 };
 
 /* ================================================================
+   UPDATE CONFIRMATIONS TRACKER
+   Tracks when each client's update was last confirmed/reviewed.
+   Auto-resets after CONFIG.CHECKIN_CYCLE_DAYS (3 days) so clients
+   reappear as needing their updates re-confirmed.
+   Syncs with monday.com updateStatus for real-time context.
+   ================================================================ */
+const UpdateConfirmations = {
+    _key: 'iai_update_confirmations',
+    _sk() { return UserSession.podKey(this._key); },
+    _confirmations: {}, // { clientName: { confirmedAt: ISO } }
+
+    load() {
+        try {
+            const raw = localStorage.getItem(this._sk());
+            this._confirmations = raw ? JSON.parse(raw) : {};
+        } catch { this._confirmations = {}; }
+    },
+
+    save() {
+        localStorage.setItem(this._sk(), JSON.stringify(this._confirmations));
+    },
+
+    /** Mark a client's update as confirmed now */
+    confirm(clientName) {
+        this._confirmations[clientName] = { confirmedAt: new Date().toISOString() };
+        this.save();
+        showToast(`${clientName} update confirmed ✓`, 'success');
+        ActivityFeed.log({ type: 'target', dotClass: 'target', title: 'Update confirmed', desc: clientName, source: 'user-action' });
+        if (typeof Router !== 'undefined') {
+            if (Router.current === 'targets') TargetsManager.render();
+            if (Router.current === 'planner') renderPlannerPage();
+        }
+    },
+
+    /** Reset confirmation so it appears as needing re-confirmation */
+    reset(clientName) {
+        delete this._confirmations[clientName];
+        this.save();
+        showToast(`${clientName} update confirmation reset`, 'info');
+        if (typeof Router !== 'undefined') {
+            if (Router.current === 'targets') TargetsManager.render();
+            if (Router.current === 'planner') renderPlannerPage();
+        }
+    },
+
+    /** Confirm all clients at once */
+    confirmAll() {
+        const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        const now = new Date().toISOString();
+        clients.forEach(c => {
+            if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return;
+            this._confirmations[c.name] = { confirmedAt: now };
+        });
+        this.save();
+        showToast('All updates confirmed ✓', 'success');
+        ActivityFeed.log({ type: 'target', dotClass: 'target', title: 'All updates confirmed', desc: `${clients.length} clients`, source: 'user-action' });
+        if (typeof Router !== 'undefined') {
+            if (Router.current === 'targets') TargetsManager.render();
+            if (Router.current === 'planner') renderPlannerPage();
+        }
+    },
+
+    /** Auto-expire confirmations older than CHECKIN_CYCLE_DAYS */
+    autoExpire() {
+        const cycleDays = typeof CONFIG !== 'undefined' ? CONFIG.CHECKIN_CYCLE_DAYS : 3;
+        const cutoff = new Date(Date.now() - cycleDays * 24 * 3600000);
+        let changed = false;
+        Object.entries(this._confirmations).forEach(([name, entry]) => {
+            if (new Date(entry.confirmedAt) < cutoff) {
+                delete this._confirmations[name];
+                changed = true;
+            }
+        });
+        if (changed) this.save();
+    },
+
+    /** Get confirmation status for a client */
+    getStatus(clientName) {
+        const entry = this._confirmations[clientName];
+        if (!entry) return { confirmed: false, hoursAgo: null };
+        const confirmedAt = new Date(entry.confirmedAt);
+        const hoursAgo = Math.round((Date.now() - confirmedAt) / 3600000);
+        const cycleDays = typeof CONFIG !== 'undefined' ? CONFIG.CHECKIN_CYCLE_DAYS : 3;
+        const expired = hoursAgo >= cycleDays * 24;
+        return { confirmed: !expired, confirmedAt: entry.confirmedAt, hoursAgo };
+    },
+
+    /** Is a client fully on track? Confirmed within cycle AND updateStatus is good on monday */
+    isOnTrack(clientName) {
+        const status = this.getStatus(clientName);
+        if (!status.confirmed) return false;
+        // Also check monday.com updateStatus for real-time sync
+        const client = typeof State !== 'undefined' ? (State.clients || []).find(c => c.name === clientName) : null;
+        if (client && client.updateStatus === 'Need Contact') return false; // monday says they need contact — override confirmation
+        return true;
+    },
+};
+
+/* ================================================================
    CLIENT CHECK-IN TRACKER
    Tracks the last time each client's status was reviewed.
    Auto-resets after CONFIG.CHECKIN_CYCLE_DAYS (3 days) so
@@ -4123,7 +4222,6 @@ const TargetsManager = {
     autoTargets: [
         { id: 'auto_billing', title: 'All Clients Billing Active', field: 'billing', matchValue: 'Yes', icon: '&#128179;' },
         { id: 'auto_rag_green', title: 'All Clients Green RAG', field: 'rag', matchValue: 'Green', icon: '&#9679;' },
-        { id: 'auto_updates', title: 'All Updates Confirmed', field: 'updateStatus', matchValue: 'Yes', icon: '&#9989;' },
     ],
 
     load() {
@@ -4223,6 +4321,22 @@ const TargetsManager = {
             });
         });
 
+        // --- Dynamic auto target: Updates Confirmed (3-day cycle) ---
+        if (clients.length > 0) {
+            UpdateConfirmations.autoExpire();
+            const activeForUpdates = clients.filter(c => !(typeof isDiscontinued === 'function' && isDiscontinued(c.name)));
+            const excludedUpdates = (this._exclusions['auto_updates'] || []);
+            const updatesClients = activeForUpdates.filter(c => !excludedUpdates.includes(c.name));
+            const confirmed = updatesClients.filter(c => UpdateConfirmations.isOnTrack(c.name));
+            targets.push({
+                id: 'auto_updates', title: `All Updates Confirmed (${CONFIG.CHECKIN_CYCLE_DAYS}-Day Cycle)`,
+                current: confirmed.length, goal: updatesClients.length,
+                type: 'auto', icon: '&#9989;', deadline: null,
+                excludedCount: excludedUpdates.length, overriddenCount: 0,
+                isDynamic: true,
+            });
+        }
+
         // --- Dynamic auto target: Client Check-In Cycle (3-day) ---
         if (clients.length > 0) {
             ClientCheckIn.autoExpire(); // expire stale check-ins first
@@ -4294,8 +4408,9 @@ const TargetsManager = {
     _buildAutoDetailPanel(target) {
         const allClients = typeof State !== 'undefined' && State.clients ? State.clients : [];
 
-        // Handle dynamic auto targets (check-in cycle, 72h follow-up)
+        // Handle dynamic auto targets (updates cycle, check-in cycle, 72h follow-up)
         if (target.isDynamic) {
+            if (target.id === 'auto_updates') return this._buildUpdatesDetailPanel(target);
             if (target.id === 'auto_checkin') return this._buildCheckInDetailPanel(target);
             if (target.id === 'auto_followup72') return this._buildFollowUpDetailPanel(target);
         }
@@ -4310,14 +4425,12 @@ const TargetsManager = {
         const met = activeClients.filter(c => c[autoTarget.field] === autoTarget.matchValue || overriddenNames.includes(c.name));
         const unmet = activeClients.filter(c => c[autoTarget.field] !== autoTarget.matchValue && !overriddenNames.includes(c.name));
 
-        let fieldLabel = autoTarget.field === 'billing' ? 'Billing' : autoTarget.field === 'rag' ? 'RAG Status' : 'Update Status';
+        let fieldLabel = autoTarget.field === 'billing' ? 'Billing' : autoTarget.field === 'rag' ? 'RAG Status' : autoTarget.field;
         let description = '';
         if (autoTarget.field === 'billing') {
             description = `This target tracks whether all clients have <strong>active billing</strong>. A client meets this target when their billing status is "Yes", meaning they are financially set up and payments are flowing correctly.`;
         } else if (autoTarget.field === 'rag') {
             description = `This target tracks whether all clients are at <strong>Green RAG status</strong>. Green means the client is healthy — no blockers, on track, and progressing well through their journey.`;
-        } else if (autoTarget.field === 'updateStatus') {
-            description = `This target tracks whether all client <strong>updates are confirmed</strong>. A confirmed update means the latest status has been reviewed, communicated, and logged properly.`;
         }
 
         const statsHtml = `
@@ -4452,6 +4565,114 @@ const TargetsManager = {
             <p class="target-detail-description">This is a <strong>manually tracked target</strong>. Update progress by clicking the edit (✏️) button.</p>
             ${deadlineHtml}
             ${statsHtml}
+            ${actionHint}`;
+    },
+
+    /** Detail panel for Updates Confirmed (cycle-based) target */
+    _buildUpdatesDetailPanel(target) {
+        const allClients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        const excludedNames = this._exclusions['auto_updates'] || [];
+        const activeClients = allClients.filter(c => {
+            if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return false;
+            return !excludedNames.includes(c.name);
+        });
+        const excludedClients = allClients.filter(c => excludedNames.includes(c.name));
+
+        const confirmed = activeClients.filter(c => UpdateConfirmations.isOnTrack(c.name));
+        const needsConfirmation = activeClients.filter(c => !UpdateConfirmations.isOnTrack(c.name));
+
+        const description = `This target tracks whether all client <strong>updates are confirmed</strong> on a <strong>${CONFIG.CHECKIN_CYCLE_DAYS}-day cycle</strong>. Every ${CONFIG.CHECKIN_CYCLE_DAYS} days, confirmations reset automatically so you need to re-review each client's status. If a client's monday.com status is "Need Contact", they won't count as confirmed even if recently checked.`;
+
+        const statsHtml = `
+            <div class="target-detail-stats">
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-green)">${confirmed.length}</span>
+                    <span class="tds-label">Confirmed</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-red)">${needsConfirmation.length}</span>
+                    <span class="tds-label">Pending</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value">${activeClients.length}</span>
+                    <span class="tds-label">Active</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--accent-purple)">${CONFIG.CHECKIN_CYCLE_DAYS}d</span>
+                    <span class="tds-label">Cycle</span>
+                </div>
+            </div>`;
+
+        // "Confirm All" button
+        const confirmAllBtn = needsConfirmation.length > 0 ?
+            `<div style="text-align:center;margin:10px 0 6px;"><button onclick="event.stopPropagation();UpdateConfirmations.confirmAll()" style="background:rgba(0,200,117,0.15);color:var(--rag-green);border:none;border-radius:8px;padding:8px 20px;font-size:12px;font-weight:600;cursor:pointer;">✓ Confirm All Clients</button></div>` : '';
+
+        const clientListHtml = activeClients
+            .sort((a, b) => {
+                // Unconfirmed first, then alphabetical
+                const aOk = UpdateConfirmations.isOnTrack(a.name) ? 1 : 0;
+                const bOk = UpdateConfirmations.isOnTrack(b.name) ? 1 : 0;
+                if (aOk !== bOk) return aOk - bOk;
+                return a.name.localeCompare(b.name);
+            })
+            .map(c => {
+                const esc = c.name.replace(/'/g, "\\'");
+                const isConfirmed = UpdateConfirmations.isOnTrack(c.name);
+                const confStatus = UpdateConfirmations.getStatus(c.name);
+                const mondayStatus = c.updateStatus || 'Unknown';
+                const mondayColor = mondayStatus === 'Yes' ? 'var(--rag-green)' :
+                                    mondayStatus === 'Working on it' ? 'var(--rag-amber)' :
+                                    mondayStatus === 'Need Contact' ? 'var(--rag-red)' : 'var(--text-muted)';
+
+                let statusHtml, actionBtn;
+                if (isConfirmed) {
+                    const hoursLeft = Math.max(0, CONFIG.CHECKIN_CYCLE_DAYS * 24 - confStatus.hoursAgo);
+                    const timeLabel = hoursLeft >= 24 ? Math.round(hoursLeft / 24) + 'd' : hoursLeft + 'h';
+                    statusHtml = `<span class="tcl-status met">✓ Confirmed (resets in ${timeLabel})</span>`;
+                    actionBtn = `<button class="target-override-btn revert" onclick="event.stopPropagation();UpdateConfirmations.reset('${esc}')" title="Reset confirmation">↩</button>`;
+                } else {
+                    // Show why not confirmed
+                    const reason = !confStatus.confirmed && mondayStatus === 'Need Contact' ?
+                        '✗ Needs Contact' : '✗ Needs Confirmation';
+                    statusHtml = `<span class="tcl-status unmet">${reason}</span>`;
+                    actionBtn = `<button class="target-override-btn" onclick="event.stopPropagation();UpdateConfirmations.confirm('${esc}')" title="Confirm update">✓</button>`;
+                }
+
+                return `<div class="target-client-item">
+                    <span>${c.name}</span>
+                    <span style="color:var(--text-muted);font-size:11px;">Monday: <span style="color:${mondayColor}">${mondayStatus}</span></span>
+                    <div class="target-client-item-actions">
+                        ${statusHtml}
+                        ${actionBtn}
+                        <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('auto_updates','${esc}')" title="Exclude from target">✕</button>
+                    </div>
+                </div>`;
+            }).join('');
+
+        const excludedListHtml = excludedClients.length > 0 ? `
+            <div style="margin-top:12px;">
+                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Excluded Clients</div>
+                <div class="target-client-list">${excludedClients.map(c => {
+                    return `<div class="target-client-item target-client-excluded">
+                        <span style="text-decoration:line-through;opacity:0.6;">${c.name}</span>
+                        <span style="color:var(--text-muted);font-size:11px;">Excluded</span>
+                        <div class="target-client-item-actions">
+                            <button class="target-include-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('auto_updates','${c.name.replace(/'/g,"\\'")}')" title="Include in target">&#8634;</button>
+                        </div>
+                    </div>`;
+                }).join('')}</div>
+            </div>` : '';
+
+        const actionHint = needsConfirmation.length > 0 ?
+            `<p class="target-detail-hint">💡 Action: Confirm updates for ${needsConfirmation.slice(0, 3).map(c => c.name).join(', ')}${needsConfirmation.length > 3 ? ` and ${needsConfirmation.length - 3} more` : ''} to complete this cycle.</p>` :
+            `<p class="target-detail-hint">🎉 All client updates confirmed for this cycle — great work! Resets in ${CONFIG.CHECKIN_CYCLE_DAYS} days.</p>`;
+
+        return `
+            <p class="target-detail-description">${description}</p>
+            ${statsHtml}
+            ${confirmAllBtn}
+            <div class="target-client-list">${clientListHtml}</div>
+            ${excludedListHtml}
             ${actionHint}`;
     },
 
@@ -15133,6 +15354,7 @@ async function switchPod() {
 function reloadNamespacedModules() {
     State.loadLocal();
     TargetsManager.load();
+    UpdateConfirmations.load();
     ClientCheckIn.load();
     DashTodo.load();
     CalendarState.load();
