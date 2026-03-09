@@ -1139,6 +1139,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 .email-status-tag.up-to-date {
     background: var(--rag-green-bg); color: var(--rag-green);
 }
+.email-status-tag.teams-active {
+    background: rgba(98,100,167,0.15); color: #6264a7;
+}
 .email-status-tag.discontinued {
     background: rgba(102,102,102,0.15); color: var(--text-muted);
 }
@@ -9625,7 +9628,27 @@ function countWorkingDaysSince(fromDate) {
 
 function getEffectiveEmailStatus(clientName) {
     const ed = EMAIL_DATA.clients[clientName];
-    if (!ed) return null;
+    const td = TEAMS_DATA.clients?.[clientName];
+
+    // Check for recent Teams communication (sent or received within 14 days)
+    let teamsLastSentByMe = null;
+    let teamsLastReceived = null;
+    if (td && td.messages && td.messages.length > 0) {
+        const myMsg = td.messages.find(m => m.isFromMe);
+        if (myMsg) teamsLastSentByMe = new Date(myMsg.date);
+        const theirMsg = td.messages.find(m => !m.isFromMe);
+        if (theirMsg) teamsLastReceived = new Date(theirMsg.date);
+    }
+
+    const teamsDaysSinceMyMsg = teamsLastSentByMe ? Math.floor((Date.now() - teamsLastSentByMe.getTime()) / 86400000) : null;
+    const teamsDaysSinceTheirMsg = teamsLastReceived ? Math.floor((Date.now() - teamsLastReceived.getTime()) / 86400000) : null;
+
+    // If no email data at all, rely on Teams data
+    if (!ed) {
+        if (teamsDaysSinceMyMsg !== null && teamsDaysSinceMyMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
+        if (teamsDaysSinceTheirMsg !== null && teamsDaysSinceTheirMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
+        return null;
+    }
     if (ed.discontinued) return 'discontinued';
 
     const lastFromMe = getLastEmailFromMe(ed);
@@ -9634,39 +9657,43 @@ function getEffectiveEmailStatus(clientName) {
     const myDate = lastFromMe ? new Date(lastFromMe.date) : null;
     const clientDate = lastFromClient ? new Date(lastFromClient.date) : null;
 
-    // No meaningful emails from either party
-    if (!myDate && !clientDate) return 'no-recent';
-
-    // Only I have sent — waiting on client
-    if (myDate && !clientDate) {
+    // Compute email-only status first
+    let emailStatus = null;
+    if (!myDate && !clientDate) {
+        emailStatus = 'no-recent';
+    } else if (myDate && !clientDate) {
         const hoursSinceMe = getHoursSinceMyLastEmail(ed);
-        if (hoursSinceMe !== null && hoursSinceMe > CONFIG.STALE_CRITICAL_DAYS * 24) return 'stale';
-        // Awaiting: within 3 working days = done (no action), beyond = actionable
-        const workingDays = countWorkingDaysSince(myDate);
-        return workingDays > CONFIG.AWAITING_GRACE_WORKING_DAYS ? 'awaiting' : 'awaiting-grace';
-    }
-
-    // Only client has sent — I need to respond
-    if (!myDate && clientDate) {
+        if (hoursSinceMe !== null && hoursSinceMe > CONFIG.STALE_CRITICAL_DAYS * 24) emailStatus = 'stale';
+        else {
+            const workingDays = countWorkingDaysSince(myDate);
+            emailStatus = workingDays > CONFIG.AWAITING_GRACE_WORKING_DAYS ? 'awaiting' : 'awaiting-grace';
+        }
+    } else if (!myDate && clientDate) {
         const hoursSinceClient = getHoursSinceLastClientEmail(ed);
-        if (hoursSinceClient !== null && hoursSinceClient < CONFIG.RESPONSE_GRACE_HOURS) return 'within-grace';
-        return 'needs-response';
-    }
-
-    // Both have sent — compare dates
-    if (clientDate > myDate) {
-        // Client sent more recently — I need to respond
+        if (hoursSinceClient !== null && hoursSinceClient < CONFIG.RESPONSE_GRACE_HOURS) emailStatus = 'within-grace';
+        else emailStatus = 'needs-response';
+    } else if (clientDate > myDate) {
         const hoursSinceClient = getHoursSinceLastClientEmail(ed);
-        if (hoursSinceClient !== null && hoursSinceClient < CONFIG.RESPONSE_GRACE_HOURS) return 'within-grace';
-        return 'needs-response';
+        if (hoursSinceClient !== null && hoursSinceClient < CONFIG.RESPONSE_GRACE_HOURS) emailStatus = 'within-grace';
+        else emailStatus = 'needs-response';
     } else {
-        // I sent more recently — awaiting client
         const hoursSinceMe = getHoursSinceMyLastEmail(ed);
-        if (hoursSinceMe !== null && hoursSinceMe > CONFIG.STALE_CRITICAL_DAYS * 24) return 'stale';
-        // Awaiting: within 3 working days = done (no action), beyond = actionable
-        const workingDays = countWorkingDaysSince(myDate);
-        return workingDays > CONFIG.AWAITING_GRACE_WORKING_DAYS ? 'awaiting' : 'awaiting-grace';
+        if (hoursSinceMe !== null && hoursSinceMe > CONFIG.STALE_CRITICAL_DAYS * 24) emailStatus = 'stale';
+        else {
+            const workingDays = countWorkingDaysSince(myDate);
+            emailStatus = workingDays > CONFIG.AWAITING_GRACE_WORKING_DAYS ? 'awaiting' : 'awaiting-grace';
+        }
     }
+
+    // Override with Teams data: if email says follow-up needed but Teams is active, suppress
+    if (emailStatus === 'stale' || emailStatus === 'no-recent' || emailStatus === 'awaiting' || emailStatus === 'needs-response') {
+        // If user sent a Teams message within the staleness window, communication is active
+        if (teamsDaysSinceMyMsg !== null && teamsDaysSinceMyMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
+        // If client sent a Teams message recently, communication is active
+        if (teamsDaysSinceTheirMsg !== null && teamsDaysSinceTheirMsg <= CONFIG.STALE_CRITICAL_DAYS) return 'teams-active';
+    }
+
+    return emailStatus;
 }
 
 function emailStatusLabel(status) {
@@ -9677,6 +9704,7 @@ function emailStatusLabel(status) {
         case 'awaiting-grace': return { text: 'Awaiting Reply', class: 'within-grace' };
         case 'stale': return { text: 'Stale - Outreach Needed', class: 'stale-email' };
         case 'no-recent': return { text: 'No Recent Email', class: 'stale-email' };
+        case 'teams-active': return { text: 'Active on Teams', class: 'teams-active' };
         case 'discontinued': return { text: 'Discontinued', class: 'discontinued' };
         default: return { text: 'Up to Date', class: 'up-to-date' };
     }
