@@ -4013,6 +4013,100 @@ const Router = {
 };
 
 /* ================================================================
+   CLIENT CHECK-IN TRACKER
+   Tracks the last time each client's status was reviewed.
+   Auto-resets after CONFIG.CHECKIN_CYCLE_DAYS (3 days) so
+   clients reappear as needing attention.
+   ================================================================ */
+const ClientCheckIn = {
+    _key: 'iai_client_checkins',
+    _sk() { return UserSession.podKey(this._key); },
+    _checkins: {}, // { clientName: { checkedAt: ISO, note: '' } }
+
+    load() {
+        try {
+            const raw = localStorage.getItem(this._sk());
+            this._checkins = raw ? JSON.parse(raw) : {};
+        } catch { this._checkins = {}; }
+    },
+
+    save() {
+        localStorage.setItem(this._sk(), JSON.stringify(this._checkins));
+    },
+
+    /** Mark a client as checked-in right now */
+    checkIn(clientName, note) {
+        this._checkins[clientName] = {
+            checkedAt: new Date().toISOString(),
+            note: note || '',
+        };
+        this.save();
+        showToast(`${clientName} checked in ✓`, 'success');
+        ActivityFeed.log({ type: 'target', dotClass: 'target', title: 'Client check-in', desc: clientName, source: 'user-action' });
+        // Re-render whichever page is active
+        if (typeof Router !== 'undefined') {
+            if (Router.current === 'targets') TargetsManager.render();
+            if (Router.current === 'planner') renderPlannerPage();
+        }
+    },
+
+    /** Reset (un-check) a client so it appears as needing check-in again */
+    resetCheckIn(clientName) {
+        delete this._checkins[clientName];
+        this.save();
+        showToast(`${clientName} check-in reset`, 'info');
+        if (typeof Router !== 'undefined') {
+            if (Router.current === 'targets') TargetsManager.render();
+            if (Router.current === 'planner') renderPlannerPage();
+        }
+    },
+
+    /** Auto-expire check-ins older than CHECKIN_CYCLE_DAYS */
+    autoExpire() {
+        const cycleDays = typeof CONFIG !== 'undefined' ? CONFIG.CHECKIN_CYCLE_DAYS : 3;
+        const cutoff = new Date(Date.now() - cycleDays * 24 * 3600000);
+        let changed = false;
+        Object.entries(this._checkins).forEach(([name, entry]) => {
+            if (new Date(entry.checkedAt) < cutoff) {
+                delete this._checkins[name];
+                changed = true;
+            }
+        });
+        if (changed) this.save();
+    },
+
+    /** Get check-in status for a client */
+    getStatus(clientName) {
+        const entry = this._checkins[clientName];
+        if (!entry) return { checked: false, daysAgo: null, hoursAgo: null };
+        const checkedAt = new Date(entry.checkedAt);
+        const hoursAgo = Math.round((Date.now() - checkedAt) / 3600000);
+        const daysAgo = Math.round(hoursAgo / 24);
+        const cycleDays = typeof CONFIG !== 'undefined' ? CONFIG.CHECKIN_CYCLE_DAYS : 3;
+        const expired = hoursAgo >= cycleDays * 24;
+        return { checked: !expired, checkedAt: entry.checkedAt, daysAgo, hoursAgo, note: entry.note };
+    },
+
+    /** Get all clients needing check-in (not checked or expired) */
+    getClientsNeedingCheckIn() {
+        const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        return clients.filter(c => {
+            if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return false;
+            return !this.getStatus(c.name).checked;
+        });
+    },
+
+    /** Get all clients that are currently checked-in */
+    getCheckedInClients() {
+        const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        return clients.filter(c => {
+            if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return false;
+            return this.getStatus(c.name).checked;
+        });
+    },
+};
+
+/* ================================================================
    TARGETS & GOALS MANAGER
    ================================================================ */
 const TargetsManager = {
@@ -4113,7 +4207,7 @@ const TargetsManager = {
         const clients = typeof State !== 'undefined' && State.clients ? State.clients : [];
         const targets = [];
 
-        // Auto targets
+        // Auto targets (field-based)
         this.autoTargets.forEach(at => {
             const active = this._getActiveClients(at.id);
             const excluded = (this._exclusions[at.id] || []).length;
@@ -4128,6 +4222,47 @@ const TargetsManager = {
                 excludedCount: excluded, overriddenCount: overridden,
             });
         });
+
+        // --- Dynamic auto target: Client Check-In Cycle (3-day) ---
+        if (clients.length > 0) {
+            ClientCheckIn.autoExpire(); // expire stale check-ins first
+            const activeForCheckin = clients.filter(c => !(typeof isDiscontinued === 'function' && isDiscontinued(c.name)));
+            const excludedCheckin = (this._exclusions['auto_checkin'] || []);
+            const checkinClients = activeForCheckin.filter(c => !excludedCheckin.includes(c.name));
+            const checkedIn = checkinClients.filter(c => ClientCheckIn.getStatus(c.name).checked);
+            targets.push({
+                id: 'auto_checkin', title: `Client Check-Ins (${CONFIG.CHECKIN_CYCLE_DAYS}-Day Cycle)`,
+                current: checkedIn.length, goal: checkinClients.length,
+                type: 'auto', icon: '&#128270;', deadline: null,
+                excludedCount: excludedCheckin.length, overriddenCount: 0,
+                isDynamic: true,
+            });
+        }
+
+        // --- Dynamic auto target: 72h Email Follow-Up ---
+        if (clients.length > 0) {
+            const excludedFollowup = (this._exclusions['auto_followup72'] || []);
+            const activeForFollowup = clients.filter(c => {
+                if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return false;
+                if (excludedFollowup.includes(c.name)) return false;
+                // Only include clients that have email or Teams data
+                const ed = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients?.[c.name] : null;
+                const td = typeof TEAMS_DATA !== 'undefined' ? TEAMS_DATA.clients?.[c.name] : null;
+                return ed || td;
+            });
+            const onTrack = activeForFollowup.filter(c => {
+                const status = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+                // "On track" = not needing a response/follow-up
+                return status && !['needs-response', 'stale', 'no-recent', 'teams-stale'].includes(status);
+            });
+            targets.push({
+                id: 'auto_followup72', title: `Email Follow-Ups (${CONFIG.EMAIL_FOLLOWUP_HOURS}h)`,
+                current: onTrack.length, goal: activeForFollowup.length,
+                type: 'auto', icon: '&#128232;', deadline: null,
+                excludedCount: excludedFollowup.length, overriddenCount: 0,
+                isDynamic: true,
+            });
+        }
 
         // Manual targets
         this._manualTargets.forEach(mt => {
@@ -4158,6 +4293,13 @@ const TargetsManager = {
 
     _buildAutoDetailPanel(target) {
         const allClients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+
+        // Handle dynamic auto targets (check-in cycle, 72h follow-up)
+        if (target.isDynamic) {
+            if (target.id === 'auto_checkin') return this._buildCheckInDetailPanel(target);
+            if (target.id === 'auto_followup72') return this._buildFollowUpDetailPanel(target);
+        }
+
         const autoTarget = this.autoTargets.find(a => a.id === target.id);
         if (!autoTarget || allClients.length === 0) return '<p class="target-detail-description">No client data available.</p>';
 
@@ -4310,6 +4452,213 @@ const TargetsManager = {
             <p class="target-detail-description">This is a <strong>manually tracked target</strong>. Update progress by clicking the edit (✏️) button.</p>
             ${deadlineHtml}
             ${statsHtml}
+            ${actionHint}`;
+    },
+
+    /** Detail panel for Client Check-In Cycle target */
+    _buildCheckInDetailPanel(target) {
+        const allClients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        const excludedNames = this._exclusions['auto_checkin'] || [];
+        const activeClients = allClients.filter(c => {
+            if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return false;
+            return !excludedNames.includes(c.name);
+        });
+        const excludedClients = allClients.filter(c => excludedNames.includes(c.name));
+
+        const needsCheckIn = activeClients.filter(c => !ClientCheckIn.getStatus(c.name).checked);
+        const checkedIn = activeClients.filter(c => ClientCheckIn.getStatus(c.name).checked);
+
+        const description = `This target tracks your <strong>${CONFIG.CHECKIN_CYCLE_DAYS}-day client check-in cycle</strong>. Every ${CONFIG.CHECKIN_CYCLE_DAYS} days, all check-ins reset automatically so you know which clients need attention. Click the ✓ button to mark a client as checked.`;
+
+        const statsHtml = `
+            <div class="target-detail-stats">
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-green)">${checkedIn.length}</span>
+                    <span class="tds-label">Checked In</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-red)">${needsCheckIn.length}</span>
+                    <span class="tds-label">Need Check-In</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value">${activeClients.length}</span>
+                    <span class="tds-label">Active</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--accent-purple)">${CONFIG.CHECKIN_CYCLE_DAYS}d</span>
+                    <span class="tds-label">Cycle</span>
+                </div>
+            </div>`;
+
+        const clientListHtml = activeClients.map(c => {
+            const esc = c.name.replace(/'/g, "\\'");
+            const status = ClientCheckIn.getStatus(c.name);
+            const isMet = status.checked;
+
+            let statusHtml, actionBtn;
+            if (isMet) {
+                const hoursLeft = Math.max(0, CONFIG.CHECKIN_CYCLE_DAYS * 24 - status.hoursAgo);
+                const timeLabel = hoursLeft >= 24 ? Math.round(hoursLeft / 24) + 'd' : hoursLeft + 'h';
+                statusHtml = `<span class="tcl-status met">✓ Checked (resets in ${timeLabel})</span>`;
+                actionBtn = `<button class="target-override-btn revert" onclick="event.stopPropagation();ClientCheckIn.resetCheckIn('${esc}')" title="Reset check-in">↩</button>`;
+            } else {
+                statusHtml = `<span class="tcl-status unmet">✗ Needs Check-In</span>`;
+                actionBtn = `<button class="target-override-btn" onclick="event.stopPropagation();ClientCheckIn.checkIn('${esc}')" title="Mark as checked">✓</button>`;
+            }
+
+            // Show last contact info for context
+            const lastContact = typeof getEffectiveLastContact === 'function' ? getEffectiveLastContact(c) : null;
+            const daysSince = lastContact ? getDaysSinceContact(lastContact) : null;
+            const contactInfo = daysSince !== null ? `Last contact: ${daysSince}d ago` : 'No contact data';
+
+            return `<div class="target-client-item">
+                <span>${c.name}</span>
+                <span style="color:var(--text-muted);font-size:11px;">${contactInfo}</span>
+                <div class="target-client-item-actions">
+                    ${statusHtml}
+                    ${actionBtn}
+                    <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('auto_checkin','${esc}')" title="Exclude from target">✕</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        const excludedListHtml = excludedClients.length > 0 ? `
+            <div style="margin-top:12px;">
+                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Excluded Clients</div>
+                <div class="target-client-list">${excludedClients.map(c => {
+                    return `<div class="target-client-item target-client-excluded">
+                        <span style="text-decoration:line-through;opacity:0.6;">${c.name}</span>
+                        <span style="color:var(--text-muted);font-size:11px;">Excluded</span>
+                        <div class="target-client-item-actions">
+                            <button class="target-include-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('auto_checkin','${c.name.replace(/'/g,"\\'")}')" title="Include in target">&#8634;</button>
+                        </div>
+                    </div>`;
+                }).join('')}</div>
+            </div>` : '';
+
+        const actionHint = needsCheckIn.length > 0 ?
+            `<p class="target-detail-hint">💡 Action: Check in on ${needsCheckIn.slice(0, 3).map(c => c.name).join(', ')}${needsCheckIn.length > 3 ? ` and ${needsCheckIn.length - 3} more` : ''} to complete this cycle.</p>` :
+            `<p class="target-detail-hint">🎉 All clients checked in for this cycle — great work! Resets in ${CONFIG.CHECKIN_CYCLE_DAYS} days.</p>`;
+
+        return `
+            <p class="target-detail-description">${description}</p>
+            ${statsHtml}
+            <div class="target-client-list">${clientListHtml}</div>
+            ${excludedListHtml}
+            ${actionHint}`;
+    },
+
+    /** Detail panel for 72h Email Follow-Up target */
+    _buildFollowUpDetailPanel(target) {
+        const allClients = typeof State !== 'undefined' && State.clients ? State.clients : [];
+        const excludedNames = this._exclusions['auto_followup72'] || [];
+        const activeClients = allClients.filter(c => {
+            if (typeof isDiscontinued === 'function' && isDiscontinued(c.name)) return false;
+            if (excludedNames.includes(c.name)) return false;
+            const ed = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients?.[c.name] : null;
+            const td = typeof TEAMS_DATA !== 'undefined' ? TEAMS_DATA.clients?.[c.name] : null;
+            return ed || td;
+        });
+        const excludedClients = allClients.filter(c => excludedNames.includes(c.name));
+
+        const actionableStatuses = ['needs-response', 'stale', 'no-recent', 'teams-stale'];
+        const needsFollowUp = activeClients.filter(c => {
+            const status = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            return status && actionableStatuses.includes(status);
+        });
+        const onTrack = activeClients.filter(c => {
+            const status = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+            return status && !actionableStatuses.includes(status);
+        });
+
+        const description = `This target tracks <strong>email follow-up status</strong> across all clients. A client needs follow-up if they haven't responded within ${CONFIG.EMAIL_FOLLOWUP_HOURS} hours, if communication is stale, or if no recent contact exists. It updates automatically based on live email and Teams data.`;
+
+        const statsHtml = `
+            <div class="target-detail-stats">
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-green)">${onTrack.length}</span>
+                    <span class="tds-label">On Track</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--rag-red)">${needsFollowUp.length}</span>
+                    <span class="tds-label">Need Follow-Up</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value">${activeClients.length}</span>
+                    <span class="tds-label">Tracked</span>
+                </div>
+                <div class="target-detail-stat">
+                    <span class="tds-value" style="color:var(--accent-purple)">${CONFIG.EMAIL_FOLLOWUP_HOURS}h</span>
+                    <span class="tds-label">Threshold</span>
+                </div>
+            </div>`;
+
+        const statusLabels = {
+            'needs-response': { label: 'Needs Response', cls: 'unmet', icon: '⚠️' },
+            'stale': { label: 'Stale', cls: 'unmet', icon: '📭' },
+            'no-recent': { label: 'No Recent Contact', cls: 'unmet', icon: '📭' },
+            'teams-stale': { label: 'Teams Follow-Up', cls: 'unmet', icon: '💬' },
+            'within-grace': { label: 'Within Grace', cls: 'met', icon: '⏰' },
+            'awaiting': { label: 'Awaiting Reply', cls: 'met', icon: '📤' },
+            'awaiting-grace': { label: 'Awaiting (Grace)', cls: 'met', icon: '📤' },
+            'teams-active': { label: 'Teams Active', cls: 'met', icon: '✅' },
+        };
+
+        const clientListHtml = activeClients
+            .sort((a, b) => {
+                const sa = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(a.name) : '';
+                const sb = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(b.name) : '';
+                const orderMap = { 'needs-response': 0, 'stale': 1, 'no-recent': 2, 'teams-stale': 3, 'within-grace': 4, 'awaiting': 5, 'awaiting-grace': 6, 'teams-active': 7 };
+                return (orderMap[sa] ?? 99) - (orderMap[sb] ?? 99);
+            })
+            .map(c => {
+                const esc = c.name.replace(/'/g, "\\'");
+                const status = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : 'unknown';
+                const sl = statusLabels[status] || { label: status, cls: '', icon: '❓' };
+                const isMet = !actionableStatuses.includes(status);
+
+                // Get context: last email date
+                const ed = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients?.[c.name] : null;
+                const latestEmail = ed?.emails?.[0];
+                const emailInfo = latestEmail ? `Last email: ${new Date(latestEmail.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'})}` : 'No email history';
+
+                const statusHtml = isMet ?
+                    `<span class="tcl-status met">${sl.icon} ${sl.label}</span>` :
+                    `<span class="tcl-status unmet">${sl.icon} ${sl.label}</span>`;
+
+                return `<div class="target-client-item">
+                    <span>${c.name}</span>
+                    <span style="color:var(--text-muted);font-size:11px;">${emailInfo}</span>
+                    <div class="target-client-item-actions">
+                        ${statusHtml}
+                        <button class="target-exclude-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('auto_followup72','${esc}')" title="Exclude from target">✕</button>
+                    </div>
+                </div>`;
+            }).join('');
+
+        const excludedListHtml = excludedClients.length > 0 ? `
+            <div style="margin-top:12px;">
+                <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Excluded Clients</div>
+                <div class="target-client-list">${excludedClients.map(c => {
+                    return `<div class="target-client-item target-client-excluded">
+                        <span style="text-decoration:line-through;opacity:0.6;">${c.name}</span>
+                        <span style="color:var(--text-muted);font-size:11px;">Excluded</span>
+                        <div class="target-client-item-actions">
+                            <button class="target-include-btn" onclick="event.stopPropagation();TargetsManager.toggleExclusion('auto_followup72','${c.name.replace(/'/g,"\\'")}')" title="Include in target">&#8634;</button>
+                        </div>
+                    </div>`;
+                }).join('')}</div>
+            </div>` : '';
+
+        const actionHint = needsFollowUp.length > 0 ?
+            `<p class="target-detail-hint">💡 Action: Follow up with ${needsFollowUp.slice(0, 3).map(c => c.name).join(', ')}${needsFollowUp.length > 3 ? ` and ${needsFollowUp.length - 3} more` : ''} — they need a response or check-in.</p>` :
+            `<p class="target-detail-hint">🎉 All clients are on track — no follow-ups needed right now!</p>`;
+
+        return `
+            <p class="target-detail-description">${description}</p>
+            ${statsHtml}
+            <div class="target-client-list">${clientListHtml}</div>
+            ${excludedListHtml}
             ${actionHint}`;
     },
 
@@ -7451,6 +7800,8 @@ const CONFIG = Object.freeze({
     RESPONSE_GRACE_HOURS: 48, // hours before a client email becomes "needs response"
     AWAITING_GRACE_WORKING_DAYS: 3, // working days before an "awaiting reply" becomes actionable again
     TEAMS_FOLLOWUP_DAYS: 5, // days before a Teams conversation needs follow-up
+    CHECKIN_CYCLE_DAYS: 3, // days between required client check-ins
+    EMAIL_FOLLOWUP_HOURS: 72, // hours without email response before follow-up needed
     USER_EMAIL: 'mishai@implementai.io', // Fallback Pod Lead email — overridden by RUNTIME.userEmail after login
 });
 
@@ -8287,6 +8638,24 @@ const State = {
                 });
             }
         });
+
+        // Client check-in cycle alerts
+        if (typeof ClientCheckIn !== 'undefined') {
+            ClientCheckIn.autoExpire();
+            const needsCheckIn = ClientCheckIn.getClientsNeedingCheckIn();
+            if (needsCheckIn.length > 0) {
+                const names = needsCheckIn.slice(0, 3).map(c => c.name).join(', ');
+                const moreText = needsCheckIn.length > 3 ? ` +${needsCheckIn.length - 3} more` : '';
+                this.alerts.push({
+                    type: 'info',
+                    icon: '&#128270;',
+                    title: `${needsCheckIn.length} client${needsCheckIn.length !== 1 ? 's' : ''} need check-in`,
+                    desc: `${CONFIG.CHECKIN_CYCLE_DAYS}-day cycle: ${names}${moreText}`,
+                    clientId: null,
+                    timestamp: new Date().toISOString(),
+                });
+            }
+        }
 
         // Sort: critical first, then warning, then info; within same type, oldest first (most urgent)
         const order = { critical: 0, warning: 1, info: 2 };
@@ -11556,6 +11925,38 @@ function renderPlannerPage() {
             ${todayEmailHTML}
         </div>
 
+        <!-- Client Check-In Cycle -->
+        ${(() => {
+            ClientCheckIn.autoExpire();
+            const needsCheckIn = ClientCheckIn.getClientsNeedingCheckIn();
+            const totalActive = (State.clients || []).filter(c => !(typeof isDiscontinued === 'function' && isDiscontinued(c.name))).length;
+            const checkedCount = totalActive - needsCheckIn.length;
+            if (totalActive === 0) return '';
+            const checkInCards = needsCheckIn.slice(0, 6).map(c => {
+                const esc = c.name.replace(/'/g, "\\'");
+                const lastContact = typeof getEffectiveLastContact === 'function' ? getEffectiveLastContact(c) : null;
+                const daysSince = lastContact ? getDaysSinceContact(lastContact) : null;
+                const contactLabel = daysSince !== null ? (daysSince === 0 ? 'Today' : daysSince + 'd ago') : 'No data';
+                const ragColor = c.rag === 'Green' ? 'var(--rag-green)' : c.rag === 'Amber' ? 'var(--rag-amber)' : c.rag === 'Red' ? 'var(--rag-red)' : 'var(--text-muted)';
+                return `<div class="checkin-card" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:6px;border-left:3px solid ${ragColor};">
+                    <div>
+                        <div style="font-weight:600;font-size:13px;">${c.name}</div>
+                        <div style="font-size:11px;color:var(--text-muted);">Last contact: ${contactLabel} · RAG: <span style="color:${ragColor}">${c.rag}</span></div>
+                    </div>
+                    <button onclick="event.stopPropagation();ClientCheckIn.checkIn('${esc}')" style="background:rgba(0,200,117,0.15);color:var(--rag-green);border:none;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;" title="Mark as checked">✓ Check In</button>
+                </div>`;
+            }).join('');
+            const moreCount = needsCheckIn.length > 6 ? `<div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:4px;">+ ${needsCheckIn.length - 6} more — <a href="#" onclick="event.preventDefault();Router.navigate('targets')" style="color:var(--accent-purple-light);">view all</a></div>` : '';
+            return `<div class="email-followup-section" style="margin-top:12px;">
+                <div class="planner-section-title">
+                    &#128270; Client Check-Ins (${CONFIG.CHECKIN_CYCLE_DAYS}-Day Cycle)
+                    <span class="section-count">${checkedCount}/${totalActive} checked · ${needsCheckIn.length} remaining</span>
+                </div>
+                ${needsCheckIn.length > 0 ? checkInCards + moreCount :
+                    '<div style="padding:16px;text-align:center;color:var(--rag-green);font-size:13px;">🎉 All clients checked in for this cycle!</div>'}
+            </div>`;
+        })()}
+
         ${buildFirefliesSection()}
 
         <div class="planner-layout">
@@ -14732,6 +15133,7 @@ async function switchPod() {
 function reloadNamespacedModules() {
     State.loadLocal();
     TargetsManager.load();
+    ClientCheckIn.load();
     DashTodo.load();
     CalendarState.load();
     AutoTodoGen.load();
