@@ -5938,7 +5938,7 @@ const TeamsSync = {
 
     // Count a message as sent/received and add to lists
     // Returns false if message was skipped (bot/system/empty), true if counted
-    _countMessage(m, myEmail, msgList, counts, seenIds) {
+    _countMessage(m, myEmail, msgList, counts, seenIds, myUserId, myGraphMail) {
         // Skip if no human sender (bots, connectors, apps)
         if (!m.from || !m.from.user) return false;
         // Skip if we've already seen this message (dedup)
@@ -5948,10 +5948,15 @@ const TeamsSync = {
         if (!textContent) return false;
 
         const fromEmail = m.from.user.email?.toLowerCase() || '';
+        const fromId = m.from.user.id || '';
         const fromDisplay = (m.from.user.displayName || '').toLowerCase();
-        // Match by email or by display name containing user's email prefix
+        // Match by: Azure AD user ID (most reliable), email, Graph mail, email prefix, or display name
         const myPrefix = myEmail.split('@')[0];
-        const isFromMe = fromEmail === myEmail || (myPrefix && fromEmail.startsWith(myPrefix + '@')) || (myPrefix && fromDisplay.includes(myPrefix));
+        const isFromMe = (myUserId && fromId === myUserId) ||
+            fromEmail === myEmail ||
+            (myGraphMail && fromEmail === myGraphMail) ||
+            (myPrefix && fromEmail.startsWith(myPrefix + '@')) ||
+            (myPrefix && fromDisplay.includes(myPrefix));
         if (isFromMe) counts.sent++; else counts.received++;
         msgList.push({
             from: fromEmail || m.from.user.displayName || 'unknown',
@@ -5980,6 +5985,19 @@ const TeamsSync = {
         // (someone might reply today to a 3-week-old thread)
         const replyWindowDate = new Date(Date.now() - 30 * 86400000);
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL).toLowerCase();
+
+        // Fetch Graph profile to get exact user ID and mail for reliable sent/received matching
+        let myUserId = null;
+        let myGraphMail = null;
+        try {
+            const meData = await this._graphFetch('/me', { '$select': 'id,mail,userPrincipalName' });
+            if (meData) {
+                myUserId = meData.id || null;
+                myGraphMail = (meData.mail || meData.userPrincipalName || '').toLowerCase();
+                console.log(`[TeamsSync] My Graph profile: id=${myUserId}, mail=${myGraphMail}`);
+            }
+        } catch (e) { console.warn('[TeamsSync] Could not fetch /me profile:', e.message); }
+
         const results = {};
         const seenIds = new Set(); // Global dedup across all channels
         let totalApiCalls = 0;
@@ -6020,7 +6038,7 @@ const TeamsSync = {
 
                     // Count top-level message if it's a real human message in range
                     if (m.messageType === 'message' && inRange) {
-                        if (!this._countMessage(m, myEmail, msgList, counts, seenIds)) skippedSystem++;
+                        if (!this._countMessage(m, myEmail, msgList, counts, seenIds, myUserId, myGraphMail)) skippedSystem++;
                     }
 
                     // Only fetch replies for messages within extended window (30 days)
@@ -6037,7 +6055,7 @@ const TeamsSync = {
                                 if (reply.messageType !== 'message') continue;
                                 const replyDate = new Date(reply.createdDateTime);
                                 if (replyDate >= sinceDate) {
-                                    if (!this._countMessage(reply, myEmail, msgList, counts, seenIds)) skippedSystem++;
+                                    if (!this._countMessage(reply, myEmail, msgList, counts, seenIds, myUserId, myGraphMail)) skippedSystem++;
                                 }
                             }
                         }
@@ -11116,9 +11134,9 @@ function renderPlannerPage() {
         const autoStatus = getEffectiveEmailStatus(name);
         const effectiveStatus = manualStatus || autoStatus;
         const isOverridden = EmailActionOverrides.hasOverride(name);
-        const latestEmail = ed.emails[0];
-        const lastFromMe = getLastEmailFromMe(ed);
-        const lastFromClient = getLastEmailFromClient(ed);
+        const latestEmail = ed?.emails?.[0] || null;
+        const lastFromMe = ed ? getLastEmailFromMe(ed) : null;
+        const lastFromClient = ed ? getLastEmailFromClient(ed) : null;
 
         let actionLabel = '', statusClass = '', icon = '', detail = '', isDone = false;
         if (effectiveStatus === 'done') {
@@ -11134,11 +11152,11 @@ function renderPlannerPage() {
             detail = myLast ? `You sent on ${myLast.toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — within 3 working days` : 'Awaiting client response';
         } else if (effectiveStatus === 'needs-response') {
             actionLabel = 'Needs Response'; statusClass = 'needs-action'; icon = '⚠️';
-            const hrs = getHoursSinceLastClientEmail(ed);
+            const hrs = ed ? getHoursSinceLastClientEmail(ed) : null;
             detail = hrs !== null ? `Client emailed ${hrs < 24 ? Math.round(hrs) + 'h' : Math.round(hrs/24) + 'd'} ago — reply needed` : 'Client awaiting reply';
         } else if (effectiveStatus === 'within-grace') {
             actionLabel = 'Within Grace'; statusClass = 'grace'; icon = '⏰';
-            const hrs = getHoursSinceLastClientEmail(ed);
+            const hrs = ed ? getHoursSinceLastClientEmail(ed) : null;
             const remaining = hrs !== null ? Math.max(0, Math.round(CONFIG.RESPONSE_GRACE_HOURS - hrs)) : null;
             detail = remaining !== null ? `${remaining}h left in 48h grace window` : 'Within response window';
         } else if (effectiveStatus === 'stale' || effectiveStatus === 'no-recent') {
