@@ -9724,8 +9724,8 @@ function renderEmailActivity() {
     // Update sync status in header
     OutlookSync._updateSyncStatusUI();
 
-    // Empty state: no email data and no Outlook token
-    if (Object.keys(EMAIL_DATA.clients).length === 0 && !OutlookSync.hasToken()) {
+    // Empty state: no email data, no Teams data, and no Outlook token
+    if (Object.keys(EMAIL_DATA.clients).length === 0 && Object.keys(TEAMS_DATA.clients || {}).length === 0 && !OutlookSync.hasToken()) {
         grid.innerHTML = `
             <div style="grid-column:1/-1;text-align:center;padding:48px 20px;">
                 <div style="font-size:48px;margin-bottom:16px;">&#128236;</div>
