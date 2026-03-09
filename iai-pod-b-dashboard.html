@@ -6122,13 +6122,27 @@ const TeamsSync = {
             this._lastSync = new Date();
             ConnectionStatus.setTeams('connected');
 
-            // Refresh both charts if on overview
-            if (typeof Router !== 'undefined' && Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
-                const clients = State.clients.length > 0 ? State.clients : [];
-                if (clients.length > 0) {
-                    OverviewCharts.renderCommVolume(clients);
+            // Refresh current page with updated Teams data
+            if (typeof Router !== 'undefined') {
+                if (Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
+                    const clients = State.clients.length > 0 ? State.clients : [];
+                    if (clients.length > 0) {
+                        OverviewCharts.renderCommVolume(clients);
+                    }
+                    OverviewCharts.renderActivityTrend();
                 }
-                OverviewCharts.renderActivityTrend();
+                // Re-render planner so Communications Follow-Ups reflect new Teams data
+                if (Router.current === 'planner' && typeof renderPlannerPage === 'function') {
+                    renderPlannerPage();
+                }
+                // Re-render email activity page so Teams cards/statuses update
+                if (Router.current === 'email' && typeof renderEmailActivity === 'function') {
+                    renderEmailActivity();
+                }
+            }
+            // Regenerate alerts to include Teams-based follow-up warnings
+            if (typeof State !== 'undefined' && State.generateAlerts) {
+                State.generateAlerts();
             }
         } catch (err) {
             console.error('[TeamsSync] Sync failed:', err);
@@ -11256,7 +11270,7 @@ function renderPlannerPage() {
         filteredEmailActions = emailActions.filter(ea => ea.isDone);
     }
     // Sort: urgent first
-    const statusOrder = { 'needs-response': 0, 'within-grace': 1, 'stale': 2, 'no-recent': 3, 'awaiting': 4, 'awaiting-grace': 5, 'done': 6 };
+    const statusOrder = { 'needs-response': 0, 'within-grace': 1, 'stale': 2, 'no-recent': 3, 'teams-stale': 4, 'awaiting': 5, 'awaiting-grace': 6, 'done': 7, 'teams-active': 8 };
     filteredEmailActions.sort((a, b) => (statusOrder[a.effectiveStatus] ?? 9) - (statusOrder[b.effectiveStatus] ?? 9));
 
     const emailActionsHTML = filteredEmailActions.length > 0
@@ -11389,8 +11403,8 @@ function renderPlannerPage() {
             const manual = EmailActionOverrides.getStatus(f.name);
             return manual !== 'done';
         }).forEach(f => {
-            if (f.effectiveStatus === 'needs-response' || f.effectiveStatus === 'stale' || f.effectiveStatus === 'no-recent') {
-                // Show urgent/stale items on today only
+            if (f.effectiveStatus === 'needs-response' || f.effectiveStatus === 'stale' || f.effectiveStatus === 'no-recent' || f.effectiveStatus === 'teams-stale') {
+                // Show urgent/stale/teams-follow-up items on today only
                 if (dateStr === todayStr) {
                     items.push(f);
                 }
