@@ -7106,7 +7106,7 @@ const SlackSync = {
         }
 
         console.log(`[SlackSync] Complete — ${Object.keys(results).length} clients matched`);
-        return results;
+        return { matched: results, allChannelNames: channelsData.channels.map(c => c.name) };
     },
 
     // ── Sync Orchestration ──
@@ -7118,9 +7118,9 @@ const SlackSync = {
 
         try {
             ConnectionStatus.setSlack('syncing');
-            const results = await this.fetchChannelData();
+            const fetchResult = await this.fetchChannelData();
 
-            if (!results) {
+            if (!fetchResult) {
                 ConnectionStatus.setSlack('error');
                 this._syncing = false;
                 return;
@@ -7129,8 +7129,8 @@ const SlackSync = {
             SLACK_DATA = {
                 connected: true,
                 workspace: this._workspace || '',
-                channels: [],
-                clients: results,
+                channels: fetchResult.allChannelNames || [],
+                clients: fetchResult.matched,
                 lastSync: new Date().toISOString()
             };
             this._saveCache(SLACK_DATA);
@@ -15433,8 +15433,16 @@ async function connectSlack() {
     if (statusEl) statusEl.textContent = 'Connecting to Slack...';
     const ok = await SlackSync.connect();
     if (ok) {
-        if (statusEl) statusEl.textContent = `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched`;
-        showToast('Slack connected successfully!', 'success');
+        const matched = Object.keys(SLACK_DATA.clients).length;
+        const chCount = SLACK_DATA.channels.length;
+        if (matched === 0 && statusEl) {
+            statusEl.innerHTML = `<span style="color:var(--accent-purple-light);">Connected to ${SLACK_DATA.workspace}</span> — bot sees <strong>${chCount} channels</strong> but <strong>0 matched</strong> your Monday.com clients.<br>
+                <small style="color:var(--text-muted);">Channels visible to bot: <strong>${SLACK_DATA.channels.join(', ') || 'none'}</strong></small><br>
+                <small style="color:var(--text-muted);">Tip: Invite @LOTTS to private cx- channels with <code>/invite @LOTTS</code></small>`;
+        } else if (statusEl) {
+            statusEl.textContent = `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${matched} clients matched`;
+        }
+        showToast(matched > 0 ? 'Slack connected successfully!' : 'Slack connected but 0 clients matched — check channel access', matched > 0 ? 'success' : 'info');
     } else {
         const errMsg = SlackSync._error || 'unknown error';
         let hint = '';
