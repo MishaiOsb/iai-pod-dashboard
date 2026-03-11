@@ -7008,7 +7008,19 @@ const SlackSync = {
 
     // ── Channel → Client Matching ──
     // Slack channels use "cx-clientname" prefix convention
+    // Alias map for channels that don't match by substring (abbreviations, typos, etc.)
+    _channelAliases: {
+        'cx-qdp': 'Quality Dental Group',
+        'cx-progressive-property': 'Progresive Property',
+    },
     _matchChannelToClient(channelName) {
+        // Check alias map first
+        const alias = this._channelAliases[channelName.toLowerCase()];
+        if (alias) {
+            const clients = State.clients.length > 0 ? State.clients : [];
+            const found = clients.find(c => c.name.toLowerCase() === alias.toLowerCase());
+            if (found) return found.name;
+        }
         // Strip cx- prefix, then normalize (remove hyphens, underscores, spaces)
         let cn = channelName.toLowerCase();
         if (cn.startsWith('cx-')) cn = cn.substring(3);
