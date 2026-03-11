@@ -8380,7 +8380,7 @@ const CONFIG = Object.freeze({
     STALE_CRITICAL_DAYS: 14,
     RESPONSE_GRACE_HOURS: 48, // hours before a client email becomes "needs response"
     AWAITING_GRACE_WORKING_DAYS: 3, // working days before an "awaiting reply" becomes actionable again
-    TEAMS_FOLLOWUP_DAYS: 5, // days before a Teams conversation needs follow-up
+    TEAMS_FOLLOWUP_DAYS: 3, // days before a Teams conversation needs follow-up (matches 72h email cycle)
     CHECKIN_CYCLE_DAYS: 3, // days between required client check-ins
     EMAIL_FOLLOWUP_HOURS: 72, // hours without email response before follow-up needed
     USER_EMAIL: 'mishai@implementai.io', // Fallback Pod Lead email — overridden by RUNTIME.userEmail after login
@@ -10724,6 +10724,12 @@ function getEffectiveEmailStatus(clientName) {
     const teamsDaysSinceMyMsg = teamsLastSentByMe ? Math.floor((Date.now() - teamsLastSentByMe.getTime()) / 86400000) : null;
     const teamsDaysSinceTheirMsg = teamsLastReceived ? Math.floor((Date.now() - teamsLastReceived.getTime()) / 86400000) : null;
 
+    // Calendar meeting override — upcoming meeting within 48h negates all follow-up
+    const upcomingMeetings = TaskContextEngine.getUpcomingClientMeetings(clientName);
+    if (upcomingMeetings && upcomingMeetings.length > 0) {
+        return 'meeting-scheduled';
+    }
+
     // If no email data at all, rely on Teams data
     if (!ed) {
         const teamsNewest = Math.min(
@@ -10798,6 +10804,7 @@ function emailStatusLabel(status) {
         case 'no-recent': return { text: 'No Recent Email', class: 'stale-email' };
         case 'teams-active': return { text: 'Active on Teams', class: 'teams-active' };
         case 'teams-stale': return { text: 'Teams Follow-Up Needed', class: 'teams-stale' };
+        case 'meeting-scheduled': return { text: 'Meeting Scheduled', class: 'teams-active' };
         case 'discontinued': return { text: 'Discontinued', class: 'discontinued' };
         default: return { text: 'Up to Date', class: 'up-to-date' };
     }
