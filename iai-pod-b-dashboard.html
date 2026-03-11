@@ -3348,6 +3348,30 @@ input, textarea, select { font-family: inherit; outline: none; }
         </div>
 
         <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
+            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#128172; Connect Slack <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span></h3>
+            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Connect Slack to sync channel messages, track agent updates, and monitor engineering progress alongside Monday.com data.</p>
+            <div class="setup-input-group">
+                <label>Bot Token</label>
+                <input type="password" id="slackTokenInput" placeholder="xoxb-your-bot-token...">
+                <button class="toggle-vis" onclick="const i=document.getElementById('slackTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+            </div>
+            <div class="setup-input-group" style="margin-top:8px;">
+                <label>Proxy URL</label>
+                <input type="text" id="slackProxyInput" placeholder="https://your-worker.your-subdomain.workers.dev">
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="connectSlack()">Connect Slack</button>
+                <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="disconnectSlack()">Disconnect</button>
+                <button class="btn-primary" style="background:var(--bg-elevated);color:var(--accent-purple-light);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="showSlackSetupGuide()">Setup Guide</button>
+            </div>
+            <div id="slackConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
+            <div class="setup-hint" style="margin-top:8px;">
+                Requires a Slack Bot Token (<strong>xoxb-</strong>) and a Cloudflare Worker proxy URL.<br>
+                Click <strong>Setup Guide</strong> for step-by-step instructions to create the Slack App and deploy the proxy.
+            </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
             <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#128225; Connection Mode</h3>
             <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px;">Choose how the dashboard connects to data sources.</p>
             <div class="mode-toggle-group" id="modeToggleGroup">
@@ -3571,6 +3595,11 @@ input, textarea, select { font-family: inherit; outline: none; }
                 <div class="conn-dropdown-row" id="connRow-fireflies" style="display:none;">
                     <span class="conn-svc-dot gray"></span>
                     <span class="conn-svc-name">🎙️ Fireflies</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
+                <div class="conn-dropdown-row" id="connRow-slack" style="display:none;">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">&#128172; Slack</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
             </div>
@@ -6889,6 +6918,272 @@ const TeamsSync = {
 };
 
 /* ================================================================
+   SLACK SYNC — Slack channel message integration
+   Fetches channel messages via Slack Web API through a Cloudflare
+   Worker CORS proxy. Matches channels to dashboard clients by name.
+   Requires a Slack Bot Token (xoxb-) with channels:history,
+   channels:read, and users:read scopes.
+   ================================================================ */
+const SlackSync = {
+    _tokenKey: 'iai_slack_token',
+    _proxyKey: 'iai_slack_proxy',
+    _cacheKey: 'iai_slack_cache',
+    _sk(k) { return UserSession.podKey(k); },
+    _syncInterval: null,
+    _lastSync: null,
+    _syncing: false,
+    _error: null,
+    _users: {},  // userId -> displayName cache
+    SYNC_INTERVAL_MS: 600000, // 10 minutes
+
+    // ── Token & Proxy Management ──
+    getToken() { return localStorage.getItem(this._sk(this._tokenKey)) || ''; },
+    setToken(t) { localStorage.setItem(this._sk(this._tokenKey), t || ''); },
+    hasToken() { return !!this.getToken(); },
+    getProxy() { return localStorage.getItem(this._sk(this._proxyKey)) || ''; },
+    setProxy(u) { localStorage.setItem(this._sk(this._proxyKey), u || ''); },
+    hasProxy() { return !!this.getProxy(); },
+
+    // ── Slack API via Cloudflare Worker Proxy ──
+    async _slackFetch(method, params = {}) {
+        const token = this.getToken();
+        const proxy = this.getProxy();
+        if (!token) { this._error = 'no-token'; return null; }
+        if (!proxy) { this._error = 'no-proxy'; return null; }
+        try {
+            const url = proxy.replace(/\/$/, '') + '/' + method;
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Slack-Token': token
+                },
+                body: JSON.stringify(params)
+            });
+            if (!resp.ok) { this._error = 'api-error'; return null; }
+            const data = await resp.json();
+            if (!data.ok) {
+                this._error = data.error || 'slack-error';
+                console.warn(`[SlackSync] API error on ${method}:`, data.error);
+                return null;
+            }
+            this._error = null;
+            return data;
+        } catch (err) {
+            this._error = 'network';
+            console.error('[SlackSync] Network error:', err.message);
+            return null;
+        }
+    },
+
+    // ── Channel → Client Matching (same logic as TeamsSync._matchTeamToClient) ──
+    _matchChannelToClient(channelName) {
+        const cn = channelName.toLowerCase().replace(/[-_\s]/g, '');
+        const clients = State.clients.length > 0 ? State.clients : [];
+        for (const client of clients) {
+            const clientNorm = client.name.toLowerCase().replace(/[-_\s]/g, '');
+            if (cn.includes(clientNorm) || clientNorm.includes(cn)) return client.name;
+        }
+        return null;
+    },
+
+    // ── Resolve Slack user IDs to display names ──
+    async _resolveUsers(userIds) {
+        const unknown = userIds.filter(id => !this._users[id]);
+        for (const uid of unknown) {
+            const data = await this._slackFetch('users.info', { user: uid });
+            if (data && data.user) {
+                this._users[uid] = data.user.real_name || data.user.name || uid;
+            } else {
+                this._users[uid] = uid;
+            }
+        }
+    },
+
+    // ── Fetch Channel Messages ──
+    async fetchChannelData() {
+        console.log('[SlackSync] Fetching channels...');
+        const channelsData = await this._slackFetch('conversations.list', {
+            types: 'public_channel,private_channel',
+            exclude_archived: true,
+            limit: 200
+        });
+        if (!channelsData || !channelsData.channels) {
+            console.warn('[SlackSync] Failed to fetch channels:', this._error);
+            return null;
+        }
+        console.log('[SlackSync] Found', channelsData.channels.length, 'channels');
+
+        const daysBack = 7;
+        const oldest = String(Math.floor((Date.now() - daysBack * 86400000) / 1000));
+        const results = {};
+        const allUserIds = new Set();
+
+        for (const channel of channelsData.channels) {
+            const clientName = this._matchChannelToClient(channel.name);
+            if (!clientName) continue;
+            console.log(`[SlackSync] Channel "#${channel.name}" matched to client "${clientName}"`);
+
+            const historyData = await this._slackFetch('conversations.history', {
+                channel: channel.id,
+                oldest: oldest,
+                limit: 100
+            });
+            if (!historyData || !historyData.messages) continue;
+
+            const messages = [];
+            for (const m of historyData.messages) {
+                if (m.subtype && m.subtype !== 'file_share') continue; // skip join/leave/bot
+                if (!m.user) continue; // skip bot messages without user
+                allUserIds.add(m.user);
+                messages.push({
+                    user: m.user,
+                    text: (m.text || '').substring(0, 300),
+                    ts: m.ts,
+                    date: new Date(parseFloat(m.ts) * 1000).toISOString(),
+                    isBot: !!m.bot_id
+                });
+            }
+            messages.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            if (results[clientName]) {
+                results[clientName].messages.push(...messages);
+                results[clientName].messages.sort((a, b) => new Date(b.date) - new Date(a.date));
+            } else {
+                results[clientName] = {
+                    channelId: channel.id,
+                    channelName: '#' + channel.name,
+                    messages
+                };
+            }
+        }
+
+        // Resolve user display names
+        await this._resolveUsers([...allUserIds]);
+        // Attach display names to messages
+        for (const clientData of Object.values(results)) {
+            for (const msg of clientData.messages) {
+                msg.userName = this._users[msg.user] || msg.user;
+            }
+            clientData.recentCount = clientData.messages.length;
+            clientData.lastMessageDate = clientData.messages.length > 0 ? clientData.messages[0].date : null;
+        }
+
+        console.log(`[SlackSync] Complete — ${Object.keys(results).length} clients matched`);
+        return results;
+    },
+
+    // ── Sync Orchestration ──
+    async sync(manual = false) {
+        if (this._syncing) return;
+        if (!this.hasToken() || !this.hasProxy()) return;
+        this._syncing = true;
+        this._error = null;
+
+        try {
+            ConnectionStatus.setSlack('syncing');
+            const results = await this.fetchChannelData();
+
+            if (!results) {
+                ConnectionStatus.setSlack('error');
+                this._syncing = false;
+                return;
+            }
+
+            SLACK_DATA = {
+                connected: true,
+                workspace: this._workspace || '',
+                channels: [],
+                clients: results,
+                lastSync: new Date().toISOString()
+            };
+            this._saveCache(SLACK_DATA);
+            this._lastSync = new Date();
+            ConnectionStatus.setSlack('connected');
+
+            // Refresh current page with updated Slack data
+            if (typeof Router !== 'undefined') {
+                if (Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
+                    const clients = State.clients.length > 0 ? State.clients : [];
+                    if (clients.length > 0) OverviewCharts.renderCommVolume(clients);
+                }
+                if (Router.current === 'planner' && typeof renderPlannerPage === 'function') {
+                    renderPlannerPage();
+                }
+            }
+            if (typeof State !== 'undefined' && State.generateAlerts) State.generateAlerts();
+        } catch (err) {
+            console.error('[SlackSync] Sync failed:', err);
+            ConnectionStatus.setSlack('error');
+        }
+        this._syncing = false;
+    },
+
+    // ── Connect (validate token + initial sync) ──
+    async connect() {
+        if (!this.hasToken() || !this.hasProxy()) {
+            this._error = 'no-config';
+            return false;
+        }
+        ConnectionStatus.setSlack('syncing');
+        const auth = await this._slackFetch('auth.test');
+        if (!auth) {
+            ConnectionStatus.setSlack('error');
+            return false;
+        }
+        this._workspace = auth.team || '';
+        console.log(`[SlackSync] Connected to workspace: ${this._workspace}`);
+        await this.sync(true);
+        this.startAutoSync();
+        return true;
+    },
+
+    disconnect() {
+        this.stopAutoSync();
+        this.setToken('');
+        this.setProxy('');
+        SLACK_DATA = { connected: false, workspace: '', channels: [], clients: {}, lastSync: null };
+        this._users = {};
+        this._workspace = '';
+        localStorage.removeItem(this._sk(this._cacheKey));
+        ConnectionStatus.setSlack('unknown');
+        if (typeof renderCurrentPage === 'function') renderCurrentPage();
+    },
+
+    // ── Cache ──
+    _saveCache(data) {
+        try { localStorage.setItem(this._sk(this._cacheKey), JSON.stringify(data)); } catch (e) { /* quota */ }
+    },
+    _loadCache() {
+        try {
+            const raw = localStorage.getItem(this._sk(this._cacheKey));
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    },
+
+    // ── Auto-Sync Timer ──
+    startAutoSync() {
+        this.stopAutoSync();
+        if (this.hasToken() && this.hasProxy()) {
+            this._syncInterval = setInterval(() => this.sync(false), this.SYNC_INTERVAL_MS);
+        }
+    },
+    stopAutoSync() {
+        if (this._syncInterval) { clearInterval(this._syncInterval); this._syncInterval = null; }
+    },
+
+    // ── Init ──
+    init() {
+        const cached = this._loadCache();
+        if (cached) {
+            SLACK_DATA = cached;
+            this._lastSync = cached.lastSync ? new Date(cached.lastSync) : null;
+        }
+        this.startAutoSync();
+    }
+};
+
+/* ================================================================
    FIREFLIES SYNC — Meeting transcript integration
    Fetches transcripts with AI summaries via Fireflies GraphQL API,
    provides structured meeting notes, action items, and client matching.
@@ -8312,6 +8607,11 @@ let CALENDAR_DATA = {
 let TEAMS_DATA = { snapshotDate: null, clients: {} };
 
 /* ================================================================
+   SLACK CHANNEL DATA (populated by SlackSync via Cloudflare Worker proxy)
+   ================================================================ */
+let SLACK_DATA = { connected: false, workspace: '', channels: [], clients: {}, lastSync: null };
+
+/* ================================================================
    MONDAY.COM API MODULE
    ================================================================ */
 const MondayAPI = {
@@ -9187,7 +9487,9 @@ const OverviewCharts = {
                 const td = TEAMS_DATA.clients?.[c.name];
                 const teamsRx = td?.received || 0;
                 const teamsTx = td?.sent || 0;
-                return { name: c.name, emailRx, emailTx, teamsRx, teamsTx, total: emailRx + emailTx + teamsRx + teamsTx };
+                const sd = SLACK_DATA.clients?.[c.name];
+                const slackMsgs = sd?.recentCount || 0;
+                return { name: c.name, emailRx, emailTx, teamsRx, teamsTx, slackMsgs, total: emailRx + emailTx + teamsRx + teamsTx + slackMsgs };
             })
             .sort((a, b) => b.total - a.total);
         if (data.length === 0) return;
@@ -9202,6 +9504,12 @@ const OverviewCharts = {
             datasets.push(
                 { label: 'Teams Received', data: data.map(d => d.teamsRx), backgroundColor: '#66ccff', borderRadius: 4, barThickness: 14 },
                 { label: 'Teams Sent', data: data.map(d => d.teamsTx), backgroundColor: '#0d9488', borderRadius: 4, barThickness: 14 }
+            );
+        }
+        const hasSlack = data.some(d => d.slackMsgs > 0);
+        if (hasSlack) {
+            datasets.push(
+                { label: 'Slack Messages', data: data.map(d => d.slackMsgs), backgroundColor: '#e01e5a', borderRadius: 4, barThickness: 14 }
             );
         }
         this._instances['ovCommVol'] = new Chart(ctx, {
@@ -9360,6 +9668,11 @@ function getEffectiveLastContact(client) {
         if (ed && ed.lastEmailDate) {
             const eDate = new Date(ed.lastEmailDate).toISOString().split('T')[0];
             if (!best || new Date(eDate) > new Date(best)) best = eDate;
+        }
+        const sd = SLACK_DATA.clients?.[client.name];
+        if (sd && sd.lastMessageDate) {
+            const sDate = new Date(sd.lastMessageDate).toISOString().split('T')[0];
+            if (!best || new Date(sDate) > new Date(best)) best = sDate;
         }
     } catch(e) { /* graceful fallback to original */ }
     return best;
@@ -10092,6 +10405,7 @@ function openDetail(clientId) {
         </div>
 
         ${buildTeamsMessagesSection(c.name)}
+        ${buildSlackMessagesSection(c.name)}
 
         <div class="detail-section">
             <h3>&#128236; Recent Emails</h3>
@@ -10963,6 +11277,34 @@ function buildTeamsMessagesSection(clientName) {
     </div>`;
 }
 
+/** Build "Slack Channel Messages" section for a client detail page */
+function buildSlackMessagesSection(clientName) {
+    const sd = SLACK_DATA.clients?.[clientName];
+    if (!sd || !sd.messages || sd.messages.length === 0) return '';
+    const msgs = sd.messages.slice(0, 10);
+    const cards = msgs.map(m => {
+        const dateStr = m.date ? new Date(m.date).toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+        const sender = (m.userName || 'Unknown').replace(/</g,'&lt;');
+        const preview = m.text ? m.text.replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').trim() : 'No content';
+        const truncated = preview.length > 140 ? preview.substring(0, 140) + '...' : preview;
+        return `<div style="padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);margin-bottom:6px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:12px;font-weight:600;color:var(--text-primary);">${sender}</span>
+                <span style="font-size:10px;color:var(--text-muted);">${dateStr}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);line-height:1.4;">${truncated.replace(/</g,'&lt;')}</div>
+        </div>`;
+    }).join('');
+    return `<div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
+        <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">
+            &#128172; Slack Channel Updates (${sd.messages.length})
+            <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— ${sd.channelName || ''}</span>
+        </h3>
+        ${cards}
+        ${sd.messages.length > 10 ? `<div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;">Showing latest 10 of ${sd.messages.length} messages</div>` : ''}
+    </div>`;
+}
+
 function agentStageClass(stage) {
     const s = (stage || '').toLowerCase();
     if (s === 'live') return 'live';
@@ -11264,6 +11606,7 @@ function renderClientFullPage(clientId) {
         </div>
 
         ${buildTeamsMessagesSection(c.name)}
+        ${buildSlackMessagesSection(c.name)}
 
         <div class="client-detail-emails">
             <h3>&#128236; Communications Follow-Up</h3>
@@ -12179,6 +12522,33 @@ function renderPlannerPage() {
         })()}
 
         ${buildFirefliesSection()}
+
+        ${(() => {
+            if (!SLACK_DATA.connected || Object.keys(SLACK_DATA.clients).length === 0) return '';
+            const slackClients = Object.entries(SLACK_DATA.clients)
+                .filter(([, d]) => d.messages && d.messages.length > 0)
+                .sort((a, b) => new Date(b[1].lastMessageDate || 0) - new Date(a[1].lastMessageDate || 0));
+            if (slackClients.length === 0) return '';
+            const cards = slackClients.slice(0, 5).map(([name, d]) => {
+                const latest = d.messages[0];
+                const dateStr = latest?.date ? new Date(latest.date).toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+                const preview = latest?.text ? latest.text.replace(/<[^>]*>/g,'').substring(0, 80) : '';
+                return `<div style="padding:10px 14px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:6px;border-left:3px solid #e01e5a;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <span style="font-weight:600;font-size:13px;">${name}</span>
+                        <span style="font-size:10px;color:var(--text-muted);">${d.recentCount} msgs · ${dateStr}</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-secondary);">${(latest?.userName || 'Unknown').replace(/</g,'&lt;')}: ${preview.replace(/</g,'&lt;')}</div>
+                </div>`;
+            }).join('');
+            return `<div class="email-followup-section" style="margin-top:12px;">
+                <div class="planner-section-title">
+                    &#128172; Slack Activity
+                    <span class="section-count">${slackClients.length} client${slackClients.length !== 1 ? 's' : ''} with recent messages</span>
+                </div>
+                ${cards}
+            </div>`;
+        })()}
 
         <div class="planner-layout">
             <!-- LEFT: To-Do List -->
@@ -13896,6 +14266,14 @@ const ShareSnapshot = {
             teamsReceived += data.received || 0;
         });
 
+        // Slack totals
+        let slackMessages = 0, slackClientsTracked = 0;
+        Object.entries(SLACK_DATA.clients || {}).forEach(([name, data]) => {
+            if (!data) return;
+            slackClientsTracked++;
+            slackMessages += data.recentCount || 0;
+        });
+
         // Meetings from Fireflies
         const meetingsList = (typeof FirefliesSync !== 'undefined' && FirefliesSync.getMeetings)
             ? FirefliesSync.getMeetings().slice(0, 10) : [];
@@ -13921,6 +14299,7 @@ const ShareSnapshot = {
             agentsByStage, needsAttention,
             emailsSent, emailsReceived, emailClientsTracked,
             teamsSent, teamsReceived, teamsClientsTracked,
+            slackMessages, slackClientsTracked,
             meetingsList, upcoming,
         };
     },
@@ -13943,6 +14322,7 @@ const ShareSnapshot = {
         if (s.totalAgents > 0) commParts.push(`${s.totalAgents} agents deployed`);
         if (s.emailsSent + s.emailsReceived > 0) commParts.push(`${s.emailsSent + s.emailsReceived} emails tracked`);
         if (s.teamsSent + s.teamsReceived > 0) commParts.push(`${s.teamsSent + s.teamsReceived} Teams messages`);
+        if (s.slackMessages > 0) commParts.push(`${s.slackMessages} Slack messages`);
         if (commParts.length > 0) parts.push(commParts.join(', ') + '.');
 
         return parts.join(' ');
@@ -13965,6 +14345,8 @@ const ShareSnapshot = {
         }
         const td = TEAMS_DATA.clients?.[client.name];
         if (td && (td.sent + td.received) > 0) parts.push(`Teams: ${td.sent + td.received} msgs (${td.sent} sent, ${td.received} received).`);
+        const sd = SLACK_DATA.clients?.[client.name];
+        if (sd && sd.recentCount > 0) parts.push(`Slack: ${sd.recentCount} msgs in ${sd.channelName || 'channel'}.`);
         const ed = EMAIL_DATA.clients?.[client.name];
         if (ed && ed.emails && ed.emails.length > 0) {
             const sent = ed.emails.filter(e => e.isFromMe).length;
@@ -14966,6 +15348,12 @@ function showSetup() {
     if (outlookInput) outlookInput.value = OutlookSync.getToken() || '';
     const firefliesInput = document.getElementById('firefliesTokenInput');
     if (firefliesInput) firefliesInput.value = FirefliesSync.getToken() || '';
+    const slackTokenInput = document.getElementById('slackTokenInput');
+    if (slackTokenInput) slackTokenInput.value = SlackSync.getToken() || '';
+    const slackProxyInput = document.getElementById('slackProxyInput');
+    if (slackProxyInput) slackProxyInput.value = SlackSync.getProxy() || '';
+    const slackStatus = document.getElementById('slackConnStatus');
+    if (slackStatus) slackStatus.textContent = SLACK_DATA.connected ? `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched` : '';
     // Show current pod info
     const podInfo = document.getElementById('currentPodInfo');
     if (podInfo) {
@@ -14982,6 +15370,139 @@ function showSetup() {
 
 function closeSetup() {
     document.getElementById('setupOverlay').classList.add('hidden');
+}
+
+async function connectSlack() {
+    const token = (document.getElementById('slackTokenInput')?.value || '').trim();
+    const proxy = (document.getElementById('slackProxyInput')?.value || '').trim();
+    const statusEl = document.getElementById('slackConnStatus');
+    if (!token || !proxy) {
+        if (statusEl) statusEl.textContent = 'Please enter both a bot token and proxy URL.';
+        return;
+    }
+    SlackSync.setToken(token);
+    SlackSync.setProxy(proxy);
+    if (statusEl) statusEl.textContent = 'Connecting...';
+    const ok = await SlackSync.connect();
+    if (ok) {
+        if (statusEl) statusEl.textContent = `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched`;
+        showToast('Slack connected successfully!', 'success');
+    } else {
+        if (statusEl) statusEl.textContent = `Connection failed: ${SlackSync._error || 'unknown error'}`;
+        showToast('Slack connection failed — check token and proxy URL', 'error');
+    }
+}
+
+function disconnectSlack() {
+    SlackSync.disconnect();
+    const statusEl = document.getElementById('slackConnStatus');
+    if (statusEl) statusEl.textContent = 'Disconnected.';
+    document.getElementById('slackTokenInput').value = '';
+    document.getElementById('slackProxyInput').value = '';
+    showToast('Slack disconnected', 'info');
+}
+
+function showSlackSetupGuide() {
+    const overlay = document.createElement('div');
+    overlay.className = 'setup-overlay';
+    overlay.style.zIndex = '10001';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `
+    <div class="setup-modal" style="max-width:620px;max-height:85vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h2 style="margin:0;">&#128172; Slack Integration Setup</h2>
+            <button onclick="this.closest('.setup-overlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+        </div>
+
+        <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Step 1: Create a Slack App</h3>
+        <ol style="font-size:13px;color:var(--text-secondary);line-height:1.8;margin-bottom:16px;padding-left:20px;">
+            <li>Go to <strong>api.slack.com/apps</strong> and click <strong>Create New App</strong></li>
+            <li>Choose <strong>From Scratch</strong></li>
+            <li>Name: <strong>IAI Dashboard</strong>, select your workspace</li>
+            <li>Go to <strong>OAuth &amp; Permissions</strong></li>
+            <li>Under <strong>Bot Token Scopes</strong>, add:
+                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">channels:history</code>
+                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">channels:read</code>
+                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">users:read</code></li>
+            <li>Click <strong>Install to Workspace</strong> and authorize</li>
+            <li>Copy the <strong>Bot User OAuth Token</strong> (starts with <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">xoxb-</code>)</li>
+            <li>Invite the bot to each client channel: <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">/invite @IAI Dashboard</code></li>
+        </ol>
+
+        <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Step 2: Deploy Cloudflare Worker Proxy</h3>
+        <ol style="font-size:13px;color:var(--text-secondary);line-height:1.8;margin-bottom:16px;padding-left:20px;">
+            <li>Go to <strong>dash.cloudflare.com</strong> &#8594; Workers &amp; Pages</li>
+            <li>Click <strong>Create Worker</strong>, name it (e.g. <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">slack-proxy</code>)</li>
+            <li>Replace the default code with the proxy script below</li>
+            <li>Click <strong>Deploy</strong></li>
+            <li>Copy the Worker URL (e.g. <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">https://slack-proxy.your-sub.workers.dev</code>)</li>
+        </ol>
+
+        <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Cloudflare Worker Code</h3>
+        <div style="position:relative;">
+            <pre style="background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;padding:14px;font-size:11px;overflow-x:auto;white-space:pre;line-height:1.6;color:var(--text-primary);max-height:300px;overflow-y:auto;"><code>export default {
+  async fetch(request) {
+    const ALLOWED = [
+      'https://mishaiosb.github.io',
+      'http://localhost',
+      'http://127.0.0.1'
+    ];
+    const origin = request.headers.get('Origin') || '';
+    const cors = ALLOWED.find(a => origin.startsWith(a)) ? origin : ALLOWED[0];
+    const headers = {
+      'Access-Control-Allow-Origin': cors,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token',
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers });
+    }
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405, headers });
+    }
+
+    const url = new URL(request.url);
+    const method = url.pathname.replace(/^\\//, '');
+    const token = request.headers.get('X-Slack-Token');
+    if (!token) {
+      return new Response(JSON.stringify({ ok: false, error: 'missing_token' }), {
+        status: 400, headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const slackResp = await fetch('https://slack.com/api/' + method, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data = await slackResp.text();
+    return new Response(data, {
+      status: slackResp.status,
+      headers: { ...headers, 'Content-Type': 'application/json' }
+    });
+  }
+};</code></pre>
+            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent);showToast('Copied!','success')" style="position:absolute;top:8px;right:8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--text-secondary);">Copy</button>
+        </div>
+
+        <h3 style="font-size:14px;color:var(--accent-purple-light);margin:16px 0 8px;">Step 3: Connect in Dashboard</h3>
+        <ol style="font-size:13px;color:var(--text-secondary);line-height:1.8;padding-left:20px;">
+            <li>Paste the <strong>Bot Token</strong> into the token field above</li>
+            <li>Paste the <strong>Worker URL</strong> into the proxy field</li>
+            <li>Click <strong>Connect Slack</strong></li>
+        </ol>
+
+        <div style="margin-top:20px;text-align:right;">
+            <button class="btn-primary" onclick="this.closest('.setup-overlay').remove()" style="font-size:13px;padding:8px 20px;">Got it</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
 }
 
 function getConnectionMode() {
@@ -15020,12 +15541,14 @@ const ConnectionStatus = {
     calendar: 'unknown',     // 'ok' | 'error' | 'no-token' | 'token-expired' | 'unknown'
     teams: 'unknown',        // 'connected' | 'syncing' | 'error' | 'no-permission' | 'unknown'
     fireflies: 'unknown',   // 'connected' | 'syncing' | 'error' | 'unknown'
+    slack: 'unknown',        // 'connected' | 'syncing' | 'error' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
     setCalendar(status) { this.calendar = status; updateConnectionIndicator(); },
     setTeams(status) { this.teams = status; updateConnectionIndicator(); },
     setFireflies(status) { this.fireflies = status; updateConnectionIndicator(); },
+    setSlack(status) { this.slack = status; updateConnectionIndicator(); },
 
     // Consolidated Microsoft status: best of outlook, calendar, teams
     getMicrosoftStatus() {
@@ -15045,7 +15568,8 @@ const ConnectionStatus = {
         const msStatus = this.getMicrosoftStatus();
         const msIssue = (msStatus === 'error' || msStatus === 'token-expired') && OutlookSync.hasToken();
         const firefliesIssue = this.fireflies === 'error' && FirefliesSync.hasToken();
-        if (msIssue || firefliesIssue) return 'issues';
+        const slackIssue = this.slack === 'error' && SlackSync.hasToken();
+        if (msIssue || firefliesIssue || slackIssue) return 'issues';
         return 'online';
     },
 
@@ -15063,6 +15587,10 @@ const ConnectionStatus = {
         if (FirefliesSync.hasToken()) {
             const fStatus = this.fireflies === 'connected' ? 'Connected' : this.fireflies === 'syncing' ? 'Syncing...' : this.fireflies === 'error' ? 'Failed' : 'Pending';
             parts.push(`Fireflies: ${fStatus}`);
+        }
+        if (SlackSync.hasToken()) {
+            const sStatus = this.slack === 'connected' ? 'Connected' : this.slack === 'syncing' ? 'Syncing...' : this.slack === 'error' ? 'Failed' : 'Pending';
+            parts.push(`Slack: ${sStatus}`);
         }
         return parts.join('\n');
     }
@@ -15102,6 +15630,9 @@ function updateConnectionIndicator() {
     _updateConnRow('connRow-fireflies', ConnectionStatus.fireflies, {
         connected: 'Connected', syncing: 'Syncing...', error: 'Failed', unknown: 'Pending'
     }, !FirefliesSync.hasToken());
+    _updateConnRow('connRow-slack', ConnectionStatus.slack, {
+        connected: 'Connected', syncing: 'Syncing...', error: 'Failed', unknown: 'Pending'
+    }, !SlackSync.hasToken());
 }
 
 function _updateConnRow(rowId, status, labelMap, hidden) {
@@ -15368,6 +15899,7 @@ function reloadNamespacedModules() {
     CalendarSync.init();
     TeamsSync.init();
     FirefliesSync.init();
+    SlackSync.init();
 }
 
 /** Update all hardcoded Pod/User text in the DOM */
@@ -15440,6 +15972,7 @@ async function init() {
     CalendarSync.init();
     TeamsSync.init();
     FirefliesSync.init();
+    SlackSync.init();
 
     // Handle EMAIL_DATA and CALENDAR_DATA for non-Pod-B users
     handleEmailDataForPod();
