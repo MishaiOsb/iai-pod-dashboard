@@ -15435,12 +15435,13 @@ async function connectSlack() {
     if (ok) {
         const matched = Object.keys(SLACK_DATA.clients).length;
         const chCount = SLACK_DATA.channels.length;
-        if (matched === 0 && statusEl) {
-            statusEl.innerHTML = `<span style="color:var(--accent-purple-light);">Connected to ${SLACK_DATA.workspace}</span> — bot sees <strong>${chCount} channels</strong> but <strong>0 matched</strong> your Monday.com clients.<br>
-                <small style="color:var(--text-muted);">Channels visible to bot: <strong>${SLACK_DATA.channels.join(', ') || 'none'}</strong></small><br>
-                <small style="color:var(--text-muted);">Tip: Invite @LOTTS to private cx- channels with <code>/invite @LOTTS</code></small>`;
-        } else if (statusEl) {
-            statusEl.textContent = `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${matched} clients matched`;
+        const unmatched = SLACK_DATA.channels.filter(ch => ch.startsWith('cx-') && !Object.values(SLACK_DATA.clients).some(c => c.channelName === '#' + ch));
+        if (statusEl) {
+            let html = `<span style="color:var(--accent-purple-light);">Connected to ${SLACK_DATA.workspace}</span> — bot sees <strong>${chCount} channels</strong>, <strong>${matched} matched</strong> clients.`;
+            if (chCount > 0) html += `<br><small style="color:var(--text-muted);">All channels: ${SLACK_DATA.channels.join(', ')}</small>`;
+            if (unmatched.length > 0) html += `<br><small style="color:var(--text-muted);">cx- channels not matched: ${unmatched.join(', ')}</small>`;
+            if (matched === 0) html += `<br><small style="color:var(--text-muted);">Tip: Invite @LOTTS to private cx- channels with <code>/invite @LOTTS</code></small>`;
+            statusEl.innerHTML = html;
         }
         showToast(matched > 0 ? 'Slack connected successfully!' : 'Slack connected but 0 clients matched — check channel access', matched > 0 ? 'success' : 'info');
     } else {
