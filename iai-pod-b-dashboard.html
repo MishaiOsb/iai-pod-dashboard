@@ -15471,13 +15471,17 @@ function showSlackSetupGuide() {
             <li>Choose <strong>From Scratch</strong></li>
             <li>Name: <strong>IAI Dashboard</strong>, select your workspace</li>
             <li>Go to <strong>OAuth &amp; Permissions</strong></li>
-            <li>Under <strong>Bot Token Scopes</strong>, add:
+            <li>Under <strong>Bot Token Scopes</strong>, add all 5:
                 <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">channels:history</code>
                 <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">channels:read</code>
-                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">users:read</code></li>
+                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">groups:history</code>
+                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">groups:read</code>
+                <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">users:read</code>
+                <br><small style="color:var(--text-muted);">groups:* scopes are needed for private channels (&#128274;)</small></li>
             <li>Click <strong>Install to Workspace</strong> and authorize</li>
             <li>Copy the <strong>Bot User OAuth Token</strong> (starts with <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">xoxb-</code>)</li>
-            <li>Invite the bot to each client channel: <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">/invite @IAI Dashboard</code></li>
+            <li><strong>Invite the bot</strong> to each client channel: <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">/invite @IAI Dashboard</code>
+                <br><small style="color:var(--text-muted);">Bot can only see channels it has been invited to</small></li>
         </ol>
 
         <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Step 2: Deploy Cloudflare Worker Proxy</h3>
