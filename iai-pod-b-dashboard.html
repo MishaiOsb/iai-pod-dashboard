@@ -7113,8 +7113,16 @@ const SlackSync = {
             clientData.lastMessageDate = clientData.messages.length > 0 ? clientData.messages[0].date : null;
         }
 
+        // Build match details for debugging
+        const matchDetails = [];
+        for (const ch of allChannels) {
+            if (!ch.name.startsWith('cx-')) continue;
+            const matched = this._matchChannelToClient(ch.name);
+            matchDetails.push({ channel: ch.name, client: matched || '(no match)' });
+        }
         console.log(`[SlackSync] Complete — ${Object.keys(results).length} clients matched`);
-        return { matched: results, allChannelNames: allChannels.map(c => c.name) };
+        console.table(matchDetails);
+        return { matched: results, allChannelNames: allChannels.map(c => c.name), matchDetails };
     },
 
     // ── Sync Orchestration ──
@@ -7138,6 +7146,7 @@ const SlackSync = {
                 connected: true,
                 workspace: this._workspace || '',
                 channels: fetchResult.allChannelNames || [],
+                matchDetails: fetchResult.matchDetails || [],
                 clients: fetchResult.matched,
                 lastSync: new Date().toISOString()
             };
@@ -15443,12 +15452,15 @@ async function connectSlack() {
     if (ok) {
         const matched = Object.keys(SLACK_DATA.clients).length;
         const chCount = SLACK_DATA.channels.length;
-        const unmatched = SLACK_DATA.channels.filter(ch => ch.startsWith('cx-') && !Object.values(SLACK_DATA.clients).some(c => c.channelName === '#' + ch));
+        const details = SLACK_DATA.matchDetails || [];
         if (statusEl) {
             let html = `<span style="color:var(--accent-purple-light);">Connected to ${SLACK_DATA.workspace}</span> — bot sees <strong>${chCount} channels</strong>, <strong>${matched} matched</strong> clients.`;
-            if (chCount > 0) html += `<br><small style="color:var(--text-muted);">All channels: ${SLACK_DATA.channels.join(', ')}</small>`;
-            if (unmatched.length > 0) html += `<br><small style="color:var(--text-muted);">cx- channels not matched: ${unmatched.join(', ')}</small>`;
-            if (matched === 0) html += `<br><small style="color:var(--text-muted);">Tip: Invite @LOTTS to private cx- channels with <code>/invite @LOTTS</code></small>`;
+            if (details.length > 0) {
+                const matchedList = details.filter(d => d.client !== '(no match)').map(d => `${d.channel} → ${d.client}`);
+                const unmatchedList = details.filter(d => d.client === '(no match)').map(d => d.channel);
+                if (matchedList.length) html += `<br><small style="color:#2ea44f;">Matched: ${matchedList.join(', ')}</small>`;
+                if (unmatchedList.length) html += `<br><small style="color:var(--text-danger);">Not matched: ${unmatchedList.join(', ')}</small>`;
+            }
             statusEl.innerHTML = html;
         }
         showToast(matched > 0 ? 'Slack connected successfully!' : 'Slack connected but 0 clients matched — check channel access', matched > 0 ? 'success' : 'info');
