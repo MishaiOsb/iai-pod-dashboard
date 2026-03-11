@@ -7046,7 +7046,9 @@ const SlackSync = {
             console.warn('[SlackSync] Failed to fetch channels:', this._error);
             return null;
         }
-        console.log('[SlackSync] Found', channelsData.channels.length, 'channels');
+        const chNames = channelsData.channels.map(c => c.name);
+        console.log('[SlackSync] Found', channelsData.channels.length, 'channels:', chNames.join(', '));
+        console.log('[SlackSync] State.clients count:', State.clients.length, '| Names:', State.clients.map(c => c.name).join(', '));
 
         const daysBack = 7;
         const oldest = String(Math.floor((Date.now() - daysBack * 86400000) / 1000));
@@ -7055,7 +7057,7 @@ const SlackSync = {
 
         for (const channel of channelsData.channels) {
             const clientName = this._matchChannelToClient(channel.name);
-            if (!clientName) continue;
+            if (!clientName) { console.log(`[SlackSync] No match for "#${channel.name}"`); continue; }
             console.log(`[SlackSync] Channel "#${channel.name}" matched to client "${clientName}"`);
 
             const historyData = await this._slackFetch('conversations.history', {
