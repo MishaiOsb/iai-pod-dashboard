@@ -7006,9 +7006,13 @@ const SlackSync = {
         }
     },
 
-    // ── Channel → Client Matching (same logic as TeamsSync._matchTeamToClient) ──
+    // ── Channel → Client Matching ──
+    // Slack channels use "cx-clientname" prefix convention
     _matchChannelToClient(channelName) {
-        const cn = channelName.toLowerCase().replace(/[-_\s]/g, '');
+        // Strip cx- prefix, then normalize (remove hyphens, underscores, spaces)
+        let cn = channelName.toLowerCase();
+        if (cn.startsWith('cx-')) cn = cn.substring(3);
+        cn = cn.replace(/[-_\s]/g, '');
         const clients = State.clients.length > 0 ? State.clients : [];
         for (const client of clients) {
             const clientNorm = client.name.toLowerCase().replace(/[-_\s]/g, '');
