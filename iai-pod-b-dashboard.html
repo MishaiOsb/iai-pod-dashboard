@@ -6944,14 +6944,38 @@ const SlackSync = {
     setProxy(u) { localStorage.setItem(this._sk(this._proxyKey), u || ''); },
     hasProxy() { return !!this.getProxy(); },
 
+    // ── Normalize proxy URL ──
+    _normalizeProxy(raw) {
+        let u = (raw || '').trim().replace(/\/+$/, '');
+        if (u && !u.startsWith('http')) u = 'https://' + u;
+        return u;
+    },
+
+    // ── Test if proxy Worker is reachable ──
+    async testProxy() {
+        const proxy = this._normalizeProxy(this.getProxy());
+        if (!proxy) return { ok: false, error: 'No proxy URL configured' };
+        try {
+            console.log('[SlackSync] Testing proxy:', proxy);
+            const resp = await fetch(proxy, { method: 'GET', mode: 'cors' });
+            // Worker should return 405 "Method not allowed" for GET — that's fine, it means it's reachable
+            if (resp.status === 405) return { ok: true, detail: 'Worker reachable (405 on GET = correct)' };
+            const text = await resp.text().catch(() => '');
+            return { ok: true, detail: `Worker responded: ${resp.status} ${text.substring(0, 100)}` };
+        } catch (err) {
+            return { ok: false, error: `Cannot reach Worker: ${err.message}. Check URL and deployment.` };
+        }
+    },
+
     // ── Slack API via Cloudflare Worker Proxy ──
     async _slackFetch(method, params = {}) {
         const token = this.getToken();
-        const proxy = this.getProxy();
+        const proxy = this._normalizeProxy(this.getProxy());
         if (!token) { this._error = 'no-token'; return null; }
         if (!proxy) { this._error = 'no-proxy'; return null; }
         try {
-            const url = proxy.replace(/\/$/, '') + '/' + method;
+            const url = proxy + '/' + method;
+            console.log(`[SlackSync] POST ${url}`);
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -6960,7 +6984,13 @@ const SlackSync = {
                 },
                 body: JSON.stringify(params)
             });
-            if (!resp.ok) { this._error = 'api-error'; return null; }
+            console.log(`[SlackSync] Response: ${resp.status} ${resp.statusText}`);
+            if (!resp.ok) {
+                const errText = await resp.text().catch(() => '');
+                this._error = `api-${resp.status}`;
+                console.warn(`[SlackSync] HTTP ${resp.status} on ${method}:`, errText.substring(0, 200));
+                return null;
+            }
             const data = await resp.json();
             if (!data.ok) {
                 this._error = data.error || 'slack-error';
@@ -6971,7 +7001,7 @@ const SlackSync = {
             return data;
         } catch (err) {
             this._error = 'network';
-            console.error('[SlackSync] Network error:', err.message);
+            console.error(`[SlackSync] Network error on ${method}:`, err.message, '| Proxy URL:', proxy);
             return null;
         }
     },
@@ -15382,14 +15412,31 @@ async function connectSlack() {
     }
     SlackSync.setToken(token);
     SlackSync.setProxy(proxy);
-    if (statusEl) statusEl.textContent = 'Connecting...';
+
+    // Step 1: Test if the Worker proxy is reachable
+    if (statusEl) statusEl.textContent = 'Testing proxy URL...';
+    const proxyTest = await SlackSync.testProxy();
+    if (!proxyTest.ok) {
+        if (statusEl) statusEl.innerHTML = `<span style="color:var(--text-danger);">Proxy unreachable:</span> ${proxyTest.error}<br><small style="color:var(--text-muted);">Make sure the Cloudflare Worker is deployed and the URL is correct (e.g. https://slack-proxy.yourname.workers.dev)</small>`;
+        showToast('Proxy URL unreachable — check Worker deployment', 'error');
+        return;
+    }
+    console.log('[SlackSync] Proxy test passed:', proxyTest.detail);
+
+    // Step 2: Try Slack auth
+    if (statusEl) statusEl.textContent = 'Connecting to Slack...';
     const ok = await SlackSync.connect();
     if (ok) {
         if (statusEl) statusEl.textContent = `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched`;
         showToast('Slack connected successfully!', 'success');
     } else {
-        if (statusEl) statusEl.textContent = `Connection failed: ${SlackSync._error || 'unknown error'}`;
-        showToast('Slack connection failed — check token and proxy URL', 'error');
+        const errMsg = SlackSync._error || 'unknown error';
+        let hint = '';
+        if (errMsg.includes('invalid_auth') || errMsg.includes('not_authed')) hint = ' — check your bot token';
+        else if (errMsg.includes('network')) hint = ' — Worker may not be forwarding requests correctly';
+        else if (errMsg.startsWith('api-')) hint = ' — Worker returned an error response';
+        if (statusEl) statusEl.innerHTML = `<span style="color:var(--text-danger);">Connection failed:</span> ${errMsg}${hint}`;
+        showToast('Slack connection failed — ' + errMsg, 'error');
     }
 }
 
@@ -15430,12 +15477,15 @@ function showSlackSetupGuide() {
         </ol>
 
         <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Step 2: Deploy Cloudflare Worker Proxy</h3>
+        <p style="font-size:12px;color:var(--text-danger);margin-bottom:8px;"><strong>Important:</strong> Use Workers (not Pages). Do NOT link to GitHub — use the inline editor.</p>
         <ol style="font-size:13px;color:var(--text-secondary);line-height:1.8;margin-bottom:16px;padding-left:20px;">
-            <li>Go to <strong>dash.cloudflare.com</strong> &#8594; Workers &amp; Pages</li>
-            <li>Click <strong>Create Worker</strong>, name it (e.g. <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">slack-proxy</code>)</li>
-            <li>Replace the default code with the proxy script below</li>
-            <li>Click <strong>Deploy</strong></li>
-            <li>Copy the Worker URL (e.g. <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">https://slack-proxy.your-sub.workers.dev</code>)</li>
+            <li>Go to <strong>dash.cloudflare.com</strong> &#8594; <strong>Workers &amp; Pages</strong> in left sidebar</li>
+            <li>Click <strong>Create</strong> &#8594; choose <strong>"Worker"</strong> (NOT "Pages")</li>
+            <li>Name it (e.g. <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">slack-proxy</code>) and click <strong>Deploy</strong></li>
+            <li>After deploy, click <strong>"Edit Code"</strong> button</li>
+            <li><strong>Delete ALL</strong> default code in the editor, paste the proxy script below</li>
+            <li>Click <strong>Deploy</strong> (top-right) to save</li>
+            <li>Copy the Worker URL (shown at top, e.g. <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:12px;">https://slack-proxy.your-sub.workers.dev</code>)</li>
         </ol>
 
         <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Cloudflare Worker Code</h3>
