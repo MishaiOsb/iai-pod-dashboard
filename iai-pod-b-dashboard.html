@@ -7036,18 +7036,26 @@ const SlackSync = {
 
     // ── Fetch Channel Messages ──
     async fetchChannelData() {
-        console.log('[SlackSync] Fetching channels...');
-        const channelsData = await this._slackFetch('conversations.list', {
-            types: 'public_channel,private_channel',
-            exclude_archived: true,
-            limit: 200
-        });
-        if (!channelsData || !channelsData.channels) {
-            console.warn('[SlackSync] Failed to fetch channels:', this._error);
-            return null;
-        }
-        const chNames = channelsData.channels.map(c => c.name);
-        console.log('[SlackSync] Found', channelsData.channels.length, 'channels:', chNames.join(', '));
+        console.log('[SlackSync] Fetching channels (with pagination)...');
+        let allChannels = [];
+        let cursor = '';
+        let page = 0;
+        do {
+            const params = { types: 'public_channel,private_channel', exclude_archived: true, limit: 200 };
+            if (cursor) params.cursor = cursor;
+            const channelsData = await this._slackFetch('conversations.list', params);
+            if (!channelsData || !channelsData.channels) {
+                if (page === 0) { console.warn('[SlackSync] Failed to fetch channels:', this._error); return null; }
+                break;
+            }
+            allChannels = allChannels.concat(channelsData.channels);
+            cursor = channelsData.response_metadata?.next_cursor || '';
+            page++;
+            console.log(`[SlackSync] Page ${page}: got ${channelsData.channels.length} channels (total: ${allChannels.length})${cursor ? ', more pages...' : ', done.'}`);
+        } while (cursor);
+
+        const chNames = allChannels.map(c => c.name);
+        console.log('[SlackSync] Total channels:', allChannels.length, '|', chNames.join(', '));
         console.log('[SlackSync] State.clients count:', State.clients.length, '| Names:', State.clients.map(c => c.name).join(', '));
 
         const daysBack = 7;
@@ -7055,7 +7063,7 @@ const SlackSync = {
         const results = {};
         const allUserIds = new Set();
 
-        for (const channel of channelsData.channels) {
+        for (const channel of allChannels) {
             const clientName = this._matchChannelToClient(channel.name);
             if (!clientName) { console.log(`[SlackSync] No match for "#${channel.name}"`); continue; }
             console.log(`[SlackSync] Channel "#${channel.name}" matched to client "${clientName}"`);
@@ -7106,7 +7114,7 @@ const SlackSync = {
         }
 
         console.log(`[SlackSync] Complete — ${Object.keys(results).length} clients matched`);
-        return { matched: results, allChannelNames: channelsData.channels.map(c => c.name) };
+        return { matched: results, allChannelNames: allChannels.map(c => c.name) };
     },
 
     // ── Sync Orchestration ──
