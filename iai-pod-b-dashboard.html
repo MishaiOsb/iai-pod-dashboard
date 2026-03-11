@@ -9141,26 +9141,33 @@ const State = {
                 });
             }
 
-            // Deadline approaching (within 7 days)
-            if (c.deadline) {
-                const daysToDeadline = Math.ceil((new Date(c.deadline) - new Date()) / 86400000);
+            // Deadline / go-live approaching or overdue
+            // Use deadline as the hard boundary; goLive is just a target date
+            const effectiveDeadline = c.deadline || c.goLive;
+            if (effectiveDeadline) {
+                const daysToDeadline = Math.ceil((new Date(effectiveDeadline) - new Date()) / 86400000);
+                // If goLive passed but deadline is still in the future, not overdue
+                const hardDeadlinePassed = c.deadline
+                    ? Math.ceil((new Date(c.deadline) - new Date()) / 86400000) < 0
+                    : daysToDeadline < 0; // no deadline column → goLive is the hard boundary
                 if (daysToDeadline >= 0 && daysToDeadline <= 7) {
                     this.alerts.push({
                         type: 'warning',
                         icon: '&#9200;',
-                        title: `${c.name} - Deadline in ${daysToDeadline} day${daysToDeadline !== 1 ? 's' : ''}`,
-                        desc: `Go-live deadline: ${c.deadline}`,
+                        title: `${c.name} - ${c.deadline ? 'Deadline' : 'Go-live'} in ${daysToDeadline} day${daysToDeadline !== 1 ? 's' : ''}`,
+                        desc: `${c.deadline ? 'Go-live deadline' : 'Go-live date'}: ${effectiveDeadline}`,
                         clientId: c.id,
-                        timestamp: c.deadline,
+                        timestamp: effectiveDeadline,
                     });
-                } else if (daysToDeadline < 0) {
+                } else if (hardDeadlinePassed) {
+                    const overdueDays = Math.abs(Math.ceil((new Date(c.deadline || c.goLive) - new Date()) / 86400000));
                     this.alerts.push({
                         type: 'critical',
                         icon: '&#128165;',
                         title: `${c.name} - Deadline OVERDUE`,
-                        desc: `Deadline was ${c.deadline} (${Math.abs(daysToDeadline)} days overdue)`,
+                        desc: `Deadline was ${c.deadline || c.goLive} (${overdueDays} days overdue)`,
                         clientId: c.id,
-                        timestamp: c.deadline,
+                        timestamp: c.deadline || c.goLive,
                     });
                 }
             }
@@ -11156,14 +11163,22 @@ function renderOverviewPage() {
     const weekTasks = DashTodo.getThisWeek();
 
     // === Upcoming deadlines from clients ===
+    // Use deadline as the hard boundary; goLive is just a target date
+    // If goLive passed but deadline is still in the future, show deadline (not overdue)
     const upcomingDeadlines = clients
         .map(c => {
             const dateStr = c.deadline || c.goLive;
             if (!dateStr) return null;
             const d = new Date(dateStr);
             const diff = Math.ceil((d - nowD) / 86400000);
-            if (diff < -30) return null; // skip very old
-            return { name: c.name, date: dateStr, days: diff, id: c.id };
+            // Determine if truly overdue: only if the hard deadline (or goLive when no deadline) is past
+            const hardDate = c.deadline ? new Date(c.deadline) : d;
+            const hardDiff = Math.ceil((hardDate - nowD) / 86400000);
+            if (hardDiff < -30) return null; // skip very old
+            // Use the hard deadline for days calculation when goLive passed but deadline hasn't
+            const effectiveDiff = (diff < 0 && c.deadline && hardDiff >= 0) ? hardDiff : diff;
+            const effectiveDateStr = (diff < 0 && c.deadline && hardDiff >= 0) ? c.deadline : dateStr;
+            return { name: c.name, date: effectiveDateStr, days: effectiveDiff, id: c.id };
         })
         .filter(Boolean)
         .sort((a, b) => a.days - b.days)
