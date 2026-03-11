@@ -602,6 +602,13 @@ input, textarea, select { font-family: inherit; outline: none; }
     text-transform: uppercase; letter-spacing: 0.5px;
     margin-bottom: 16px;
 }
+.chart-card h4 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.chart-filter-select {
+    font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border-subtle);
+    background: var(--bg-card); color: var(--text-secondary); cursor: pointer; text-transform: none;
+    letter-spacing: 0; font-weight: 500; max-width: 160px;
+}
+.chart-filter-select:focus { outline: none; border-color: var(--accent-primary); }
 .chart-wrapper {
     position: relative; height: 220px;
 }
@@ -9478,19 +9485,32 @@ const Charts = {
    ================================================================ */
 const OverviewCharts = {
     _instances: {},
+    _filters: { health: 'all', plan: 'all', commVol: 'all', activity: 'all' },
+    _lastClients: null,
     destroy(id) { if (this._instances[id]) { this._instances[id].destroy(); delete this._instances[id]; } },
     destroyAll() { Object.keys(this._instances).forEach(id => this.destroy(id)); },
+    setFilter(chart, value) {
+        this._filters[chart] = value;
+        const clients = this._lastClients || [];
+        if (chart === 'health') this.renderHealthDistribution(clients);
+        else if (chart === 'plan') this.renderPlanDistribution(clients);
+        else if (chart === 'commVol') this.renderCommVolume(clients);
+        else if (chart === 'activity') this.renderActivityTrend();
+    },
 
     /** Health Score Distribution — bar chart, 4 buckets */
     renderHealthDistribution(clients) {
         this.destroy('ovHealth');
+        this._lastClients = clients;
+        const f = this._filters.health;
+        const filtered = f === 'all' ? clients : clients.filter(c => c.plan === f);
         const buckets = [
             { label: '0-25 Critical', min: 0, max: 25, color: '#df2f4a', count: 0 },
             { label: '26-50 At Risk', min: 26, max: 50, color: '#fdab3d', count: 0 },
             { label: '51-75 Stable', min: 51, max: 75, color: '#ffcb00', count: 0 },
             { label: '76-100 Healthy', min: 76, max: 100, color: '#00c875', count: 0 },
         ];
-        clients.forEach(c => {
+        filtered.forEach(c => {
             const h = State.calcHealth(c);
             for (const b of buckets) { if (h >= b.min && h <= b.max) { b.count++; break; } }
         });
@@ -9516,8 +9536,15 @@ const OverviewCharts = {
     /** Plan Distribution — horizontal bar chart */
     renderPlanDistribution(clients) {
         this.destroy('ovPlans');
+        this._lastClients = clients;
+        const f = this._filters.plan;
+        const filtered = f === 'all' ? clients :
+            f === 'critical' ? clients.filter(c => State.calcHealth(c) <= 25) :
+            f === 'at-risk' ? clients.filter(c => { const h = State.calcHealth(c); return h >= 26 && h <= 50; }) :
+            f === 'stable' ? clients.filter(c => { const h = State.calcHealth(c); return h >= 51 && h <= 75; }) :
+            f === 'healthy' ? clients.filter(c => State.calcHealth(c) >= 76) : clients;
         const counts = {};
-        clients.forEach(c => { counts[c.plan] = (counts[c.plan] || 0) + 1; });
+        filtered.forEach(c => { counts[c.plan] = (counts[c.plan] || 0) + 1; });
         const labels = Object.keys(counts);
         const colors = labels.map(l => {
             const opt = CONFIG.PLAN_OPTIONS.find(o => o.label === l);
@@ -9543,38 +9570,37 @@ const OverviewCharts = {
     /** Communication Volume by Client — horizontal stacked bar: email + Teams messages per client */
     renderCommVolume(clients) {
         this.destroy('ovCommVol');
+        this._lastClients = clients;
+        const f = this._filters.commVol;
+        const showEmail = f === 'all' || f === 'email';
+        const showTeams = f === 'all' || f === 'teams';
         const data = clients
             .map(c => {
                 const ed = EMAIL_DATA.clients?.[c.name];
                 const emails = ed?.emails || [];
-                const emailRx = emails.filter(e => !e.isFromMe).length;
-                const emailTx = emails.filter(e => e.isFromMe).length;
+                const emailRx = showEmail ? emails.filter(e => !e.isFromMe).length : 0;
+                const emailTx = showEmail ? emails.filter(e => e.isFromMe).length : 0;
                 const td = TEAMS_DATA.clients?.[c.name];
-                const teamsRx = td?.received || 0;
-                const teamsTx = td?.sent || 0;
-                const sd = SLACK_DATA.clients?.[c.name];
-                const slackMsgs = sd?.recentCount || 0;
-                return { name: c.name, emailRx, emailTx, teamsRx, teamsTx, slackMsgs, total: emailRx + emailTx + teamsRx + teamsTx + slackMsgs };
+                const teamsRx = showTeams ? (td?.received || 0) : 0;
+                const teamsTx = showTeams ? (td?.sent || 0) : 0;
+                return { name: c.name, emailRx, emailTx, teamsRx, teamsTx, total: emailRx + emailTx + teamsRx + teamsTx };
             })
             .sort((a, b) => b.total - a.total);
         if (data.length === 0) return;
         const ctx = document.getElementById('ovCommVolChart');
         if (!ctx) return;
-        const hasTeams = data.some(d => d.teamsRx > 0 || d.teamsTx > 0);
-        const datasets = [
-            { label: 'Email Received', data: data.map(d => d.emailRx), backgroundColor: '#579bfc', borderRadius: 4, barThickness: 14 },
-            { label: 'Email Sent', data: data.map(d => d.emailTx), backgroundColor: '#00c875', borderRadius: 4, barThickness: 14 }
-        ];
+        const hasTeams = showTeams && data.some(d => d.teamsRx > 0 || d.teamsTx > 0);
+        const datasets = [];
+        if (showEmail) {
+            datasets.push(
+                { label: 'Email Received', data: data.map(d => d.emailRx), backgroundColor: '#579bfc', borderRadius: 4, barThickness: 14 },
+                { label: 'Email Sent', data: data.map(d => d.emailTx), backgroundColor: '#00c875', borderRadius: 4, barThickness: 14 }
+            );
+        }
         if (hasTeams) {
             datasets.push(
                 { label: 'Teams Received', data: data.map(d => d.teamsRx), backgroundColor: '#66ccff', borderRadius: 4, barThickness: 14 },
                 { label: 'Teams Sent', data: data.map(d => d.teamsTx), backgroundColor: '#0d9488', borderRadius: 4, barThickness: 14 }
-            );
-        }
-        const hasSlack = data.some(d => d.slackMsgs > 0);
-        if (hasSlack) {
-            datasets.push(
-                { label: 'Slack Messages', data: data.map(d => d.slackMsgs), backgroundColor: '#e01e5a', borderRadius: 4, barThickness: 14 }
             );
         }
         this._instances['ovCommVol'] = new Chart(ctx, {
@@ -9598,6 +9624,7 @@ const OverviewCharts = {
     /** Weekly Activity Trend — stacked bar, last 7 days × event types */
     renderActivityTrend() {
         this.destroy('ovActivity');
+        const f = this._filters.activity;
         const allEvents = ActivityFeed.getAll();
         const days = [];
         for (let i = 6; i >= 0; i--) {
@@ -9605,16 +9632,16 @@ const OverviewCharts = {
             days.push(d);
         }
         const typeConfig = {
-            'email-in': { label: 'Emails In', color: '#579bfc' },
-            'email-out': { label: 'Emails Out', color: '#007eb5' },
-            'teams-in': { label: 'Teams In', color: '#66ccff' },
-            'teams-out': { label: 'Teams Out', color: '#0d9488' },
-            'calendar': { label: 'Calendar', color: '#9d50dd' },
-            'data-change': { label: 'Data Changes', color: '#00c875' },
-            'todo': { label: 'Todos', color: '#fdab3d' },
-            'system': { label: 'System', color: '#666' },
+            'email-in': { label: 'Emails In', color: '#579bfc', group: 'email' },
+            'email-out': { label: 'Emails Out', color: '#007eb5', group: 'email' },
+            'teams-in': { label: 'Teams In', color: '#66ccff', group: 'teams' },
+            'teams-out': { label: 'Teams Out', color: '#0d9488', group: 'teams' },
+            'calendar': { label: 'Calendar', color: '#9d50dd', group: 'calendar' },
+            'data-change': { label: 'Data Changes', color: '#00c875', group: 'other' },
+            'todo': { label: 'Todos', color: '#fdab3d', group: 'other' },
+            'system': { label: 'System', color: '#666', group: 'other' },
         };
-        const typeKeys = Object.keys(typeConfig);
+        const typeKeys = Object.keys(typeConfig).filter(t => f === 'all' || typeConfig[t].group === f);
         const matrix = {};
         typeKeys.forEach(t => { matrix[t] = new Array(7).fill(0); });
         allEvents.forEach(ev => {
@@ -9625,7 +9652,7 @@ const OverviewCharts = {
             matrix[t][dayIdx]++;
         });
         // Inject Teams channel messages from TEAMS_DATA into the trend
-        if (TEAMS_DATA && TEAMS_DATA.clients) {
+        if ((f === 'all' || f === 'teams') && TEAMS_DATA && TEAMS_DATA.clients) {
             Object.values(TEAMS_DATA.clients).forEach(cd => {
                 (cd.messages || []).forEach(m => {
                     const mDate = new Date(m.date); mDate.setHours(0,0,0,0);
@@ -11180,15 +11207,34 @@ function renderOverviewPage() {
     const analyticsGridHTML = `
         <div class="overview-analytics-grid">
             <div class="chart-card">
-                <h4>&#128202; Health Distribution</h4>
+                <h4>&#128202; Health Distribution
+                    <select class="chart-filter-select" onchange="OverviewCharts.setFilter('health',this.value)">
+                        <option value="all">All Plans</option>
+                        ${CONFIG.PLAN_OPTIONS.map(o => `<option value="${o.label}">${o.label}</option>`).join('')}
+                    </select>
+                </h4>
                 <div style="position:relative;height:220px;"><canvas id="ovHealthChart"></canvas></div>
             </div>
             <div class="chart-card">
-                <h4>&#128203; Plan Distribution</h4>
+                <h4>&#128203; Plan Distribution
+                    <select class="chart-filter-select" onchange="OverviewCharts.setFilter('plan',this.value)">
+                        <option value="all">All Health</option>
+                        <option value="critical">0-25 Critical</option>
+                        <option value="at-risk">26-50 At Risk</option>
+                        <option value="stable">51-75 Stable</option>
+                        <option value="healthy">76-100 Healthy</option>
+                    </select>
+                </h4>
                 <div style="position:relative;height:220px;"><canvas id="ovPlanChart"></canvas></div>
             </div>
             <div class="chart-card">
-                <h4>&#128172; Communication Volume</h4>
+                <h4>&#128172; Communication Volume
+                    <select class="chart-filter-select" onchange="OverviewCharts.setFilter('commVol',this.value)">
+                        <option value="all">All Channels</option>
+                        <option value="email">Email Only</option>
+                        <option value="teams">Teams Only</option>
+                    </select>
+                </h4>
                 <div style="position:relative;height:220px;"><canvas id="ovCommVolChart"></canvas></div>
             </div>
             <div class="chart-card">
@@ -11196,7 +11242,15 @@ function renderOverviewPage() {
                 <ul class="overview-deadline-list">${deadlineListHTML}</ul>
             </div>
             <div class="chart-card full-width">
-                <h4>&#128200; Weekly Activity Trend</h4>
+                <h4>&#128200; Weekly Activity Trend
+                    <select class="chart-filter-select" onchange="OverviewCharts.setFilter('activity',this.value)">
+                        <option value="all">All Events</option>
+                        <option value="email">Email Only</option>
+                        <option value="teams">Teams Only</option>
+                        <option value="calendar">Calendar Only</option>
+                        <option value="other">Other</option>
+                    </select>
+                </h4>
                 <div style="position:relative;height:220px;"><canvas id="ovActivityChart"></canvas></div>
             </div>
         </div>`;
