@@ -2665,6 +2665,84 @@ input, textarea, select { font-family: inherit; outline: none; }
 }
 .email-followup-action:hover { text-decoration: underline; }
 
+/* AI Features — Shared Styles */
+.ai-card {
+    background: linear-gradient(135deg, rgba(107,48,255,0.06), rgba(87,155,252,0.04));
+    border: 1px solid rgba(107,48,255,0.2);
+    border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 20px;
+    position: relative; overflow: hidden;
+}
+.ai-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent-purple), #579bfc, var(--accent-purple));
+}
+.ai-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; font-size: 13px; font-weight: 600; color: var(--text-primary);
+}
+.ai-card-content { font-size: 12.5px; color: var(--text-secondary); line-height: 1.65; }
+.ai-card-content strong, .ai-card-content b { color: var(--text-primary); }
+.ai-card-loading {
+    min-height: 60px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 12px; color: var(--text-muted);
+}
+.ai-card-loading::before {
+    content: ''; width: 16px; height: 16px; border: 2px solid rgba(107,48,255,0.2);
+    border-top-color: var(--accent-purple); border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+.ai-shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(107,48,255,0.08) 50%, transparent 100%);
+    background-size: 200% 100%; animation: aiShimmer 1.5s ease-in-out infinite;
+}
+@keyframes aiShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.btn-ai {
+    font-size: 11px; font-weight: 600; padding: 6px 14px; border-radius: var(--radius-md); cursor: pointer;
+    background: linear-gradient(135deg, rgba(107,48,255,0.15), rgba(87,155,252,0.1));
+    color: var(--accent-purple-light); border: 1px solid rgba(107,48,255,0.3);
+    transition: all var(--transition-fast); white-space: nowrap;
+}
+.btn-ai:hover { background: linear-gradient(135deg, rgba(107,48,255,0.25), rgba(87,155,252,0.15)); transform: translateY(-1px); }
+.btn-ai:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-ai .ai-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(107,48,255,0.2); border-top-color: var(--accent-purple-light); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 4px; }
+.ai-alert { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.ai-alert.high { background: rgba(232,73,73,0.12); color: var(--rag-red); }
+.ai-alert.medium { background: rgba(253,171,61,0.12); color: var(--rag-amber); }
+.ai-alert.low { background: rgba(0,200,117,0.12); color: var(--rag-green); }
+.ai-modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 10000;
+    background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px); animation: fadeIn 0.2s ease;
+}
+.ai-modal {
+    background: var(--bg-card); border: 1px solid var(--border-default); border-radius: var(--radius-xl);
+    width: 90%; max-width: 640px; max-height: 85vh; overflow-y: auto; padding: 24px;
+    box-shadow: var(--shadow-elevated); position: relative;
+}
+.ai-modal h3 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 16px; }
+.ai-modal-close {
+    position: absolute; top: 12px; right: 14px; background: none; border: none;
+    font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 4px;
+}
+.ai-modal-close:hover { color: var(--text-primary); background: var(--bg-elevated); }
+.ai-search-bar {
+    display: flex; gap: 8px; align-items: center; background: var(--bg-elevated);
+    border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 8px 14px;
+    margin-bottom: 16px; transition: border-color var(--transition-fast);
+}
+.ai-search-bar:focus-within { border-color: var(--accent-purple); }
+.ai-search-bar input {
+    flex: 1; background: none; border: none; outline: none; font-size: 13px;
+    color: var(--text-primary); font-family: inherit;
+}
+.ai-search-bar input::placeholder { color: var(--text-muted); }
+.ai-search-btn {
+    background: linear-gradient(135deg, var(--accent-purple), #579bfc); border: none; border-radius: var(--radius-md);
+    padding: 6px 12px; color: #fff; font-size: 11px; font-weight: 600; cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+.ai-search-btn:hover { opacity: 0.85; }
+.ai-search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* Calendar Section */
 .calendar-section {
     background: var(--bg-card); border: 1px solid var(--border-subtle);
@@ -3472,6 +3550,7 @@ input, textarea, select { font-family: inherit; outline: none; }
             <button class="share-action-btn" onclick="ShareSnapshot.exportHTML()" id="btnExportHTML">&#128190; Export as HTML</button>
             <button class="share-action-btn" onclick="ShareSnapshot.exportPDF()" id="btnExportPDF">&#128462; Export as PDF</button>
             <button class="share-action-btn" onclick="ShareSnapshot.shareToTeams()" id="btnShareTeams" style="background:rgba(98,100,167,0.15);color:#6264a7;border-color:rgba(98,100,167,0.3);">&#128172; Share to Teams</button>
+            <button class="share-action-btn" onclick="generateWeeklyAISummary()" id="btnAISummary" style="background:rgba(107,48,255,0.12);color:var(--accent-purple-light);border-color:rgba(107,48,255,0.25);">&#10024; AI Summary</button>
         </div>
         <div class="share-modal-body" id="shareSnapshotBody" contenteditable="true">
             <!-- Snapshot content rendered here by JS -->
@@ -5745,6 +5824,105 @@ const AITaskAssist = {
         return this.hasKey() && !!SlackSync.getProxy();
     },
 
+    /* ---- In-memory cache (10min TTL) ---- */
+    _cache: {},
+    _cacheGet(key, ttlMs = 600000) {
+        const entry = this._cache[key];
+        if (!entry) return null;
+        if (Date.now() - entry.ts > ttlMs) { delete this._cache[key]; return null; }
+        return entry.value;
+    },
+    _cacheSet(key, value) { this._cache[key] = { value, ts: Date.now() }; },
+
+    /* ---- Data serializers ---- */
+    _buildClientContext(clientName) {
+        const c = (State.clients || []).find(cl => cl.name === clientName);
+        if (!c) return `Client: ${clientName}\nNo data available.`;
+        const parts = [`Client: ${c.name}`, `Plan: ${c.plan}`, `RAG: ${c.rag}`, `Billing: ${c.billing}`, `Health: ${State.calcHealth(c)}/100`, `Agents: ${c.agentCount} (${c.agentStage || 'N/A'})`, `AIOS Days: ${c.aiosDays || 'N/A'}`];
+        if (c.summary) parts.push(`Summary: ${c.summary}`);
+        // Email status
+        const es = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+        if (es) parts.push(`Email status: ${es}`);
+        const ed = EMAIL_DATA.clients?.[c.name];
+        if (ed && ed.emails) {
+            const sent = ed.emails.filter(e => e.isFromMe).length;
+            parts.push(`Emails: ${sent} sent, ${ed.emails.length - sent} received (last 14d)`);
+        }
+        // Teams
+        const td = TEAMS_DATA.clients?.[c.name];
+        if (td) parts.push(`Teams: ${td.sent || 0} sent, ${td.received || 0} received`);
+        // Slack
+        const sd = SLACK_DATA.clients?.[c.name];
+        if (sd && sd.recentCount > 0) parts.push(`Slack: ${sd.recentCount} recent msgs`);
+        // Last contact
+        const lastContact = typeof getEffectiveLastContact === 'function' ? getEffectiveLastContact(c) : null;
+        if (lastContact) {
+            const days = typeof getDaysSinceContact === 'function' ? getDaysSinceContact(lastContact) : null;
+            parts.push(`Last contact: ${days !== null ? days + ' days ago' : lastContact}`);
+        }
+        // Upcoming meetings
+        if (CALENDAR_DATA && CALENDAR_DATA.events) {
+            const now = new Date();
+            const upcoming = CALENDAR_DATA.events.filter(e => {
+                const subj = (e.subject || '').toLowerCase();
+                return subj.includes(clientName.toLowerCase().split(' ')[0]) && new Date(e.start) > now;
+            }).slice(0, 3);
+            if (upcoming.length > 0) parts.push(`Upcoming meetings: ${upcoming.map(e => e.subject + ' on ' + new Date(e.start).toLocaleDateString('en-GB')).join('; ')}`);
+        }
+        // Agent details
+        if (c.agents && c.agents.length > 0) {
+            parts.push(`Agent details: ${c.agents.map(a => a.name + ' (' + a.stage + ')').join(', ')}`);
+        }
+        // Board items
+        const items = c.items || [];
+        if (items.length > 0) {
+            const byStatus = {};
+            items.forEach(it => { byStatus[it.status] = (byStatus[it.status] || 0) + 1; });
+            parts.push(`Board items: ${items.length} total — ${Object.entries(byStatus).map(([s,n]) => n + ' ' + s).join(', ')}`);
+        }
+        return parts.join('\n');
+    },
+
+    _buildPortfolioSummary() {
+        const clients = State.clients || [];
+        if (clients.length === 0) return 'No client data loaded.';
+        const total = clients.length;
+        const green = clients.filter(c => c.rag === 'Green').length;
+        const amber = clients.filter(c => c.rag === 'Amber').length;
+        const red = clients.filter(c => c.rag === 'Red').length;
+        const avgHealth = Math.round(clients.reduce((s,c) => s + State.calcHealth(c), 0) / total);
+        const billingActive = clients.filter(c => c.billing === 'Yes').length;
+        const totalAgents = clients.reduce((s,c) => s + (c.agentCount || 0), 0);
+        const lines = [`Portfolio: ${total} clients | RAG: ${green}G ${amber}A ${red}R | Avg Health: ${avgHealth}/100 | Billing: ${billingActive}/${total} | Agents: ${totalAgents}`];
+        // Per-client summary
+        clients.forEach(c => {
+            const h = State.calcHealth(c);
+            const lastContact = typeof getEffectiveLastContact === 'function' ? getEffectiveLastContact(c) : null;
+            const days = lastContact && typeof getDaysSinceContact === 'function' ? getDaysSinceContact(lastContact) : null;
+            const es = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : '';
+            lines.push(`- ${c.name}: ${c.rag} RAG, Health ${h}, ${c.plan}, ${c.agentCount} agents, billing=${c.billing}, email=${es}${days !== null ? ', last contact ' + days + 'd ago' : ''}`);
+        });
+        // Overdue tasks
+        const allTodos = typeof DashTodo !== 'undefined' ? DashTodo._items || [] : [];
+        const todayISO = new Date().toISOString().split('T')[0];
+        const overdue = allTodos.filter(t => !t.completed && t.dueDate && t.dueDate < todayISO);
+        if (overdue.length > 0) lines.push(`Overdue tasks: ${overdue.length} — ${overdue.slice(0,5).map(t => t.text).join('; ')}`);
+        // Upcoming meetings
+        if (CALENDAR_DATA && CALENDAR_DATA.events) {
+            const now = new Date();
+            const next7d = new Date(now); next7d.setDate(now.getDate() + 7);
+            const upcoming = (CALENDAR_DATA.events || []).filter(e => { const d = new Date(e.start); return d > now && d < next7d; });
+            if (upcoming.length > 0) lines.push(`Meetings next 7 days: ${upcoming.length} — ${upcoming.slice(0,5).map(e => e.subject).join('; ')}`);
+        }
+        return lines.join('\n');
+    },
+
+    _simpleHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) { hash = ((hash << 5) - hash) + str.charCodeAt(i); hash |= 0; }
+        return 'h' + Math.abs(hash).toString(36);
+    },
+
     async _openaiChat(messages, opts = {}) {
         const key = this.getKey();
         const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
@@ -5787,6 +5965,168 @@ const AITaskAssist = {
         } finally {
             clearTimeout(timeout);
         }
+    },
+
+    /* Plain-text variant (no JSON response_format) for prose/markdown responses */
+    async _openaiChatText(messages, opts = {}) {
+        const key = this.getKey();
+        const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
+        if (!key || !proxy) throw new Error('AI not configured');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+        try {
+            const url = proxy + '/openai/chat/completions';
+            const resp = await fetch(url, {
+                method: 'POST', signal: controller.signal,
+                headers: { 'Content-Type': 'application/json', 'X-OpenAI-Key': key },
+                body: JSON.stringify({
+                    model: opts.model || 'gpt-4o-mini', messages,
+                    temperature: opts.temperature ?? 0.4,
+                    max_tokens: opts.max_tokens || 600
+                })
+            });
+            if (!resp.ok) { const errText = await resp.text().catch(() => ''); throw new Error(`API ${resp.status}: ${errText.substring(0, 200)}`); }
+            const data = await resp.json();
+            const content = data?.choices?.[0]?.message?.content;
+            if (!content) throw new Error('Empty AI response');
+            return content;
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Request timed out (45s)');
+            throw e;
+        } finally { clearTimeout(timeout); }
+    },
+
+    /* ---- Feature 3: Health Insights (overview page) ---- */
+    async healthInsights() {
+        const cached = this._cacheGet('health_overview');
+        if (cached) return cached;
+        const portfolio = this._buildPortfolioSummary();
+        const result = await this._openaiChat([
+            { role: 'system', content: `You are a digital marketing portfolio analyst for ImplementAI. Analyse this portfolio data and return JSON with:
+{
+  "summary": "2-3 sentence overview of portfolio health, highlighting key wins and concerns",
+  "alerts": [{"client": "name", "issue": "brief description", "severity": "high|medium|low"}],
+  "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
+}
+Be specific with client names and numbers. Focus on actionable insights. Max 3-5 alerts, max 3-4 recommendations.` },
+            { role: 'user', content: portfolio }
+        ], { max_tokens: 600 });
+        this._cacheSet('health_overview', result);
+        return result;
+    },
+
+    /* ---- Feature 1: Weekly Report AI Summary ---- */
+    async weeklyInsight() {
+        const weekId = new Date().toISOString().split('T')[0];
+        const cached = this._cacheGet('weekly_' + weekId);
+        if (cached) return cached;
+        const portfolio = this._buildPortfolioSummary();
+        const result = await this._openaiChatText([
+            { role: 'system', content: `You are a digital marketing portfolio manager writing an executive weekly narrative for ImplementAI. Given this week's data, write 3-4 sentences highlighting: key wins, concerns or risks, and recommended focus areas for next week. Be specific with client names and metrics. Write in British English, professional but concise. Do not use bullet points — write in flowing prose.` },
+            { role: 'user', content: portfolio }
+        ], { max_tokens: 300 });
+        this._cacheSet('weekly_' + weekId, result);
+        return result;
+    },
+
+    /* ---- Feature 2: Meeting Prep Brief ---- */
+    async meetingPrep(clientName) {
+        const cached = this._cacheGet('prep_' + clientName);
+        if (cached) return cached;
+        const ctx = this._buildClientContext(clientName);
+        const result = await this._openaiChatText([
+            { role: 'system', content: `You are preparing a digital marketing account manager at ImplementAI for a client meeting. Given this client data, create a concise meeting prep brief with:
+
+**Key Talking Points** (3-5 bullets)
+**Recent Wins** to highlight
+**Open Issues** to address
+**Recommended Next Steps**
+
+Be specific and actionable. Use the client's actual data. Write in British English. Use markdown formatting with bold headers.` },
+            { role: 'user', content: ctx }
+        ], { max_tokens: 600 });
+        this._cacheSet('prep_' + clientName, result);
+        return result;
+    },
+
+    /* ---- Feature 4: Smart Email Draft (GANESHA/LEAD) ---- */
+    _emailDraftPrompt() {
+        return `You are an email draft assistant for ImplementAI, a digital agency. Write professional client emails following these strict standards:
+
+**TONE & STYLE:**
+- British English, professional but warm
+- Solution-first framing — lead with what you're doing, not the problem
+- Ownership language: "I am doing X" not "We could..." or "Would you like to..."
+- Specific timelines: "by Friday 3pm" not "soon" or "shortly"
+- Concise: every sentence earns its place, active voice, cut filler
+- Assertive: "I recommend..." not "Would you like to...", "We should..." not "We could..."
+
+**PHRASES TO AVOID → USE INSTEAD:**
+- "Would you like to..." → "I recommend..."
+- "We had some issues..." → "We identified and resolved..."
+- "I'm not sure..." → "I'll confirm and follow up by [time]"
+- "We could try..." → "We should..."
+- "Sorry for the delay" → "Thank you for your patience"
+
+**EMAIL TYPES:**
+
+TYPE 1 — Something Wrong (ACKNOWLEDGE > CAUSE > ACTION > TIMELINE):
+- Acknowledge the issue directly
+- Brief root cause (1 sentence)
+- Actions already taken + next steps
+- Specific timeline for resolution
+- 4-6 sentences total
+
+TYPE 2 — Status Update (Complete / In Progress / Not Started sections):
+- Group items by completion status
+- Include specific metrics and results where available
+- 5-10 sentences total
+
+TYPE 3 — Client Query (use LEAD framework):
+- Lead with Wins (recent positive results)
+- Explain with Solutions (address their question)
+- Assert Recommendations (what you advise)
+- Drive Expansion (suggest next opportunities)
+
+TYPE 4 — Proactive Update:
+- Context (why you're reaching out)
+- Current status with specific data
+- Next steps with timelines
+
+**FORMAT:**
+- Start with "Hi [first name]," (use client name context to infer)
+- Sign off with "Best regards," (no name — user will add)
+- No subject line needed — just the email body
+- Keep paragraphs short (2-3 sentences max)`;
+    },
+
+    async emailDraft(clientName, emailType, userContext) {
+        const ctx = this._buildClientContext(clientName);
+        const typeLabel = ['Something Wrong', 'Status Update', 'Client Query', 'Proactive Update'][emailType - 1] || 'Status Update';
+        const result = await this._openaiChatText([
+            { role: 'system', content: this._emailDraftPrompt() },
+            { role: 'user', content: `Write a "${typeLabel}" email for this client.\n\nClient Data:\n${ctx}\n\n${userContext ? 'Additional context from me: ' + userContext : 'Use the client data to write an appropriate email.'}` }
+        ], { max_tokens: 800 });
+        return result;
+    },
+
+    /* ---- Feature 5: Natural Language Search ---- */
+    _nlSearchHistory: [],
+
+    async nlSearch(query) {
+        const cacheKey = 'search_' + this._simpleHash(query);
+        const cached = this._cacheGet(cacheKey);
+        if (cached) return cached;
+        const portfolio = this._buildPortfolioSummary();
+        const result = await this._openaiChatText([
+            { role: 'system', content: `You are a dashboard assistant for ImplementAI, a digital marketing agency. Given the portfolio data below, answer the user's question concisely. Reference specific clients, numbers, and dates. If the data doesn't contain the answer, say so honestly. Write in British English. Keep answers to 2-4 sentences unless a list is clearly needed.` },
+            { role: 'user', content: `Portfolio Data:\n${portfolio}\n\nQuestion: ${query}` }
+        ], { max_tokens: 400 });
+        this._cacheSet(cacheKey, result);
+        // Store in history (max 5)
+        this._nlSearchHistory.unshift({ query, answer: result, ts: Date.now() });
+        if (this._nlSearchHistory.length > 5) this._nlSearchHistory.pop();
+        return result;
     },
 
     async process(text) {
@@ -11435,7 +11775,18 @@ function renderOverviewPage() {
             </div>
         </div>` : '';
 
+    // AI Health Insights card (auto-loads if AI configured)
+    const aiInsightsHTML = AITaskAssist.isAvailable() ? `
+        <div class="ai-card" id="aiHealthInsightsCard">
+            <div class="ai-card-header">
+                <span>&#10024; AI Portfolio Insights</span>
+                <button class="btn-ai" onclick="loadAIHealthInsights(true)" title="Refresh insights">&#8635; Refresh</button>
+            </div>
+            <div id="aiHealthInsightsBody" class="ai-card-loading ai-shimmer">Analysing portfolio...</div>
+        </div>` : '';
+
     container.innerHTML = `
+        ${aiInsightsHTML}
         ${targetsBarHTML}
         ${taskStatsHTML}
         ${analyticsGridHTML}
@@ -11493,6 +11844,41 @@ function renderOverviewPage() {
         OverviewCharts.renderCommVolume(clients);
         OverviewCharts.renderActivityTrend();
     }, 80);
+
+    // Auto-load AI Health Insights
+    if (AITaskAssist.isAvailable()) setTimeout(() => loadAIHealthInsights(false), 200);
+}
+
+async function loadAIHealthInsights(bustCache) {
+    const body = document.getElementById('aiHealthInsightsBody');
+    if (!body) return;
+    if (bustCache) AITaskAssist._cache = {};
+    body.className = 'ai-card-loading ai-shimmer';
+    body.textContent = 'Analysing portfolio...';
+    try {
+        const data = await AITaskAssist.healthInsights();
+        let html = '';
+        if (data.summary) html += `<div style="margin-bottom:10px;font-size:12.5px;line-height:1.6;color:var(--text-secondary);">${data.summary}</div>`;
+        if (data.alerts && data.alerts.length > 0) {
+            html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">`;
+            data.alerts.forEach(a => {
+                const cls = a.severity === 'high' ? 'high' : a.severity === 'medium' ? 'medium' : 'low';
+                html += `<span class="ai-alert ${cls}">${a.severity === 'high' ? '&#9888;' : a.severity === 'medium' ? '&#9889;' : '&#10003;'} ${(a.client || '')} — ${a.issue}</span>`;
+            });
+            html += `</div>`;
+        }
+        if (data.recommendations && data.recommendations.length > 0) {
+            html += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Recommendations:</div>`;
+            html += `<ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text-secondary);line-height:1.6;">`;
+            data.recommendations.forEach(r => { html += `<li>${r}</li>`; });
+            html += `</ul>`;
+        }
+        body.className = 'ai-card-content';
+        body.innerHTML = html || 'No insights available.';
+    } catch (err) {
+        body.className = 'ai-card-content';
+        body.innerHTML = `<span style="color:var(--rag-red);font-size:12px;">&#9888; ${err.message}</span>`;
+    }
 }
 
 /* ================================================================
@@ -11754,6 +12140,92 @@ function sortAgentsTable(col) {
     rows.forEach(r => tbody.appendChild(r));
 }
 
+/* ---- AI Meeting Prep Modal ---- */
+async function openMeetingPrepModal(clientName) {
+    // Remove existing modal
+    document.querySelectorAll('.ai-modal-overlay').forEach(el => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-modal-overlay';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `<div class="ai-modal">
+        <button class="ai-modal-close" onclick="this.closest('.ai-modal-overlay').remove()">&times;</button>
+        <h3>&#128203; AI Meeting Prep — ${clientName}</h3>
+        <div id="aiPrepContent" class="ai-card-loading ai-shimmer">Preparing brief...</div>
+        <div style="margin-top:14px;display:flex;gap:8px;">
+            <button class="btn-ai" id="aiPrepCopy" style="display:none;" onclick="navigator.clipboard.writeText(document.getElementById('aiPrepContent').innerText);showToast('Copied to clipboard','success');">&#128203; Copy</button>
+            <button class="btn-ai" onclick="this.closest('.ai-modal-overlay').remove()">Close</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    try {
+        const brief = await AITaskAssist.meetingPrep(clientName);
+        const el = document.getElementById('aiPrepContent');
+        if (el) {
+            el.className = 'ai-card-content';
+            el.innerHTML = brief.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n- /g, '\n• ').replace(/\n/g, '<br>');
+        }
+        const copyBtn = document.getElementById('aiPrepCopy');
+        if (copyBtn) copyBtn.style.display = '';
+    } catch (err) {
+        const el = document.getElementById('aiPrepContent');
+        if (el) { el.className = 'ai-card-content'; el.innerHTML = `<span style="color:var(--rag-red);">&#9888; ${err.message}</span>`; }
+    }
+}
+
+/* ---- AI Email Draft Modal (GANESHA/LEAD) ---- */
+async function openEmailDraftModal(clientName) {
+    document.querySelectorAll('.ai-modal-overlay').forEach(el => el.remove());
+    const overlay = document.createElement('div');
+    overlay.className = 'ai-modal-overlay';
+    overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML = `<div class="ai-modal">
+        <button class="ai-modal-close" onclick="this.closest('.ai-modal-overlay').remove()">&times;</button>
+        <h3>&#128231; Smart Email Draft — ${clientName}</h3>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Email Type</label>
+            <select id="aiEmailType" style="width:100%;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:13px;">
+                <option value="2">Status Update</option>
+                <option value="1">Something Wrong / Issue</option>
+                <option value="3">Client Query Response (LEAD)</option>
+                <option value="4">Proactive Update</option>
+            </select>
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Context (optional)</label>
+            <textarea id="aiEmailContext" placeholder="What do you want to communicate? Leave blank to auto-generate from client data..." style="width:100%;min-height:60px;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;resize:vertical;font-family:inherit;"></textarea>
+        </div>
+        <button class="btn-ai" id="aiEmailGenBtn" onclick="generateEmailDraft('${clientName.replace(/'/g,"\\'")}')">&#10024; Generate Draft</button>
+        <div id="aiEmailDraftArea" style="display:none;margin-top:14px;">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Generated Draft (editable)</label>
+            <textarea id="aiEmailDraftText" style="width:100%;min-height:200px;padding:12px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12.5px;line-height:1.6;resize:vertical;font-family:inherit;"></textarea>
+            <div style="margin-top:8px;display:flex;gap:8px;">
+                <button class="btn-ai" onclick="navigator.clipboard.writeText(document.getElementById('aiEmailDraftText').value);showToast('Email copied to clipboard','success');">&#128203; Copy</button>
+                <button class="btn-ai" onclick="generateEmailDraft('${clientName.replace(/'/g,"\\'")}')">&#8635; Regenerate</button>
+            </div>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+}
+
+async function generateEmailDraft(clientName) {
+    const btn = document.getElementById('aiEmailGenBtn');
+    const area = document.getElementById('aiEmailDraftArea');
+    const textarea = document.getElementById('aiEmailDraftText');
+    const type = parseInt(document.getElementById('aiEmailType')?.value || '2');
+    const context = document.getElementById('aiEmailContext')?.value?.trim() || '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ai-spinner"></span> Generating...'; }
+    try {
+        const draft = await AITaskAssist.emailDraft(clientName, type, context);
+        if (textarea) textarea.value = draft;
+        if (area) area.style.display = '';
+        showToast('Email draft generated', 'success');
+    } catch (err) {
+        showToast('Draft failed: ' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '&#10024; Generate Draft'; }
+    }
+}
+
 function renderClientFullPage(clientId) {
     State.selectedId = clientId;
     State.pendingChanges = {};
@@ -11818,6 +12290,11 @@ function renderClientFullPage(clientId) {
             <h3>&#128221; Summary <span class="edit-icon" onclick="EditManager.editSummary('${c.id}', this.closest('.client-detail-summary').querySelector('.summary-text'))" title="Edit summary">&#9998;</span></h3>
             <div class="summary-text" data-editable onclick="event.stopPropagation();EditManager.editSummary('${c.id}', this)">${c.summary || '<span style="color:var(--text-muted);font-style:italic">No summary — click to add</span>'}</div>
         </div>
+
+        ${AITaskAssist.isAvailable() ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+            <button class="btn-ai" onclick="openMeetingPrepModal('${c.name.replace(/'/g,"\\'")}')">&#128203; AI Prep Brief</button>
+            <button class="btn-ai" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}')">&#128231; Draft Email</button>
+        </div>` : ''}
 
         <div class="client-detail-metrics">
             <div class="detail-metric-card">
@@ -12276,6 +12753,32 @@ function importSelectedFireflies(meetingId) {
     if (checked.length === 0) return;
     const count = FirefliesSync.importSelected(checked);
     if (count > 0) renderPlannerPage();
+}
+
+/* ---- AI Natural Language Search ---- */
+async function runAISearch() {
+    const input = document.getElementById('aiNlSearchInput');
+    const results = document.getElementById('aiSearchResults');
+    const query = input?.value?.trim();
+    if (!query || !results) return;
+    results.style.display = '';
+    results.innerHTML = `<div class="ai-card" style="margin-bottom:16px;"><div class="ai-card-loading ai-shimmer">Thinking...</div></div>`;
+    try {
+        const answer = await AITaskAssist.nlSearch(query);
+        results.innerHTML = `<div class="ai-card" style="margin-bottom:16px;">
+            <div class="ai-card-header"><span>&#10024; AI Answer</span><button class="btn-ai" onclick="document.getElementById('aiSearchResults').style.display='none'" style="font-size:10px;padding:3px 8px;">Dismiss</button></div>
+            <div class="ai-card-content">${answer.replace(/\n/g, '<br>')}</div>
+        </div>`;
+        // Show search history
+        if (AITaskAssist._nlSearchHistory.length > 1) {
+            let histHTML = '<div style="font-size:10px;color:var(--text-muted);margin-top:6px;">Recent: ';
+            histHTML += AITaskAssist._nlSearchHistory.slice(1, 4).map(h => `<a href="#" onclick="event.preventDefault();document.getElementById('aiNlSearchInput').value='${h.query.replace(/'/g,"\\'")}';runAISearch();" style="color:var(--accent-purple-light);text-decoration:none;margin-right:8px;">${h.query.substring(0,30)}${h.query.length>30?'...':''}</a>`).join('');
+            histHTML += '</div>';
+            results.innerHTML += histHTML;
+        }
+    } catch (err) {
+        results.innerHTML = `<div class="ai-card" style="margin-bottom:16px;"><div class="ai-card-content"><span style="color:var(--rag-red);">&#9888; ${err.message}</span></div></div>`;
+    }
 }
 
 function renderPlannerPage() {
@@ -12739,8 +13242,19 @@ function renderPlannerPage() {
     }).join('');
 
     // ---- RENDER FULL PAGE ----
+    // AI Search bar
+    const aiSearchHTML = AITaskAssist.isAvailable() ? `
+        <div class="ai-search-bar" style="margin-bottom:16px;">
+            <span style="font-size:14px;">&#10024;</span>
+            <input type="text" id="aiNlSearchInput" placeholder="Ask anything about your portfolio..." onkeydown="if(event.key==='Enter')runAISearch()">
+            <button class="ai-search-btn" onclick="runAISearch()">Ask AI</button>
+        </div>
+        <div id="aiSearchResults" style="display:none;"></div>` : '';
+
     container.innerHTML = `
         <h2 style="font-size:22px;font-weight:700;color:var(--text-white);margin-bottom:20px;">&#128467; Planner & To-Do</h2>
+
+        ${aiSearchHTML}
 
         <!-- Today's Calendar -->
         <div class="calendar-section">
@@ -14522,6 +15036,32 @@ document.addEventListener('click', (e) => {
         KPIInsight.close();
     }
 });
+
+/* ---- AI Weekly Summary for ShareSnapshot ---- */
+async function generateWeeklyAISummary() {
+    const btn = document.getElementById('btnAISummary');
+    if (!AITaskAssist.isAvailable()) { showToast('Set OpenAI key in Settings to use AI Summary', 'warning'); return; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ai-spinner" style="display:inline-block;width:12px;height:12px;border:2px solid rgba(107,48,255,0.2);border-top-color:var(--accent-purple-light);border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:4px;"></span> Generating...'; }
+    try {
+        const narrative = await AITaskAssist.weeklyInsight();
+        // Insert AI summary at top of snapshot body
+        const body = document.getElementById('shareSnapshotBody');
+        if (body) {
+            const existing = document.getElementById('aiWeeklySummaryBlock');
+            if (existing) existing.remove();
+            const div = document.createElement('div');
+            div.id = 'aiWeeklySummaryBlock';
+            div.style.cssText = 'background:linear-gradient(135deg,rgba(107,48,255,0.08),rgba(87,155,252,0.05));border:1px solid rgba(107,48,255,0.2);border-radius:8px;padding:14px 18px;margin-bottom:16px;position:relative;';
+            div.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--accent-purple-light);margin-bottom:6px;">&#10024; AI Executive Narrative</div><div style="font-size:12.5px;color:var(--text-secondary);line-height:1.65;" contenteditable="true">${narrative}</div>`;
+            body.insertBefore(div, body.firstChild);
+        }
+        showToast('AI summary generated', 'success');
+    } catch (err) {
+        showToast('AI summary failed: ' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '&#10024; AI Summary'; }
+    }
+}
 
 /* ================================================================
    SHARE SNAPSHOT
