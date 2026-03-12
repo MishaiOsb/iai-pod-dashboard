@@ -3418,39 +3418,10 @@ input, textarea, select { font-family: inherit; outline: none; }
         <h2 style="margin-bottom:8px;">Welcome to Your Pod Dashboard</h2>
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:24px;" id="splashPodText"></p>
 
-        <div style="text-align:left;margin-bottom:24px;">
-            <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;">
-                <span style="font-size:28px;flex-shrink:0;">&#128236;</span>
-                <div>
-                    <strong style="color:var(--text-primary);font-size:14px;">Live Communications Follow-Up</strong>
-                    <p style="color:var(--text-muted);font-size:12px;margin-top:4px;line-height:1.5;">
-                        Connect your <strong>Outlook</strong> via Settings to see live email sync with your clients.
-                        This requires an MS Graph access token with <strong>Mail.Read</strong> scope.
-                        Tokens expire after ~1 hour — the dashboard caches data and falls back gracefully.
-                    </p>
-                </div>
-            </div>
-            <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;">
-                <span style="font-size:28px;flex-shrink:0;">&#128247;</span>
-                <div>
-                    <strong style="color:var(--text-primary);font-size:14px;">Snapshot Fallback</strong>
-                    <p style="color:var(--text-muted);font-size:12px;margin-top:4px;line-height:1.5;">
-                        Without Outlook connected, Communications Follow-Up shows a static snapshot (if available for your pod).
-                        You can still use all other dashboard features — Outlook is fully optional.
-                    </p>
-                </div>
-            </div>
-            <div style="display:flex;align-items:flex-start;gap:12px;">
-                <span style="font-size:28px;flex-shrink:0;">&#128274;</span>
-                <div>
-                    <strong style="color:var(--text-primary);font-size:14px;">Your Data is Private &amp; Local</strong>
-                    <p style="color:var(--text-muted);font-size:12px;margin-top:4px;line-height:1.5;">
-                        Targets, To-Do items, Knowledge Base docs, and local edits are stored in your browser
-                        and namespaced to your pod. They persist across sessions but are not shared with other users.
-                    </p>
-                </div>
-            </div>
-        </div>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:28px;line-height:1.6;">
+            Track your clients, communications, and tasks — all in one place.<br>
+            Connect Outlook, Teams, or Slack via <strong>Settings</strong> for live sync (optional).
+        </p>
 
         <button class="btn-primary" onclick="dismissSplash()" style="width:100%;padding:14px;">
             Got It &mdash; Open Dashboard
@@ -5445,11 +5416,12 @@ const TaskContextEngine = {
         if (!CALENDAR_DATA || !CALENDAR_DATA.events || !clientName) return [];
         const now = Date.now();
         const cutoff = now + 48 * 60 * 60 * 1000;
+        const recentCutoff = now - 24 * 60 * 60 * 1000; // also include meetings from last 24h
         const nameLower = clientName.toLowerCase();
         return CALENDAR_DATA.events
             .filter(e => {
                 const start = new Date(e.start).getTime();
-                return start > now && start < cutoff && e.subject.toLowerCase().includes(nameLower);
+                return start > recentCutoff && start < cutoff && e.subject.toLowerCase().includes(nameLower);
             })
             .map(e => ({
                 subject: e.subject,
@@ -10762,15 +10734,20 @@ function getEffectiveEmailStatus(clientName) {
         return 'meeting-scheduled';
     }
 
-    // If no email data at all, rely on Teams data
+    // If no email data at all, rely on Teams + Slack data
     if (!ed) {
-        const teamsNewest = Math.min(
+        const sd = SLACK_DATA.clients?.[clientName];
+        const slackDaysSince = sd?.lastMessageDate
+            ? Math.floor((Date.now() - new Date(sd.lastMessageDate).getTime()) / 86400000)
+            : Infinity;
+        const commsNewest = Math.min(
             teamsDaysSinceMyMsg ?? Infinity,
-            teamsDaysSinceTheirMsg ?? Infinity
+            teamsDaysSinceTheirMsg ?? Infinity,
+            slackDaysSince
         );
-        if (teamsNewest === Infinity) return null; // no Teams data either
-        if (teamsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
-        if (teamsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
+        if (commsNewest === Infinity) return null; // no comms data at all
+        if (commsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
+        if (commsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
         return 'stale';
     }
     if (ed.discontinued) return 'discontinued';
@@ -10809,17 +10786,23 @@ function getEffectiveEmailStatus(clientName) {
         }
     }
 
-    // Override with Teams data: if email says follow-up needed but Teams is recent, suppress
+    // Override with Teams/Slack data: if email says follow-up needed but comms are recent, suppress
     if (emailStatus === 'stale' || emailStatus === 'no-recent' || emailStatus === 'awaiting' || emailStatus === 'needs-response') {
         const teamsNewest = Math.min(
             teamsDaysSinceMyMsg ?? Infinity,
             teamsDaysSinceTheirMsg ?? Infinity
         );
-        if (teamsNewest !== Infinity) {
-            // Teams activity within follow-up window — communication is active, no follow-up needed
-            if (teamsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
-            // Teams activity is aging but exists — show as teams-stale so user sees a follow-up prompt
-            if (teamsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
+        // Check Slack data too
+        const sd = SLACK_DATA.clients?.[clientName];
+        const slackDaysSince = sd?.lastMessageDate
+            ? Math.floor((Date.now() - new Date(sd.lastMessageDate).getTime()) / 86400000)
+            : Infinity;
+        const commsNewest = Math.min(teamsNewest, slackDaysSince);
+        if (commsNewest !== Infinity) {
+            // Recent activity within follow-up window — communication is active, no follow-up needed
+            if (commsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
+            // Activity is aging but exists — show as teams-stale so user sees a follow-up prompt
+            if (commsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
         }
     }
 
