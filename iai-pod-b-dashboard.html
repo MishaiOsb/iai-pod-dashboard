@@ -3326,72 +3326,72 @@ input, textarea, select { font-family: inherit; outline: none; }
             Your token is stored locally in your browser only.
         </div>
 
-        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
-            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#128236; Connect Outlook <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span></h3>
-            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Paste an MS Graph access token to sync live email data. Without this, snapshot data is used.</p>
-            <div class="setup-input-group">
-                <label>Outlook Token</label>
-                <input type="password" id="outlookTokenInput" placeholder="EwB4A8l6BAAURSN...">
-                <button class="toggle-vis" onclick="const i=document.getElementById('outlookTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
-            </div>
-            <div class="setup-hint" style="margin-top:8px;">
-                Get your token: <a href="https://developer.microsoft.com/en-us/graph/graph-explorer" target="_blank" style="color:var(--accent-purple-light);">Graph Explorer</a> &#8594; Sign in &#8594; Access token tab &#8594; Copy<br>
-                Requires <strong>Mail.Read</strong> and <strong>Calendars.Read</strong> scopes. Token expires after ~1 hour — dashboard falls back to cached data.
-            </div>
-        </div>
+        <!-- Collapsible optional integrations -->
+        <div style="border-top:1px solid var(--border-default);margin:24px 0 0;padding-top:16px;">
+            <button onclick="const c=document.getElementById('setupAdvanced');const a=this.querySelector('.setup-chevron');c.style.display=c.style.display==='none'?'block':'none';a.style.transform=c.style.display==='none'?'':'rotate(180deg)'" style="background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;margin:0 auto;padding:4px 8px;border-radius:6px;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">
+                Optional Integrations &amp; Settings <span class="setup-chevron" style="font-size:10px;transition:transform 0.2s;">&#9660;</span>
+            </button>
+            <div id="setupAdvanced" style="display:none;">
 
-        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
-            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">🎙️ Connect Fireflies <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span></h3>
-            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Paste a Fireflies API key to sync meeting transcripts and extract action items into your task manager.</p>
-            <div class="setup-input-group">
-                <label>Fireflies API Key</label>
-                <input type="password" id="firefliesTokenInput" placeholder="your-fireflies-api-key...">
-                <button class="toggle-vis" onclick="const i=document.getElementById('firefliesTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
-            </div>
-            <div class="setup-hint" style="margin-top:8px;">
-                Get your key: <a href="https://app.fireflies.ai/integrations/custom/fireflies" target="_blank" style="color:var(--accent-purple-light);">Fireflies Integrations</a> &#8594; API Key &#8594; Copy<br>
-                Syncs the last 10 meeting transcripts and extracts action items automatically.
-            </div>
-        </div>
+                <div style="border-top:1px solid var(--border-default);margin:16px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128236; Outlook</h3>
+                    <div class="setup-input-group">
+                        <label>Outlook Token</label>
+                        <input type="password" id="outlookTokenInput" placeholder="EwB4A8l6BAAURSN...">
+                        <button class="toggle-vis" onclick="const i=document.getElementById('outlookTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                    </div>
+                    <div class="setup-hint" style="margin-top:4px;">
+                        <a href="https://developer.microsoft.com/en-us/graph/graph-explorer" target="_blank" style="color:var(--accent-purple-light);">Graph Explorer</a> &#8594; Sign in &#8594; Access token tab &#8594; Copy
+                    </div>
+                </div>
 
-        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
-            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#128172; Connect Slack <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(Optional)</span></h3>
-            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;">Connect Slack to sync channel messages, track agent updates, and monitor engineering progress alongside Monday.com data.</p>
-            <div class="setup-input-group">
-                <label>Bot Token</label>
-                <input type="password" id="slackTokenInput" placeholder="xoxb-your-bot-token...">
-                <button class="toggle-vis" onclick="const i=document.getElementById('slackTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
-            </div>
-            <div class="setup-input-group" style="margin-top:8px;">
-                <label>Proxy URL</label>
-                <input type="text" id="slackProxyInput" placeholder="https://your-worker.your-subdomain.workers.dev">
-            </div>
-            <div style="display:flex;gap:8px;margin-top:10px;">
-                <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="connectSlack()">Connect Slack</button>
-                <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="disconnectSlack()">Disconnect</button>
-                <button class="btn-primary" style="background:var(--bg-elevated);color:var(--accent-purple-light);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="showSlackSetupGuide()">Setup Guide</button>
-            </div>
-            <div id="slackConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
-            <div class="setup-hint" style="margin-top:8px;">
-                Requires a Slack Bot Token (<strong>xoxb-</strong>) and a Cloudflare Worker proxy URL.<br>
-                Click <strong>Setup Guide</strong> for step-by-step instructions to create the Slack App and deploy the proxy.
-            </div>
-        </div>
+                <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#127908; Fireflies</h3>
+                    <div class="setup-input-group">
+                        <label>Fireflies API Key</label>
+                        <input type="password" id="firefliesTokenInput" placeholder="your-fireflies-api-key...">
+                        <button class="toggle-vis" onclick="const i=document.getElementById('firefliesTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                    </div>
+                    <div class="setup-hint" style="margin-top:4px;">
+                        <a href="https://app.fireflies.ai/integrations/custom/fireflies" target="_blank" style="color:var(--accent-purple-light);">Fireflies Integrations</a> &#8594; API Key &#8594; Copy
+                    </div>
+                </div>
 
-        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
-            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#128225; Connection Mode</h3>
-            <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px;">Choose how the dashboard connects to data sources.</p>
-            <div class="mode-toggle-group" id="modeToggleGroup">
-                <button class="mode-toggle-btn active" data-mode="online" onclick="setConnectionMode('online')">&#9989; Online — Live sync with monday.com &amp; Outlook</button>
-                <button class="mode-toggle-btn" data-mode="offline" onclick="setConnectionMode('offline')">&#128268; Offline / Standalone — Use local &amp; snapshot data only</button>
-            </div>
-            <p class="setup-hint" id="modeHint" style="margin-top:4px;"></p>
-        </div>
+                <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128172; Slack</h3>
+                    <div class="setup-input-group">
+                        <label>Bot Token</label>
+                        <input type="password" id="slackTokenInput" placeholder="xoxb-your-bot-token...">
+                        <button class="toggle-vis" onclick="const i=document.getElementById('slackTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                    </div>
+                    <div class="setup-input-group" style="margin-top:8px;">
+                        <label>Proxy URL</label>
+                        <input type="text" id="slackProxyInput" placeholder="https://your-worker.your-subdomain.workers.dev">
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="connectSlack()">Connect</button>
+                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="disconnectSlack()">Disconnect</button>
+                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--accent-purple-light);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="showSlackSetupGuide()">Setup Guide</button>
+                    </div>
+                    <div id="slackConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
+                </div>
 
-        <div style="border-top:1px solid var(--border-default);margin:24px 0 16px;padding-top:16px;">
-            <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">&#127760; Switch Pod</h3>
-            <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;" id="currentPodInfo">No pod selected yet</p>
-            <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:13px;padding:8px 16px;" onclick="switchPod()">Change Pod</button>
+                <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128225; Connection Mode</h3>
+                    <div class="mode-toggle-group" id="modeToggleGroup">
+                        <button class="mode-toggle-btn active" data-mode="online" onclick="setConnectionMode('online')">&#9989; Online</button>
+                        <button class="mode-toggle-btn" data-mode="offline" onclick="setConnectionMode('offline')">&#128268; Offline</button>
+                    </div>
+                    <p class="setup-hint" id="modeHint" style="margin-top:4px;"></p>
+                </div>
+
+                <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#127760; Switch Pod</h3>
+                    <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px;" id="currentPodInfo">No pod selected yet</p>
+                    <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="switchPod()">Change Pod</button>
+                </div>
+
+            </div>
         </div>
 
     </div>
