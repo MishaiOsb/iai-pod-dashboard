@@ -2269,7 +2269,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 .file-parsing-state .spinner {
     display: inline-block; width: 18px; height: 18px;
     border: 2px solid var(--border-default); border-top-color: var(--accent-purple);
-    border-radius: 50%; animation: aiSpin 0.8s linear infinite; margin-bottom: 6px;
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 6px;
 }
 .file-parsing-state .parse-detail { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
 .task-prompt-textarea.file-drag-over { border-color: var(--accent-purple) !important; background: rgba(107,48,255,0.04); }
@@ -5359,7 +5359,7 @@ const AutoTodoGen = {
 
         let generated = 0;
 
-        CALENDAR_DATA.events.forEach(event => {
+        (CALENDAR_DATA.events || []).forEach(event => {
             if (!event.subject || !event.start || !event.id) return;
 
             // Get the event date
@@ -5750,30 +5750,42 @@ const AITaskAssist = {
         const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
         if (!key || !proxy) throw new Error('AI not configured');
 
-        const url = proxy + '/openai/chat/completions';
-        const resp = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-OpenAI-Key': key
-            },
-            body: JSON.stringify({
-                model: opts.model || 'gpt-4o-mini',
-                messages,
-                temperature: opts.temperature ?? 0.3,
-                max_tokens: opts.max_tokens || 1024,
-                response_format: { type: 'json_object' }
-            })
-        });
-        if (!resp.ok) {
-            const errText = await resp.text().catch(() => '');
-            throw new Error(`API ${resp.status}: ${errText.substring(0, 200)}`);
-        }
-        const data = await resp.json();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
         try {
-            return JSON.parse(data.choices[0].message.content);
+            const url = proxy + '/openai/chat/completions';
+            const resp = await fetch(url, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-OpenAI-Key': key
+                },
+                body: JSON.stringify({
+                    model: opts.model || 'gpt-4o-mini',
+                    messages,
+                    temperature: opts.temperature ?? 0.3,
+                    max_tokens: opts.max_tokens || 512,
+                    response_format: { type: 'json_object' }
+                })
+            });
+            if (!resp.ok) {
+                const errText = await resp.text().catch(() => '');
+                throw new Error(`API ${resp.status}: ${errText.substring(0, 200)}`);
+            }
+            const data = await resp.json();
+            const content = data?.choices?.[0]?.message?.content;
+            if (!content) throw new Error('Empty AI response');
+            try {
+                return JSON.parse(content);
+            } catch (e) {
+                throw new Error('Failed to parse AI response');
+            }
         } catch (e) {
-            throw new Error('Failed to parse AI response');
+            if (e.name === 'AbortError') throw new Error('Request timed out (30s)');
+            throw e;
+        } finally {
+            clearTimeout(timeout);
         }
     },
 
@@ -5783,12 +5795,13 @@ const AITaskAssist = {
         const systemPrompt = isTranscript
             ? this._transcriptPrompt(clientNames)
             : this._taskBreakdownPrompt(clientNames);
+        const inputCap = isTranscript ? 12000 : 6000;
 
         const result = await this._openaiChat([
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: text.substring(0, 6000) }
+            { role: 'user', content: text.substring(0, inputCap) }
         ]);
-        return result.tasks || [];
+        return result.tasks || result.actions || [];
     },
 
     _taskBreakdownPrompt(clientNames) {
@@ -6526,7 +6539,7 @@ const CalendarSync = {
 
         this._syncing = false;
         // Re-render planner if it's currently visible
-        if (document.getElementById('plannerContent')?.innerHTML) {
+        if (Router.current === 'planner') {
             renderPlannerPage();
         }
         this._updateSyncStatusUI();
@@ -7902,7 +7915,7 @@ const ActivityFeed = {
         });
 
         // 2. Calendar events
-        if (typeof CALENDAR_DATA !== 'undefined') {
+        if (typeof CALENDAR_DATA !== 'undefined' && CALENDAR_DATA.events) {
             CALENDAR_DATA.events.forEach(e => {
                 const seedId = 'seed_cal_' + e.id;
                 if (existingIds.has(seedId)) return;
@@ -10869,11 +10882,9 @@ function getEffectiveEmailStatus(clientName) {
     const teamsDaysSinceMyMsg = teamsLastSentByMe ? Math.floor((Date.now() - teamsLastSentByMe.getTime()) / 86400000) : null;
     const teamsDaysSinceTheirMsg = teamsLastReceived ? Math.floor((Date.now() - teamsLastReceived.getTime()) / 86400000) : null;
 
-    // Calendar meeting override — upcoming meeting within 48h negates all follow-up
+    // Calendar meeting override — checked later, only overrides non-urgent statuses
     const upcomingMeetings = TaskContextEngine.getUpcomingClientMeetings(clientName);
-    if (upcomingMeetings && upcomingMeetings.length > 0) {
-        return 'meeting-scheduled';
-    }
+    const hasMeeting = upcomingMeetings && upcomingMeetings.length > 0;
 
     // If no email data at all, rely on Teams + Slack data
     if (!ed) {
@@ -10886,7 +10897,8 @@ function getEffectiveEmailStatus(clientName) {
             teamsDaysSinceTheirMsg ?? Infinity,
             slackDaysSince
         );
-        if (commsNewest === Infinity) return null; // no comms data at all
+        if (commsNewest === Infinity) return hasMeeting ? 'meeting-scheduled' : null;
+        if (hasMeeting) return 'meeting-scheduled';
         if (commsNewest < CONFIG.TEAMS_FOLLOWUP_DAYS) return 'teams-active';
         if (commsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
         return 'stale';
@@ -10945,6 +10957,11 @@ function getEffectiveEmailStatus(clientName) {
             // Activity is aging but exists — show as teams-stale so user sees a follow-up prompt
             if (commsNewest < CONFIG.STALE_CRITICAL_DAYS) return 'teams-stale';
         }
+    }
+
+    // Meeting override — suppress follow-up for non-urgent statuses only
+    if (hasMeeting && emailStatus !== 'needs-response' && emailStatus !== 'within-grace') {
+        return 'meeting-scheduled';
     }
 
     return emailStatus;
@@ -13926,6 +13943,9 @@ async function testOpenAI() {
     const status = document.getElementById('openaiConnStatus');
     const key = keyInput?.value?.trim();
     if (!key) { status.textContent = 'Enter an API key first'; status.style.color = 'var(--rag-red)'; return; }
+    if (testOpenAI._busy) return;
+    testOpenAI._busy = true;
+    const prevKey = AITaskAssist.getKey();
     AITaskAssist.setKey(key);
     status.textContent = 'Testing\u2026';
     status.style.color = 'var(--text-muted)';
@@ -13935,9 +13955,11 @@ async function testOpenAI() {
         status.style.color = 'var(--rag-green)';
         showToast('OpenAI connected', 'success');
     } else {
+        AITaskAssist.setKey(prevKey);
         status.textContent = '\u274C ' + (result.error || 'Connection failed');
         status.style.color = 'var(--rag-red)';
     }
+    testOpenAI._busy = false;
 }
 
 function clearOpenAI() {
@@ -15830,15 +15852,15 @@ function showSlackSetupGuide() {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\\//, '');
 
-    // ---- OpenAI proxy route ----
-    if (path.startsWith('openai/')) {
+    // ---- OpenAI proxy route (whitelisted to chat/completions only) ----
+    if (path === 'openai/chat/completions') {
       const apiKey = request.headers.get('X-OpenAI-Key');
       if (!apiKey) {
         return new Response(JSON.stringify({ error: 'missing_key' }), {
           status: 401, headers: { ...headers, 'Content-Type': 'application/json' }
         });
       }
-      const openaiPath = path.replace('openai/', '');
+      const openaiPath = 'chat/completions';
       const openaiResp = await fetch('https://api.openai.com/v1/' + openaiPath, {
         method: 'POST',
         headers: {
