@@ -2289,6 +2289,18 @@ input, textarea, select { font-family: inherit; outline: none; }
     background: var(--accent-purple); color: #fff;
 }
 .task-prompt-actions .btn-add-tasks:hover { background: var(--accent-purple-light); }
+.task-prompt-actions .btn-ai-assist {
+    background: linear-gradient(135deg, #6B30FF, #8B5CF6); color: #fff; border: none;
+    border-radius: 8px; padding: 8px 16px; font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; transition: all 0.2s;
+}
+.task-prompt-actions .btn-ai-assist:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.task-prompt-actions .btn-ai-assist:disabled { opacity: 0.35; cursor: not-allowed; filter: none; transform: none; }
+.task-prompt-actions .btn-ai-assist .ai-spinner {
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+    border-radius: 50%; width: 12px; height: 12px; display: inline-block;
+    animation: spin 0.6s linear infinite;
+}
 .btn-open-prompt {
     display: flex; align-items: center; gap: 8px; padding: 10px 20px;
     background: var(--accent-purple); color: #fff; border: none;
@@ -3377,6 +3389,23 @@ input, textarea, select { font-family: inherit; outline: none; }
                 </div>
 
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#10024; AI Task Assistant</h3>
+                    <div class="setup-input-group">
+                        <label>OpenAI API Key</label>
+                        <input type="password" id="openaiKeyInput" placeholder="sk-...">
+                        <button class="toggle-vis" onclick="const i=document.getElementById('openaiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                    </div>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="testOpenAI()">Test Connection</button>
+                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="clearOpenAI()">Clear Key</button>
+                    </div>
+                    <div id="openaiConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
+                    <div class="setup-hint" style="margin-top:4px;">
+                        <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-purple-light);">OpenAI Platform</a> &#8594; API Keys &#8594; Create secret key. Uses gpt-4o-mini (~$0.15/1M tokens). Key does not expire.
+                    </div>
+                </div>
+
+                <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
                     <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128225; Connection Mode</h3>
                     <div class="mode-toggle-group" id="modeToggleGroup">
                         <button class="mode-toggle-btn active" data-mode="online" onclick="setConnectionMode('online')">&#9989; Online</button>
@@ -3719,6 +3748,7 @@ input, textarea, select { font-family: inherit; outline: none; }
             </div>
             <div class="task-prompt-actions">
                 <button class="btn-cancel" onclick="closeTaskPrompt()">Cancel</button>
+                <button class="btn-ai-assist" id="taskAiAssistBtn" onclick="aiAssistTasks()" title="Use AI to break down tasks or extract actions from transcript">&#10024; AI Assist</button>
                 <button class="btn-add-tasks" id="taskPromptSubmit" onclick="submitTaskPrompt()">Add Tasks</button>
             </div>
         </div>
@@ -5696,6 +5726,117 @@ const TranscriptParser = {
         }
         return turns;
     },
+};
+
+/* ================================================================
+   AI TASK ASSISTANT — OpenAI-powered task breakdown & transcript extraction
+   Uses the Cloudflare Worker proxy (same as Slack) to call OpenAI API.
+   ================================================================ */
+const AITaskAssist = {
+    _keyLs: 'iai_openai_key',
+    _sk() { return UserSession.podKey(this._keyLs); },
+
+    getKey()   { return localStorage.getItem(this._sk()) || ''; },
+    setKey(k)  { localStorage.setItem(this._sk(), k || ''); },
+    hasKey()   { return !!this.getKey(); },
+    clearKey() { localStorage.removeItem(this._sk()); },
+
+    isAvailable() {
+        return this.hasKey() && !!SlackSync.getProxy();
+    },
+
+    async _openaiChat(messages, opts = {}) {
+        const key = this.getKey();
+        const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
+        if (!key || !proxy) throw new Error('AI not configured');
+
+        const url = proxy + '/openai/chat/completions';
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-OpenAI-Key': key
+            },
+            body: JSON.stringify({
+                model: opts.model || 'gpt-4o-mini',
+                messages,
+                temperature: opts.temperature ?? 0.3,
+                max_tokens: opts.max_tokens || 1024,
+                response_format: { type: 'json_object' }
+            })
+        });
+        if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            throw new Error(`API ${resp.status}: ${errText.substring(0, 200)}`);
+        }
+        const data = await resp.json();
+        try {
+            return JSON.parse(data.choices[0].message.content);
+        } catch (e) {
+            throw new Error('Failed to parse AI response');
+        }
+    },
+
+    async process(text) {
+        const isTranscript = TranscriptParser.isTranscript(text);
+        const clientNames = (State.clients || []).map(c => c.name).join(', ');
+        const systemPrompt = isTranscript
+            ? this._transcriptPrompt(clientNames)
+            : this._taskBreakdownPrompt(clientNames);
+
+        const result = await this._openaiChat([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text.substring(0, 6000) } // cap input size
+        ]);
+        return result.tasks || [];
+    },
+
+    _taskBreakdownPrompt(clientNames) {
+        return `You are a task breakdown assistant for an account management team at a digital agency called ImplementAI. The user manages client accounts.
+
+Known client names: ${clientNames || 'unknown'}
+
+Given the user's input, break it into specific, actionable subtasks. Each task should:
+- Start with an action verb (Chase, Send, Review, Prepare, Update, Check, Schedule, Draft, etc.)
+- Be concrete and completable in one sitting
+- Include the client name if relevant
+- Include priority hints using !high, !medium, or !low if obviously warranted
+- Include date hints using @today, @tomorrow, @monday etc. if timing is implied
+
+Respond with JSON: { "tasks": ["task line 1", "task line 2", ...] }
+
+Keep tasks practical. If the input is already a clear single task, return it as-is.
+Return 2-8 subtasks typically. Never more than 12.`;
+    },
+
+    _transcriptPrompt(clientNames) {
+        return `You are an action-item extractor for meeting transcripts. The user manages client accounts at ImplementAI, a digital agency.
+
+Known client names: ${clientNames || 'unknown'}
+
+Extract all actionable tasks, commitments, and follow-ups from this transcript. For each:
+- Start with an action verb
+- Include WHO is responsible if mentioned
+- Include the client name if identifiable
+- Ignore small talk, greetings, status reports with no action
+- Mark urgent items with !high
+
+Respond with JSON: { "tasks": ["task line 1", "task line 2", ...] }
+
+Be thorough but avoid duplicates. Prefer specific actions over vague summaries.`;
+    },
+
+    async testConnection() {
+        try {
+            const result = await this._openaiChat([
+                { role: 'system', content: 'Reply with JSON: {"status":"ok"}' },
+                { role: 'user', content: 'ping' }
+            ], { max_tokens: 20 });
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    }
 };
 
 /* ================================================================
@@ -13096,6 +13237,14 @@ function openTaskPrompt() {
         if (ffPanel) ffPanel.style.display = 'none';
     }
 
+    // AI Assist button state
+    const aiBtn = document.getElementById('taskAiAssistBtn');
+    if (aiBtn) {
+        const available = AITaskAssist.isAvailable();
+        aiBtn.disabled = !available;
+        aiBtn.title = available ? 'Use AI to break down tasks or extract actions from transcript' : 'Set OpenAI key and proxy URL in Settings to enable AI Assist';
+    }
+
     // Listen for typing — debounced preview
     const textarea = document.getElementById('taskPromptText');
     textarea.focus();
@@ -13740,6 +13889,64 @@ function updateTaskPreview() {
             <span class="tpi-date">${dateLabel}</span>
         </div>${contextRow}${reasonLine}${dupWarn}`;
     }).join('');
+}
+
+async function aiAssistTasks() {
+    const textarea = document.getElementById('taskPromptText');
+    const text = textarea.value.trim();
+    if (!text) { showToast('Type something first', 'error'); return; }
+    if (!AITaskAssist.isAvailable()) {
+        showToast('Set your OpenAI key & proxy in Settings to use AI assist', 'error');
+        return;
+    }
+    const btn = document.getElementById('taskAiAssistBtn');
+    const origHTML = btn.innerHTML;
+    btn.innerHTML = '<span class="ai-spinner"></span> Processing\u2026';
+    btn.disabled = true;
+    try {
+        const tasks = await AITaskAssist.process(text);
+        if (!tasks || tasks.length === 0) {
+            showToast('AI found no actionable tasks \u2014 try rephrasing', 'error');
+            return;
+        }
+        textarea.value = tasks.join('\n');
+        updateTaskPreview();
+        showToast(`AI generated ${tasks.length} task${tasks.length !== 1 ? 's' : ''} \u2014 review & click Add Tasks`, 'success');
+    } catch (err) {
+        console.error('[AITaskAssist]', err);
+        showToast('AI failed: ' + (err.message || 'unknown error'), 'error');
+    } finally {
+        btn.innerHTML = origHTML;
+        btn.disabled = false;
+    }
+}
+
+async function testOpenAI() {
+    const keyInput = document.getElementById('openaiKeyInput');
+    const status = document.getElementById('openaiConnStatus');
+    const key = keyInput?.value?.trim();
+    if (!key) { status.textContent = 'Enter an API key first'; status.style.color = 'var(--rag-red)'; return; }
+    AITaskAssist.setKey(key);
+    status.textContent = 'Testing\u2026';
+    status.style.color = 'var(--text-muted)';
+    const result = await AITaskAssist.testConnection();
+    if (result.ok) {
+        status.textContent = '\u2705 Connected to OpenAI';
+        status.style.color = 'var(--rag-green)';
+        showToast('OpenAI connected', 'success');
+    } else {
+        status.textContent = '\u274C ' + (result.error || 'Connection failed');
+        status.style.color = 'var(--rag-red)';
+    }
+}
+
+function clearOpenAI() {
+    AITaskAssist.clearKey();
+    const keyInput = document.getElementById('openaiKeyInput');
+    const status = document.getElementById('openaiConnStatus');
+    if (keyInput) keyInput.value = '';
+    if (status) { status.textContent = 'Key cleared'; status.style.color = 'var(--text-muted)'; }
+    showToast('OpenAI key removed', 'success');
 }
 
 function submitTaskPrompt() {
@@ -15471,6 +15678,10 @@ function showSetup() {
     if (slackProxyInput) slackProxyInput.value = SlackSync.getProxy() || '';
     const slackStatus = document.getElementById('slackConnStatus');
     if (slackStatus) slackStatus.textContent = SLACK_DATA.connected ? `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched` : '';
+    const openaiKeyInput = document.getElementById('openaiKeyInput');
+    if (openaiKeyInput) openaiKeyInput.value = AITaskAssist.getKey() || '';
+    const openaiStatus = document.getElementById('openaiConnStatus');
+    if (openaiStatus && AITaskAssist.hasKey()) openaiStatus.textContent = 'Key saved';
     // Show current pod info
     const podInfo = document.getElementById('currentPodInfo');
     if (podInfo) {
@@ -15592,6 +15803,7 @@ function showSlackSetupGuide() {
         </ol>
 
         <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Cloudflare Worker Code</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">This proxy handles Slack + OpenAI API calls (CORS). Copy and deploy.</p>
         <div style="position:relative;">
             <pre style="background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;padding:14px;font-size:11px;overflow-x:auto;white-space:pre;line-height:1.6;color:var(--text-primary);max-height:300px;overflow-y:auto;"><code>export default {
   async fetch(request) {
@@ -15605,7 +15817,7 @@ function showSlackSetupGuide() {
     const headers = {
       'Access-Control-Allow-Origin': cors,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-OpenAI-Key',
     };
 
     if (request.method === 'OPTIONS') {
@@ -15616,7 +15828,32 @@ function showSlackSetupGuide() {
     }
 
     const url = new URL(request.url);
-    const method = url.pathname.replace(/^\\//, '');
+    const path = url.pathname.replace(/^\\//, '');
+
+    // ---- OpenAI proxy route ----
+    if (path.startsWith('openai/')) {
+      const apiKey = request.headers.get('X-OpenAI-Key');
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: 'missing_key' }), {
+          status: 401, headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+      const openaiPath = path.replace('openai/', '');
+      const openaiResp = await fetch('https://api.openai.com/v1/' + openaiPath, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey
+        },
+        body: request.body
+      });
+      return new Response(openaiResp.body, {
+        status: openaiResp.status,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // ---- Slack proxy route ----
     const token = request.headers.get('X-Slack-Token');
     if (!token) {
       return new Response(JSON.stringify({ ok: false, error: 'missing_token' }), {
@@ -15625,11 +15862,10 @@ function showSlackSetupGuide() {
     }
 
     const body = await request.json().catch(() => ({}));
-    // Convert JSON to form-urlencoded (Slack API requires this for many methods)
     const form = new URLSearchParams();
     for (const [k, v] of Object.entries(body)) form.append(k, String(v));
 
-    const slackResp = await fetch('https://slack.com/api/' + method, {
+    const slackResp = await fetch('https://slack.com/api/' + path, {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer ' + token,
