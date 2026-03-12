@@ -3688,6 +3688,11 @@ input, textarea, select { font-family: inherit; outline: none; }
                     <span class="conn-svc-name">&#128172; Slack</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
+                <div class="conn-dropdown-row" id="connRow-openai" style="display:none;">
+                    <span class="conn-svc-dot gray"></span>
+                    <span class="conn-svc-name">&#10024; OpenAI</span>
+                    <span class="conn-svc-label gray">Pending</span>
+                </div>
             </div>
         </span>
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
@@ -5954,6 +5959,7 @@ const AITaskAssist = {
             const data = await resp.json();
             const content = data?.choices?.[0]?.message?.content;
             if (!content) throw new Error('Empty AI response');
+            ConnectionStatus.setOpenAI('connected');
             try {
                 return JSON.parse(content);
             } catch (e) {
@@ -5961,6 +5967,7 @@ const AITaskAssist = {
             }
         } catch (e) {
             if (e.name === 'AbortError') throw new Error('Request timed out (30s)');
+            ConnectionStatus.setOpenAI('error');
             throw e;
         } finally {
             clearTimeout(timeout);
@@ -5989,9 +5996,11 @@ const AITaskAssist = {
             const data = await resp.json();
             const content = data?.choices?.[0]?.message?.content;
             if (!content) throw new Error('Empty AI response');
+            ConnectionStatus.setOpenAI('connected');
             return content;
         } catch (e) {
             if (e.name === 'AbortError') throw new Error('Request timed out (45s)');
+            ConnectionStatus.setOpenAI('error');
             throw e;
         } finally { clearTimeout(timeout); }
     },
@@ -6185,8 +6194,10 @@ Be thorough but avoid duplicates. Prefer specific actions over vague summaries.`
                 { role: 'system', content: 'Reply with JSON: {"status":"ok"}' },
                 { role: 'user', content: 'ping' }
             ], { max_tokens: 20 });
+            ConnectionStatus.setOpenAI('connected');
             return { ok: true };
         } catch (err) {
+            ConnectionStatus.setOpenAI('error');
             return { ok: false, error: err.message };
         }
     }
@@ -14482,6 +14493,7 @@ function clearOpenAI() {
     const status = document.getElementById('openaiConnStatus');
     if (keyInput) keyInput.value = '';
     if (status) { status.textContent = 'Key cleared'; status.style.color = 'var(--text-muted)'; }
+    ConnectionStatus.setOpenAI('no-key');
     showToast('OpenAI key removed', 'success');
 }
 
@@ -16497,6 +16509,7 @@ const ConnectionStatus = {
     teams: 'unknown',        // 'connected' | 'syncing' | 'error' | 'no-permission' | 'unknown'
     fireflies: 'unknown',   // 'connected' | 'syncing' | 'error' | 'unknown'
     slack: 'unknown',        // 'connected' | 'syncing' | 'error' | 'unknown'
+    openai: 'unknown',       // 'connected' | 'error' | 'no-key' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
@@ -16504,6 +16517,7 @@ const ConnectionStatus = {
     setTeams(status) { this.teams = status; updateConnectionIndicator(); },
     setFireflies(status) { this.fireflies = status; updateConnectionIndicator(); },
     setSlack(status) { this.slack = status; updateConnectionIndicator(); },
+    setOpenAI(status) { this.openai = status; updateConnectionIndicator(); },
 
     // Consolidated Microsoft status: best of outlook, calendar, teams
     getMicrosoftStatus() {
@@ -16524,7 +16538,8 @@ const ConnectionStatus = {
         const msIssue = (msStatus === 'error' || msStatus === 'token-expired') && OutlookSync.hasToken();
         const firefliesIssue = this.fireflies === 'error' && FirefliesSync.hasToken();
         const slackIssue = this.slack === 'error' && SlackSync.hasToken();
-        if (msIssue || firefliesIssue || slackIssue) return 'issues';
+        const openaiIssue = this.openai === 'error' && AITaskAssist.hasKey();
+        if (msIssue || firefliesIssue || slackIssue || openaiIssue) return 'issues';
         return 'online';
     },
 
@@ -16546,6 +16561,10 @@ const ConnectionStatus = {
         if (SlackSync.hasToken()) {
             const sStatus = this.slack === 'connected' ? 'Connected' : this.slack === 'syncing' ? 'Syncing...' : this.slack === 'error' ? 'Failed' : 'Pending';
             parts.push(`Slack: ${sStatus}`);
+        }
+        if (AITaskAssist.hasKey()) {
+            const aiStatus = this.openai === 'connected' ? 'Connected' : this.openai === 'error' ? 'Failed' : 'Pending';
+            parts.push(`OpenAI: ${aiStatus}`);
         }
         return parts.join('\n');
     }
@@ -16588,6 +16607,9 @@ function updateConnectionIndicator() {
     _updateConnRow('connRow-slack', ConnectionStatus.slack, {
         connected: 'Connected', syncing: 'Syncing...', error: 'Failed', unknown: 'Pending'
     }, !SlackSync.hasToken());
+    _updateConnRow('connRow-openai', ConnectionStatus.openai, {
+        connected: 'Connected', error: 'Failed', 'no-key': 'No key', unknown: 'Pending'
+    }, !AITaskAssist.hasKey());
 }
 
 function _updateConnRow(rowId, status, labelMap, hidden) {
