@@ -3391,17 +3391,17 @@ input, textarea, select { font-family: inherit; outline: none; }
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
                     <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#10024; AI Task Assistant</h3>
                     <div class="setup-input-group">
-                        <label>Gemini API Key</label>
-                        <input type="password" id="geminiKeyInput" placeholder="AIza...">
-                        <button class="toggle-vis" onclick="const i=document.getElementById('geminiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                        <label>OpenAI API Key</label>
+                        <input type="password" id="openaiKeyInput" placeholder="sk-...">
+                        <button class="toggle-vis" onclick="const i=document.getElementById('openaiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
                     </div>
                     <div style="display:flex;gap:8px;margin-top:10px;">
-                        <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="testGemini()">Test Connection</button>
-                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="clearGemini()">Clear Key</button>
+                        <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="testOpenAI()">Test Connection</button>
+                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="clearOpenAI()">Clear Key</button>
                     </div>
-                    <div id="geminiConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
+                    <div id="openaiConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
                     <div class="setup-hint" style="margin-top:4px;">
-                        <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent-purple-light);">Google AI Studio</a> &#8594; Get API Key &#8594; Create. Uses Gemini 2.0 Flash — completely free (15 req/min).
+                        <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-purple-light);">OpenAI Platform</a> &#8594; API Keys &#8594; Create secret key. Uses gpt-4o-mini (~$0.001 per task). Key never expires.
                     </div>
                 </div>
 
@@ -5729,11 +5729,11 @@ const TranscriptParser = {
 };
 
 /* ================================================================
-   AI TASK ASSISTANT — Gemini-powered task breakdown & transcript extraction
-   Uses the Cloudflare Worker proxy (same as Slack) to call Gemini API.
+   AI TASK ASSISTANT — OpenAI-powered task breakdown & transcript extraction
+   Uses the Cloudflare Worker proxy (same as Slack) to call OpenAI API.
    ================================================================ */
 const AITaskAssist = {
-    _keyLs: 'iai_gemini_key',
+    _keyLs: 'iai_openai_key',
     _sk() { return UserSession.podKey(this._keyLs); },
 
     getKey()   { return localStorage.getItem(this._sk()) || ''; },
@@ -5745,26 +5745,24 @@ const AITaskAssist = {
         return this.hasKey() && !!SlackSync.getProxy();
     },
 
-    async _geminiChat(prompt, opts = {}) {
+    async _openaiChat(messages, opts = {}) {
         const key = this.getKey();
         const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
         if (!key || !proxy) throw new Error('AI not configured');
 
-        const model = opts.model || 'gemini-2.0-flash';
-        const url = proxy + '/gemini/' + model + ':generateContent';
+        const url = proxy + '/openai/chat/completions';
         const resp = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Gemini-Key': key
+                'X-OpenAI-Key': key
             },
             body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: opts.temperature ?? 0.3,
-                    maxOutputTokens: opts.maxOutputTokens || 1024,
-                    responseMimeType: 'application/json'
-                }
+                model: opts.model || 'gpt-4o-mini',
+                messages,
+                temperature: opts.temperature ?? 0.3,
+                max_tokens: opts.max_tokens || 1024,
+                response_format: { type: 'json_object' }
             })
         });
         if (!resp.ok) {
@@ -5773,8 +5771,7 @@ const AITaskAssist = {
         }
         const data = await resp.json();
         try {
-            const text = data.candidates[0].content.parts[0].text;
-            return JSON.parse(text);
+            return JSON.parse(data.choices[0].message.content);
         } catch (e) {
             throw new Error('Failed to parse AI response');
         }
@@ -5787,8 +5784,10 @@ const AITaskAssist = {
             ? this._transcriptPrompt(clientNames)
             : this._taskBreakdownPrompt(clientNames);
 
-        const fullPrompt = systemPrompt + '\n\n---\n\nUser input:\n' + text.substring(0, 6000);
-        const result = await this._geminiChat(fullPrompt);
+        const result = await this._openaiChat([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text.substring(0, 6000) }
+        ]);
         return result.tasks || [];
     },
 
@@ -5829,7 +5828,10 @@ Be thorough but avoid duplicates. Prefer specific actions over vague summaries.`
 
     async testConnection() {
         try {
-            const result = await this._geminiChat('Reply with JSON: {"status":"ok"}', { maxOutputTokens: 20 });
+            const result = await this._openaiChat([
+                { role: 'system', content: 'Reply with JSON: {"status":"ok"}' },
+                { role: 'user', content: 'ping' }
+            ], { max_tokens: 20 });
             return { ok: true };
         } catch (err) {
             return { ok: false, error: err.message };
@@ -13240,7 +13242,7 @@ function openTaskPrompt() {
     if (aiBtn) {
         const available = AITaskAssist.isAvailable();
         aiBtn.disabled = !available;
-        aiBtn.title = available ? 'Use AI to break down tasks or extract actions from transcript' : 'Set Gemini key and proxy URL in Settings to enable AI Assist';
+        aiBtn.title = available ? 'Use AI to break down tasks or extract actions from transcript' : 'Set OpenAI key and proxy URL in Settings to enable AI Assist';
     }
 
     // Listen for typing — debounced preview
@@ -13894,7 +13896,7 @@ async function aiAssistTasks() {
     const text = textarea.value.trim();
     if (!text) { showToast('Type something first', 'error'); return; }
     if (!AITaskAssist.isAvailable()) {
-        showToast('Set your Gemini key & proxy in Settings to use AI assist', 'error');
+        showToast('Set your OpenAI key & proxy in Settings to use AI assist', 'error');
         return;
     }
     const btn = document.getElementById('taskAiAssistBtn');
@@ -13919,9 +13921,9 @@ async function aiAssistTasks() {
     }
 }
 
-async function testGemini() {
-    const keyInput = document.getElementById('geminiKeyInput');
-    const status = document.getElementById('geminiConnStatus');
+async function testOpenAI() {
+    const keyInput = document.getElementById('openaiKeyInput');
+    const status = document.getElementById('openaiConnStatus');
     const key = keyInput?.value?.trim();
     if (!key) { status.textContent = 'Enter an API key first'; status.style.color = 'var(--rag-red)'; return; }
     AITaskAssist.setKey(key);
@@ -13929,22 +13931,22 @@ async function testGemini() {
     status.style.color = 'var(--text-muted)';
     const result = await AITaskAssist.testConnection();
     if (result.ok) {
-        status.textContent = '\u2705 Connected to Gemini';
+        status.textContent = '\u2705 Connected to OpenAI';
         status.style.color = 'var(--rag-green)';
-        showToast('Gemini connected', 'success');
+        showToast('OpenAI connected', 'success');
     } else {
         status.textContent = '\u274C ' + (result.error || 'Connection failed');
         status.style.color = 'var(--rag-red)';
     }
 }
 
-function clearGemini() {
+function clearOpenAI() {
     AITaskAssist.clearKey();
-    const keyInput = document.getElementById('geminiKeyInput');
-    const status = document.getElementById('geminiConnStatus');
+    const keyInput = document.getElementById('openaiKeyInput');
+    const status = document.getElementById('openaiConnStatus');
     if (keyInput) keyInput.value = '';
     if (status) { status.textContent = 'Key cleared'; status.style.color = 'var(--text-muted)'; }
-    showToast('Gemini key removed', 'success');
+    showToast('OpenAI key removed', 'success');
 }
 
 function submitTaskPrompt() {
@@ -15676,10 +15678,10 @@ function showSetup() {
     if (slackProxyInput) slackProxyInput.value = SlackSync.getProxy() || '';
     const slackStatus = document.getElementById('slackConnStatus');
     if (slackStatus) slackStatus.textContent = SLACK_DATA.connected ? `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched` : '';
-    const geminiKeyInput = document.getElementById('geminiKeyInput');
-    if (geminiKeyInput) geminiKeyInput.value = AITaskAssist.getKey() || '';
-    const geminiStatus = document.getElementById('geminiConnStatus');
-    if (geminiStatus && AITaskAssist.hasKey()) geminiStatus.textContent = 'Key saved';
+    const openaiKeyInput = document.getElementById('openaiKeyInput');
+    if (openaiKeyInput) openaiKeyInput.value = AITaskAssist.getKey() || '';
+    const openaiStatus = document.getElementById('openaiConnStatus');
+    if (openaiStatus && AITaskAssist.hasKey()) openaiStatus.textContent = 'Key saved';
     // Show current pod info
     const podInfo = document.getElementById('currentPodInfo');
     if (podInfo) {
@@ -15801,7 +15803,7 @@ function showSlackSetupGuide() {
         </ol>
 
         <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Cloudflare Worker Code</h3>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">This proxy handles Slack + Gemini API calls (CORS). Copy and deploy.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">This proxy handles Slack + OpenAI API calls (CORS). Copy and deploy.</p>
         <div style="position:relative;">
             <pre style="background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;padding:14px;font-size:11px;overflow-x:auto;white-space:pre;line-height:1.6;color:var(--text-primary);max-height:300px;overflow-y:auto;"><code>export default {
   async fetch(request) {
@@ -15815,7 +15817,7 @@ function showSlackSetupGuide() {
     const headers = {
       'Access-Control-Allow-Origin': cors,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-Gemini-Key',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-OpenAI-Key',
     };
 
     if (request.method === 'OPTIONS') {
@@ -15828,22 +15830,25 @@ function showSlackSetupGuide() {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\\//, '');
 
-    // ---- Gemini proxy route ----
-    if (path.startsWith('gemini/')) {
-      const apiKey = request.headers.get('X-Gemini-Key');
+    // ---- OpenAI proxy route ----
+    if (path.startsWith('openai/')) {
+      const apiKey = request.headers.get('X-OpenAI-Key');
       if (!apiKey) {
         return new Response(JSON.stringify({ error: 'missing_key' }), {
           status: 401, headers: { ...headers, 'Content-Type': 'application/json' }
         });
       }
-      const geminiPath = path.replace('gemini/', '');
-      const geminiResp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + geminiPath + '?key=' + apiKey, {
+      const openaiPath = path.replace('openai/', '');
+      const openaiResp = await fetch('https://api.openai.com/v1/' + openaiPath, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey
+        },
         body: request.body
       });
-      return new Response(geminiResp.body, {
-        status: geminiResp.status,
+      return new Response(openaiResp.body, {
+        status: openaiResp.status,
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }
