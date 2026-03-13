@@ -7319,12 +7319,14 @@ const TeamsSync = {
                 const errText = await resp.text().catch(() => '');
                 console.error('[TeamsSync] POST 403 — no permission:', errText);
                 this._error = 'no-permission';
+                this._lastErrorDetail = errText.substring(0, 300);
                 return null;
             }
             if (!resp.ok) {
                 const errText = await resp.text().catch(() => '');
                 console.error('[TeamsSync] POST error:', resp.status, errText);
-                this._error = 'api-error';
+                this._error = `api-error-${resp.status}`;
+                this._lastErrorDetail = errText.substring(0, 300);
                 return null;
             }
             this._error = null;
@@ -16107,15 +16109,21 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
         // Show sending state
         const overlay = clickedEl?.closest('.teams-picker-overlay');
         const label = clickedEl?.querySelector('.tp-label')?.textContent || 'destination';
+        const footer = overlay?.querySelector('.teams-picker-footer');
         if (clickedEl) {
             clickedEl.style.opacity = '0.5';
             clickedEl.style.pointerEvents = 'none';
             clickedEl.querySelector('.tp-label').textContent = 'Sending...';
         }
+        // Show status in picker footer
+        const showPickerStatus = (msg, color) => {
+            if (footer) footer.innerHTML = `<div style="color:${color};font-size:12px;padding:8px 0;text-align:center;line-height:1.4;">${msg}</div><button onclick="this.closest('.teams-picker-overlay').remove()">Close</button>`;
+        };
 
         try {
             // Generate the rich HTML content (light-theme, inline-styled for Teams)
             const htmlContent = this._toRichHTML({});
+            const contentSize = htmlContent.length;
             let result;
             if (type === 'channel') {
                 result = await TeamsSync.sendChannelMessage(id1, id2, htmlContent);
@@ -16124,15 +16132,27 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
             }
 
             if (result) {
+                const msgId = result.id ? ` (msg: ${result.id.substring(0, 12)}...)` : '';
                 showToast(`✅ Report shared to ${label}`, 'success');
-                if (overlay) overlay.remove();
+                showPickerStatus(`✅ Sent successfully to <strong>${label}</strong>${msgId}<br><span style="color:var(--text-muted);font-size:11px;">Size: ${Math.round(contentSize/1024)}KB — Check your Teams app</span>`, 'var(--rag-green)');
             } else {
                 const permScope = type === 'chat' ? 'Chat.ReadWrite' : 'ChannelMessage.Send';
-                const errMsg = TeamsSync._error === 'token-expired' ? 'Token expired — update in Settings and try again'
-                    : TeamsSync._error === 'no-permission' ? `Missing permission: ${permScope} — add it in Graph Explorer and get a new token`
-                    : TeamsSync._error === 'no-token' ? 'No Microsoft token — connect in Settings first'
-                    : `Failed to send (${TeamsSync._error || 'unknown error'}) — check console (F12) for details`;
-                showToast(errMsg, 'error');
+                let errMsg, errDetail;
+                if (TeamsSync._error === 'token-expired') {
+                    errMsg = 'Token expired';
+                    errDetail = 'Update your Microsoft token in Settings and try again.';
+                } else if (TeamsSync._error === 'no-permission') {
+                    errMsg = 'Permission denied (403)';
+                    errDetail = `Your token is missing <strong>${permScope}</strong>. Go to Graph Explorer → Modify Permissions → consent to ${permScope} → copy the new token.`;
+                } else if (TeamsSync._error === 'no-token') {
+                    errMsg = 'No token';
+                    errDetail = 'Connect your Microsoft account in Settings first.';
+                } else {
+                    errMsg = `API error: ${TeamsSync._error || 'unknown'}`;
+                    errDetail = `The Graph API rejected the request. Error code: <strong>${TeamsSync._error}</strong>. Content size: ${Math.round(contentSize/1024)}KB.`;
+                }
+                showToast(`❌ ${errMsg}`, 'error');
+                showPickerStatus(`❌ <strong>${errMsg}</strong><br>${errDetail}`, 'var(--rag-red)');
                 if (clickedEl) {
                     clickedEl.style.opacity = '1';
                     clickedEl.style.pointerEvents = '';
@@ -16140,8 +16160,8 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
                 }
             }
         } catch (err) {
-            console.error('[ShareSnapshot] Send to Teams error:', err);
-            showToast('Error sending to Teams: ' + (err.message || 'Unknown'), 'error');
+            showToast('Error: ' + (err.message || 'Unknown'), 'error');
+            showPickerStatus(`❌ <strong>Error</strong><br>${err.message || 'Unknown error'}`, 'var(--rag-red)');
             if (clickedEl) {
                 clickedEl.style.opacity = '1';
                 clickedEl.style.pointerEvents = '';
