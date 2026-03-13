@@ -3424,12 +3424,16 @@ input, textarea, select { font-family: inherit; outline: none; }
             <div id="setupAdvanced" style="display:none;">
 
                 <div style="border-top:1px solid var(--border-default);margin:16px 0 12px;padding-top:14px;">
-                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128236; Outlook</h3>
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128236; Outlook / Microsoft</h3>
                     <div class="setup-input-group">
                         <label>Outlook Token</label>
                         <input type="password" id="outlookTokenInput" placeholder="EwB4A8l6BAAURSN...">
                         <button class="toggle-vis" onclick="const i=document.getElementById('outlookTokenInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
                     </div>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        <button class="btn-primary" onclick="checkMsPermissions()" style="font-size:11px;padding:5px 12px;">🔍 Check Permissions</button>
+                    </div>
+                    <div id="msPermStatus" style="font-size:11px;margin-top:6px;line-height:1.5;"></div>
                     <div class="setup-hint" style="margin-top:4px;">
                         <a href="https://developer.microsoft.com/en-us/graph/graph-explorer" target="_blank" style="color:var(--accent-purple-light);">Graph Explorer</a> &#8594; Sign in &#8594; Access token tab &#8594; Copy
                     </div>
@@ -14529,6 +14533,66 @@ function clearOpenAI() {
     if (status) { status.textContent = 'Key cleared'; status.style.color = 'var(--text-muted)'; }
     ConnectionStatus.setOpenAI('no-key');
     showToast('OpenAI key removed', 'success');
+}
+
+function checkMsPermissions() {
+    const statusEl = document.getElementById('msPermStatus');
+    if (!statusEl) return;
+    // Use the saved token or the current input value
+    const token = document.getElementById('outlookTokenInput')?.value?.trim() || OutlookSync.getToken();
+    if (!token) { statusEl.innerHTML = '<span style="color:var(--rag-red);">No token entered</span>'; return; }
+    // Decode JWT payload (base64url → JSON)
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) throw new Error('Not a valid JWT');
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        const scopes = (payload.scp || '').split(' ').filter(Boolean);
+        const exp = payload.exp ? new Date(payload.exp * 1000) : null;
+        const now = new Date();
+        const expired = exp && exp < now;
+        const expiresIn = exp ? Math.round((exp - now) / 60000) : null;
+        // Required permissions for each dashboard feature
+        const required = [
+            { scope: 'Mail.Read', feature: 'Email sync' },
+            { scope: 'Calendars.Read', feature: 'Calendar sync' },
+            { scope: 'Team.ReadBasic.All', feature: 'Teams — list teams' },
+            { scope: 'Channel.ReadBasic.All', feature: 'Teams — list channels' },
+            { scope: 'ChannelMessage.Read.All', feature: 'Teams — read messages' },
+            { scope: 'ChannelMessage.Send', feature: 'Share report to channel' },
+            { scope: 'Chat.Read', feature: 'Teams — list chats' },
+            { scope: 'Chat.ReadWrite', feature: 'Share report to chat' },
+            { scope: 'User.Read', feature: 'User profile' }
+        ];
+        let html = '';
+        // Expiry status
+        if (expired) {
+            html += `<div style="color:var(--rag-red);font-weight:600;margin-bottom:6px;">⚠️ Token EXPIRED ${Math.abs(expiresIn)} minutes ago — get a new one from Graph Explorer</div>`;
+        } else if (expiresIn !== null && expiresIn < 10) {
+            html += `<div style="color:var(--rag-amber);font-weight:600;margin-bottom:6px;">⚠️ Token expires in ${expiresIn} minutes</div>`;
+        } else if (expiresIn !== null) {
+            html += `<div style="color:var(--rag-green);margin-bottom:6px;">✅ Token valid — expires in ${expiresIn} minutes</div>`;
+        }
+        // Permission grid
+        let allGood = true;
+        required.forEach(r => {
+            const has = scopes.includes(r.scope);
+            if (!has) allGood = false;
+            html += `<div style="display:flex;gap:6px;align-items:center;">${has ? '<span style="color:var(--rag-green);">✅</span>' : '<span style="color:var(--rag-red);">❌</span>'}<span>${r.scope}</span><span style="color:var(--text-muted);"> — ${r.feature}</span></div>`;
+        });
+        // Extra scopes (nice to have)
+        const extras = scopes.filter(s => !required.some(r => r.scope === s));
+        if (extras.length > 0) {
+            html += `<div style="margin-top:4px;color:var(--text-muted);">+ ${extras.length} additional: ${extras.join(', ')}</div>`;
+        }
+        if (allGood && !expired) {
+            html = `<div style="color:var(--rag-green);font-weight:600;margin-bottom:6px;">✅ All required permissions present</div>` + html;
+        } else if (!allGood) {
+            html = `<div style="color:var(--rag-red);font-weight:600;margin-bottom:6px;">❌ Missing permissions — re-consent in Graph Explorer</div>` + html;
+        }
+        statusEl.innerHTML = html;
+    } catch (e) {
+        statusEl.innerHTML = `<span style="color:var(--rag-red);">Failed to decode token: ${e.message}</span>`;
+    }
 }
 
 function submitTaskPrompt() {
