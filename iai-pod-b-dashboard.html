@@ -7379,14 +7379,18 @@ const TeamsSync = {
                 myMail = (me.mail || me.userPrincipalName || '').toLowerCase();
                 myDisplayName = me.displayName || '';
             }
-        } catch (e) { console.warn('[TeamsSync] /me fetch failed:', e); }
+        } catch (e) { console.warn('[TeamsSync] /me failed:', e); }
         console.log(`[TeamsSync] My identity: id=${myId}, mail=${myMail}, name="${myDisplayName}"`);
 
-        // Step 2: Fetch chats (no $expand — we fetch members separately for reliability)
-        let chatsData = await this._graphFetch('/me/chats', { '$top': '50' });
+        // Step 2: Fetch chats WITH $expand=members (single fast call)
+        let chatsData = await this._graphFetch('/me/chats', { '$top': '50', '$expand': 'members' });
+        if (!chatsData || !chatsData.value) {
+            // Fallback: no expand
+            chatsData = await this._graphFetch('/me/chats', { '$top': '50' });
+        }
         if (!chatsData || !chatsData.value) return [];
 
-        // Helper: normalize string for comparison (handles Unicode apostrophes etc.)
+        // Helper: normalize string for comparison (handles Unicode apostrophes)
         const norm = (s) => (s || '').normalize('NFKD').replace(/[\u2018\u2019\u201A\u201B\u0060\u00B4\u2032]/g, "'").toLowerCase().trim();
 
         // Helper: check if a member is me (3 strategies)
@@ -7397,50 +7401,77 @@ const TeamsSync = {
             return false;
         };
 
-        // Step 3: Process each chat — fetch members individually for oneOnOne/group
+        // Step 3: Label each chat — needs member info only for oneOnOne/group
         const chats = [];
         const seenIds = new Set();
+        // Collect chats that need individual member fetch (only if $expand didn't work)
+        const needsMemberFetch = [];
+
         for (const c of chatsData.value) {
             if (seenIds.has(c.id)) continue;
             seenIds.add(c.id);
-            let label = c.topic || '';
             const chatType = c.chatType || 'unknown';
+            let label = c.topic || '';
 
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
-                // Always fetch members from dedicated endpoint (more reliable than $expand)
-                let members = [];
-                try {
-                    const md = await this._graphFetch(`/me/chats/${c.id}/members`);
-                    members = md?.value || [];
-                } catch (e) { console.warn(`[TeamsSync] members fetch failed for ${c.id}:`, e); }
+                let members = c.members || [];
+                // Check if expanded members have enough info (userId or email)
+                const hasGoodInfo = members.length > 0 && members.some(m => m.userId || m.email);
 
-                // Log member details for debugging
-                console.log(`[TeamsSync] Chat ${chatType} ${c.id.substring(0,12)}... members:`,
-                    members.map(m => `{name:"${m.displayName}", userId:${m.userId ? 'yes' : 'no'}, email:${m.email || 'none'}}`));
+                if (!hasGoodInfo && members.length === 0) {
+                    // $expand gave us nothing — mark for individual fetch
+                    needsMemberFetch.push({ chatObj: c, index: chats.length });
+                    chats.push({ id: c.id, label: '⏳ Loading...', type: chatType });
+                    continue;
+                }
 
+                // If expanded members lack userId/email, try name-based matching
                 const others = members.filter(m => !_isMe(m));
 
                 if (chatType === 'oneOnOne') {
                     if (others.length > 0) {
-                        // Normal 1:1 — show the other person's name
                         label = others[0].displayName || others[0].email || 'Unknown';
+                    } else if (members.length >= 1) {
+                        // Self-chat: all members are me
+                        label = (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)';
                     } else {
-                        // Self-chat: all members matched as "me" OR unique names are all the same
-                        const uniqueNames = [...new Set(members.map(m => norm(m.displayName || '')))];
-                        if (members.length >= 1 && uniqueNames.length <= 1) {
-                            label = (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)';
-                        } else {
-                            label = (myDisplayName || 'Myself') + ' (You)';
-                        }
+                        label = 'Chat';
                     }
                 } else {
-                    // Group chat
                     const otherNames = others.map(m => m.displayName || m.email || 'Unknown');
                     label = otherNames.length > 0 ? otherNames.join(', ') : 'Group Chat';
                 }
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
             chats.push({ id: c.id, label, type: chatType });
+        }
+
+        // Step 4: Batch-fetch members for chats that need it (parallel, max 5 at a time)
+        if (needsMemberFetch.length > 0) {
+            console.log(`[TeamsSync] Fetching members for ${needsMemberFetch.length} chats individually...`);
+            const batchSize = 5;
+            for (let i = 0; i < needsMemberFetch.length; i += batchSize) {
+                const batch = needsMemberFetch.slice(i, i + batchSize);
+                const results = await Promise.allSettled(batch.map(async ({ chatObj, index }) => {
+                    const md = await this._graphFetch(`/me/chats/${chatObj.id}/members`);
+                    const members = md?.value || [];
+                    const chatType = chatObj.chatType || 'unknown';
+                    const others = members.filter(m => !_isMe(m));
+                    let label;
+                    if (chatType === 'oneOnOne') {
+                        label = others.length > 0 ? (others[0].displayName || others[0].email || 'Unknown')
+                            : (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)';
+                    } else {
+                        const names = others.map(m => m.displayName || m.email || 'Unknown');
+                        label = names.length > 0 ? names.join(', ') : 'Group Chat';
+                    }
+                    return { index, label };
+                }));
+                results.forEach(r => {
+                    if (r.status === 'fulfilled') chats[r.value.index].label = r.value.label;
+                    else console.warn('[TeamsSync] member fetch failed:', r.reason);
+                });
+            }
         }
 
         console.log('[TeamsSync] Final chats:', chats.map(c => `${c.type}: "${c.label}"`));
