@@ -7369,7 +7369,7 @@ const TeamsSync = {
         if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
             return this._recentChatsCache;
         }
-        // Fetch chats — don't use $select on parent so members/topic/chatType all come through
+        // Fetch chats with members expanded
         let chatsData = await this._graphFetch('/me/chats', {
             '$top': '50',
             '$expand': 'members'
@@ -7386,7 +7386,11 @@ const TeamsSync = {
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
         const myName = (RUNTIME.userName || '').toLowerCase();
         const chats = [];
+        const seenIds = new Set();
         for (const c of chatsData.value) {
+            // Deduplicate by chat ID
+            if (seenIds.has(c.id)) continue;
+            seenIds.add(c.id);
             let label = c.topic || '';
             const chatType = c.chatType || 'unknown';
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
@@ -7398,14 +7402,15 @@ const TeamsSync = {
                         members = membersData?.value || [];
                     } catch (e) { /* skip member resolution */ }
                 }
-                // Filter out self — match by email only (not displayName)
+                // Filter out self — match by email OR displayName
                 const others = members.filter(m => {
-                    const memberEmail = (m.email || '').toLowerCase();
-                    return memberEmail && memberEmail !== myEmail;
+                    const mEmail = (m.email || '').toLowerCase();
+                    const mName = (m.displayName || '').toLowerCase();
+                    const isMe = (mEmail && mEmail === myEmail) || (mName && mName === myName);
+                    return !isMe;
                 }).map(m => m.displayName || m.email || 'Unknown');
 
                 if (chatType === 'oneOnOne') {
-                    // If no "others" remain, this is a self-chat (DM with yourself)
                     label = others.length > 0 ? `Chat with ${others[0]}` : `Chat with ${RUNTIME.userName || 'Myself'} (You)`;
                 } else {
                     label = others.length > 0 ? others.join(', ') : 'Group Chat';
@@ -7414,7 +7419,7 @@ const TeamsSync = {
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
             chats.push({ id: c.id, label, type: chatType });
         }
-        console.log(`[TeamsSync] fetchRecentChats: ${chats.length} chats found`, chats.map(c => c.label));
+        console.log(`[TeamsSync] fetchRecentChats: ${chats.length} chats found`);
         this._recentChatsCache = chats;
         this._recentChatsCacheTime = Date.now();
         return chats;
@@ -7439,6 +7444,13 @@ const TeamsSync = {
         }
         return this._graphPost(`/me/chats/${chatId}/messages`, {
             body: { content: htmlContent, contentType: 'html' }
+        });
+    },
+
+    // ── Test send: tiny message to verify chat permissions work ──
+    async testChatSend(chatId) {
+        return this._graphPost(`/me/chats/${chatId}/messages`, {
+            body: { content: '✅ IAI Dashboard test message — if you see this, chat sending works!', contentType: 'text' }
         });
     },
 
@@ -16028,10 +16040,14 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
         chats.forEach(c => {
             const icon = c.type === 'oneOnOne' ? '👤' : c.type === 'group' ? '👥' : '📅';
             const typeLabel = c.type === 'oneOnOne' ? 'DM' : c.type === 'group' ? 'Group' : 'Meeting';
-            chatsHTML += `<div class="teams-picker-item" data-search="${(c.label || '').toLowerCase()}" onclick="ShareSnapshot._sendToDestination('chat','${c.id}','',this)" title="${c.label}">
-                <div class="tp-icon" style="background:rgba(0,200,117,0.12);color:#00c875;">${icon}</div>
-                <div class="tp-label">${c.label}</div>
-                <div class="tp-type">${typeLabel}</div>
+            const safeId = c.id.replace(/'/g, "\\'");
+            chatsHTML += `<div class="teams-picker-item" data-search="${(c.label || '').toLowerCase()}" style="position:relative;">
+                <div style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;" onclick="ShareSnapshot._sendToDestination('chat','${safeId}','',this.parentElement)" title="Send report to ${c.label}">
+                    <div class="tp-icon" style="background:rgba(0,200,117,0.12);color:#00c875;">${icon}</div>
+                    <div class="tp-label">${c.label}</div>
+                    <div class="tp-type">${typeLabel}</div>
+                </div>
+                <button onclick="event.stopPropagation();ShareSnapshot._testChatSend('${safeId}',this)" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-default);border-radius:4px;background:var(--bg-secondary);color:var(--text-muted);cursor:pointer;white-space:nowrap;" title="Send a tiny test message to verify permissions">Test</button>
             </div>`;
         });
         if (!chatsHTML) chatsHTML = '<div class="teams-picker-loading">No recent chats found</div>';
@@ -16103,6 +16119,30 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
             }
             group.style.display = (anyVisible || (!q ? true : groupText.includes(q))) ? '' : 'none';
         });
+    },
+
+    async _testChatSend(chatId, btnEl) {
+        const origText = btnEl.textContent;
+        btnEl.textContent = '...';
+        btnEl.disabled = true;
+        try {
+            const result = await TeamsSync.testChatSend(chatId);
+            if (result) {
+                btnEl.textContent = '✅ Sent!';
+                btnEl.style.color = 'var(--rag-green)';
+                showToast('✅ Test message sent — check your Teams app', 'success');
+            } else {
+                btnEl.textContent = '❌ Failed';
+                btnEl.style.color = 'var(--rag-red)';
+                const detail = TeamsSync._lastErrorDetail || TeamsSync._error || 'unknown';
+                showToast(`❌ Test failed: ${TeamsSync._error} — ${detail}`, 'error');
+            }
+        } catch (err) {
+            btnEl.textContent = '❌ Error';
+            btnEl.style.color = 'var(--rag-red)';
+            showToast(`❌ Test error: ${err.message}`, 'error');
+        }
+        setTimeout(() => { btnEl.textContent = origText; btnEl.disabled = false; btnEl.style.color = ''; }, 5000);
     },
 
     async _sendToDestination(type, id1, id2, clickedEl) {
