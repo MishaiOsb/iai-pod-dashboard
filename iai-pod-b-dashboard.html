@@ -7364,13 +7364,16 @@ const TeamsSync = {
     _recentChatsCache: null,
     _recentChatsCacheTime: 0,
 
+    _chatDebugInfo: '', // Temporary debug info for picker UI
+
     async fetchRecentChats() {
         // Cache for 5 minutes
         if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
             return this._recentChatsCache;
         }
+        const dbg = []; // Collect debug lines
 
-        // Step 1: Get my Graph profile — reliable source of id, email, name
+        // Step 1: Get my Graph profile
         let myId = null, myMail = null, myDisplayName = null;
         try {
             const me = await this._graphFetch('/me', { '$select': 'id,mail,displayName,userPrincipalName' });
@@ -7379,21 +7382,32 @@ const TeamsSync = {
                 myMail = (me.mail || me.userPrincipalName || '').toLowerCase();
                 myDisplayName = me.displayName || '';
             }
-        } catch (e) { console.warn('[TeamsSync] /me failed:', e); }
-        console.log(`[TeamsSync] My identity: id=${myId}, mail=${myMail}, name="${myDisplayName}"`);
+        } catch (e) { dbg.push('⚠️ /me FAILED: ' + e.message); }
+        dbg.push(`👤 ME: id=${myId ? myId.substring(0,8) + '...' : 'NULL'}, mail=${myMail || 'NULL'}, name="${myDisplayName}"`);
 
-        // Step 2: Fetch chats WITH $expand=members (single fast call)
+        // Step 2: Fetch chats WITH $expand=members
         let chatsData = await this._graphFetch('/me/chats', { '$top': '50', '$expand': 'members' });
-        if (!chatsData || !chatsData.value) {
-            // Fallback: no expand
+        let expandWorked = !!(chatsData && chatsData.value);
+        if (!expandWorked) {
+            dbg.push('⚠️ $expand=members FAILED, trying without...');
             chatsData = await this._graphFetch('/me/chats', { '$top': '50' });
         }
-        if (!chatsData || !chatsData.value) return [];
+        if (!chatsData || !chatsData.value) { this._chatDebugInfo = dbg.join('\n'); return []; }
+        dbg.push(`📦 Got ${chatsData.value.length} raw chats (expand=${expandWorked})`);
 
-        // Helper: normalize string for comparison (handles Unicode apostrophes)
+        // Dump first raw chat to see structure
+        const sample = chatsData.value[0];
+        if (sample) {
+            const sm = (sample.members || [])[0];
+            dbg.push(`🔍 Sample chat: type=${sample.chatType}, topic="${sample.topic || ''}", members=${(sample.members||[]).length}`);
+            if (sm) dbg.push(`🔍 Sample member keys: ${Object.keys(sm).join(', ')}`);
+            if (sm) dbg.push(`🔍 Sample member: name="${sm.displayName}", userId=${sm.userId || 'NONE'}, email=${sm.email || 'NONE'}`);
+        }
+
+        // Helper: normalize string
         const norm = (s) => (s || '').normalize('NFKD').replace(/[\u2018\u2019\u201A\u201B\u0060\u00B4\u2032]/g, "'").toLowerCase().trim();
 
-        // Helper: check if a member is me (3 strategies)
+        // Helper: check if a member is me
         const _isMe = (m) => {
             if (myId && m.userId && m.userId === myId) return true;
             if (myMail && m.email && m.email.toLowerCase() === myMail) return true;
@@ -7401,11 +7415,10 @@ const TeamsSync = {
             return false;
         };
 
-        // Step 3: Label each chat — needs member info only for oneOnOne/group
+        // Step 3: Process chats
         const chats = [];
         const seenIds = new Set();
-        // Collect chats that need individual member fetch (only if $expand didn't work)
-        const needsMemberFetch = [];
+        let oneOnOneCount = 0, groupCount = 0, meetingCount = 0;
 
         for (const c of chatsData.value) {
             if (seenIds.has(c.id)) continue;
@@ -7413,26 +7426,34 @@ const TeamsSync = {
             const chatType = c.chatType || 'unknown';
             let label = c.topic || '';
 
+            if (chatType === 'oneOnOne') oneOnOneCount++;
+            else if (chatType === 'group') groupCount++;
+            else meetingCount++;
+
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
                 let members = c.members || [];
-                // Check if expanded members have enough info (userId or email)
-                const hasGoodInfo = members.length > 0 && members.some(m => m.userId || m.email);
 
-                if (!hasGoodInfo && members.length === 0) {
-                    // $expand gave us nothing — mark for individual fetch
-                    needsMemberFetch.push({ chatObj: c, index: chats.length });
-                    chats.push({ id: c.id, label: '⏳ Loading...', type: chatType });
-                    continue;
+                if (members.length === 0) {
+                    // No members from $expand — fetch individually
+                    try {
+                        const md = await this._graphFetch(`/me/chats/${c.id}/members`);
+                        members = md?.value || [];
+                    } catch (e) {}
                 }
 
-                // If expanded members lack userId/email, try name-based matching
+                // Debug first few oneOnOne chats
+                if (chatType === 'oneOnOne' && oneOnOneCount <= 3) {
+                    members.forEach((m, i) => {
+                        dbg.push(`  Chat#${oneOnOneCount} member${i}: name="${m.displayName}", userId=${m.userId||'NONE'}, email=${m.email||'NONE'}, isMe=${_isMe(m)}`);
+                    });
+                }
+
                 const others = members.filter(m => !_isMe(m));
 
                 if (chatType === 'oneOnOne') {
                     if (others.length > 0) {
                         label = others[0].displayName || others[0].email || 'Unknown';
                     } else if (members.length >= 1) {
-                        // Self-chat: all members are me
                         label = (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)';
                     } else {
                         label = 'Chat';
@@ -7446,35 +7467,11 @@ const TeamsSync = {
             chats.push({ id: c.id, label, type: chatType });
         }
 
-        // Step 4: Batch-fetch members for chats that need it (parallel, max 5 at a time)
-        if (needsMemberFetch.length > 0) {
-            console.log(`[TeamsSync] Fetching members for ${needsMemberFetch.length} chats individually...`);
-            const batchSize = 5;
-            for (let i = 0; i < needsMemberFetch.length; i += batchSize) {
-                const batch = needsMemberFetch.slice(i, i + batchSize);
-                const results = await Promise.allSettled(batch.map(async ({ chatObj, index }) => {
-                    const md = await this._graphFetch(`/me/chats/${chatObj.id}/members`);
-                    const members = md?.value || [];
-                    const chatType = chatObj.chatType || 'unknown';
-                    const others = members.filter(m => !_isMe(m));
-                    let label;
-                    if (chatType === 'oneOnOne') {
-                        label = others.length > 0 ? (others[0].displayName || others[0].email || 'Unknown')
-                            : (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)';
-                    } else {
-                        const names = others.map(m => m.displayName || m.email || 'Unknown');
-                        label = names.length > 0 ? names.join(', ') : 'Group Chat';
-                    }
-                    return { index, label };
-                }));
-                results.forEach(r => {
-                    if (r.status === 'fulfilled') chats[r.value.index].label = r.value.label;
-                    else console.warn('[TeamsSync] member fetch failed:', r.reason);
-                });
-            }
-        }
+        dbg.push(`📊 Types: ${oneOnOneCount} DM, ${groupCount} group, ${meetingCount} meeting`);
+        dbg.push(`📋 Labels: ${chats.slice(0,8).map(c => `[${c.type}] "${c.label}"`).join(' | ')}`);
 
-        console.log('[TeamsSync] Final chats:', chats.map(c => `${c.type}: "${c.label}"`));
+        this._chatDebugInfo = dbg.join('\n');
+        console.log('[TeamsSync] DEBUG:\n' + this._chatDebugInfo);
         this._recentChatsCache = chats;
         this._recentChatsCacheTime = Date.now();
         return chats;
@@ -16107,6 +16104,10 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
         });
         if (!chatsHTML) chatsHTML = '<div class="teams-picker-loading">No recent chats found</div>';
 
+        // Debug panel — temporary, shows raw API data
+        const debugInfo = (TeamsSync._chatDebugInfo || 'No debug info').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+        const debugPanel = `<div id="tpDebug" style="background:#1a1a2e;border:1px solid #444;border-radius:6px;padding:8px;margin-bottom:8px;font-family:monospace;font-size:10px;color:#0f0;max-height:200px;overflow-y:auto;white-space:pre-wrap;line-height:1.4;">${debugInfo}</div>`;
+
         overlay.innerHTML = `<div class="teams-picker">
             <div class="teams-picker-header">
                 <h3>💬 Share Report to Teams</h3>
@@ -16121,7 +16122,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
             </div>
             <div class="teams-picker-body">
                 <div id="tpChannels">${channelsHTML}</div>
-                <div id="tpChats" style="display:none;">${chatsHTML}</div>
+                <div id="tpChats" style="display:none;">${debugPanel}${chatsHTML}</div>
             </div>
             <div class="teams-picker-footer">
                 <button onclick="this.closest('.teams-picker-overlay').remove()">Cancel</button>
