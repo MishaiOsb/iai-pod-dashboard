@@ -7450,34 +7450,8 @@ const TeamsSync = {
             chats.push({ id: c.id, label, type: chatType });
         }
 
-        // Step 4: If no self-chat found, try beta endpoint which may include it
-        const hasSelfChat = chats.some(c => c.label.includes('(You)'));
-        if (!hasSelfChat && myId) {
-            try {
-                const token = this.getToken();
-                // Beta endpoint often returns chats that v1.0 omits (including self-chat)
-                const resp = await fetch('https://graph.microsoft.com/beta/me/chats?$top=50&$expand=members&$filter=chatType eq \'oneOnOne\'', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                if (resp.ok) {
-                    const betaData = await resp.json();
-                    for (const bc of (betaData.value || [])) {
-                        if (seenIds.has(bc.id)) continue;
-                        const members = bc.members || [];
-                        const allMe = members.length > 0 && members.every(m => _isMe(m));
-                        if (allMe) {
-                            seenIds.add(bc.id);
-                            chats.unshift({
-                                id: bc.id,
-                                label: (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)',
-                                type: 'oneOnOne'
-                            });
-                            break;
-                        }
-                    }
-                }
-            } catch (e) {}
-        }
+        // Note: Teams self-chat is blocked from Graph API message writes by Microsoft,
+        // so it is intentionally excluded from the picker.
 
         this._recentChatsCache = chats;
         this._recentChatsCacheTime = Date.now();
