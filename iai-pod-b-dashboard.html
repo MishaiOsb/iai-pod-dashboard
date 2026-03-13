@@ -7468,7 +7468,10 @@ const TeamsSync = {
         }
 
         dbg.push(`📊 Types: ${oneOnOneCount} DM, ${groupCount} group, ${meetingCount} meeting`);
-        dbg.push(`📋 Labels: ${chats.slice(0,8).map(c => `[${c.type}] "${c.label}"`).join(' | ')}`);
+        const selfChat = chats.find(c => c.label.includes('(You)'));
+        dbg.push(selfChat ? `✅ Self-chat FOUND: "${selfChat.label}"` : `❌ NO self-chat detected — you may need to open Teams, search your own name, and start a chat with yourself first`);
+        dbg.push(`📋 ALL ${chats.length} labels:`);
+        chats.forEach((c, i) => dbg.push(`  ${i+1}. [${c.type}] "${c.label}"`));
 
         this._chatDebugInfo = dbg.join('\n');
         console.log('[TeamsSync] DEBUG:\n' + this._chatDebugInfo);
