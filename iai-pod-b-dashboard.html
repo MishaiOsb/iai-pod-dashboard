@@ -7240,6 +7240,9 @@ const TeamsSync = {
             this._lastSync = new Date();
             ConnectionStatus.setTeams('connected');
 
+            // Pre-fetch picker data in background so Share to Teams is instant
+            Promise.all([this.fetchTeamsAndChannels(), this.fetchRecentChats()]).catch(() => {});
+
             // Refresh current page with updated Teams data
             if (typeof Router !== 'undefined') {
                 if (Router.current === 'overview' && typeof OverviewCharts !== 'undefined') {
@@ -7332,11 +7335,11 @@ const TeamsSync = {
         if (this._teamsChannelsCache && (Date.now() - this._teamsChannelsCacheTime < 300000)) {
             return this._teamsChannelsCache;
         }
-        const teamsData = await this._graphFetch('/me/joinedTeams');
+        const teamsData = await this._graphFetch('/me/joinedTeams', { '$select': 'id,displayName' });
         if (!teamsData || !teamsData.value) return [];
         // Fetch all channels in parallel instead of sequentially
         const teams = await Promise.all(teamsData.value.map(async t => {
-            const channelsData = await this._graphFetch(`/teams/${t.id}/channels`);
+            const channelsData = await this._graphFetch(`/teams/${t.id}/channels`, { '$select': 'id,displayName' });
             const channels = (channelsData?.value || []).map(ch => ({ id: ch.id, name: ch.displayName }));
             return { id: t.id, name: t.displayName, channels };
         }));
@@ -7354,32 +7357,30 @@ const TeamsSync = {
         if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
             return this._recentChatsCache;
         }
+        // $expand=members fetches all member info in ONE request instead of N+1
         const chatsData = await this._graphFetch('/me/chats', {
             '$top': '30',
-            '$orderby': 'lastMessagePreview/createdDateTime desc'
+            '$orderby': 'lastMessagePreview/createdDateTime desc',
+            '$expand': 'members($select=displayName,email)',
+            '$select': 'id,topic,chatType,members'
         });
         if (!chatsData || !chatsData.value) return [];
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
-        // Resolve all chat labels in parallel instead of sequentially
-        const chats = await Promise.all(chatsData.value.map(async c => {
+        const chats = chatsData.value.map(c => {
             let label = c.topic || '';
             const chatType = c.chatType || 'unknown';
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
-                try {
-                    const membersData = await this._graphFetch(`/me/chats/${c.id}/members`);
-                    if (membersData?.value) {
-                        const others = membersData.value
-                            .filter(m => (m.email || '').toLowerCase() !== myEmail)
-                            .map(m => m.displayName || m.email || 'Unknown');
-                        label = chatType === 'oneOnOne'
-                            ? `Chat with ${others[0] || 'Unknown'}`
-                            : others.length > 0 ? others.join(', ') : 'Group Chat';
-                    }
-                } catch (e) { label = chatType === 'oneOnOne' ? 'Direct Message' : 'Group Chat'; }
+                const members = c.members || [];
+                const others = members
+                    .filter(m => (m.email || '').toLowerCase() !== myEmail)
+                    .map(m => m.displayName || m.email || 'Unknown');
+                label = chatType === 'oneOnOne'
+                    ? `Chat with ${others[0] || 'Unknown'}`
+                    : others.length > 0 ? others.join(', ') : 'Group Chat';
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
             return { id: c.id, label, type: chatType };
-        }));
+        });
         this._recentChatsCache = chats;
         this._recentChatsCacheTime = Date.now();
         return chats;
@@ -15106,21 +15107,20 @@ const ShareSnapshot = {
         this._open = true;
         document.getElementById('shareOverlay').classList.add('open');
 
-        // Refresh all data sources before rendering to ensure report accuracy
-        if (getConnectionMode() !== 'offline') {
+        // Refresh data sources before rendering — skip if refreshed within 2 minutes
+        const dataIsFresh = State.lastRefreshAt && (Date.now() - State.lastRefreshAt < 120000);
+
+        if (getConnectionMode() !== 'offline' && !dataIsFresh) {
             const body = document.getElementById('shareSnapshotBody');
             if (body) body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-muted);"><div class="spinner" style="width:28px;height:28px;border:3px solid rgba(107,48,255,0.15);border-top-color:var(--accent-purple-light);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px;"></div><div style="font-size:13px;">Refreshing data for accurate report…</div></div>';
             try {
-                // monday.com is the core data source — must complete before render
                 await loadData(false);
-                // Secondary syncs run in parallel, non-blocking — re-render when done
                 const syncs = [];
                 if (OutlookSync.hasToken()) syncs.push(OutlookSync.sync(false));
                 if (CalendarSync.hasToken()) syncs.push(CalendarSync.sync(false));
                 if (TeamsSync.hasToken()) syncs.push(TeamsSync.sync(false));
                 if (SlackSync.hasToken && SlackSync.getToken()) syncs.push(SlackSync.connect());
                 if (syncs.length > 0) {
-                    // Don't block render — re-render once secondary syncs settle
                     Promise.allSettled(syncs).then(() => { if (this._open) this.render(); });
                 }
             } catch (e) {
@@ -16091,6 +16091,7 @@ async function loadData(showOverlay = true) {
         // Apply local edits on top of API data — local overrides survive refreshes
         LocalEditManager.applyToAll(State.clients);
         State.dataLoaded = true;
+        State.lastRefreshAt = Date.now();
         ConnectionStatus.setMonday('ok');
         ChangeTracker.detect(State.clients);
         State.applyFilters();
