@@ -7361,46 +7361,52 @@ const TeamsSync = {
         if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
             return this._recentChatsCache;
         }
-        // Try with $expand=members first (single request), fall back to simple query
+        // Fetch chats — don't use $select on parent so members/topic/chatType all come through
         let chatsData = await this._graphFetch('/me/chats', {
-            '$top': '30',
-            '$expand': 'members($select=displayName,email)',
-            '$select': 'id,topic,chatType'
+            '$top': '50',
+            '$expand': 'members'
         });
-        // Fallback: if $expand fails (some tenants/permissions don't support it), try without
+        // Fallback: if $expand fails, try without
         if (!chatsData || !chatsData.value) {
             console.warn('[TeamsSync] Chat $expand failed, trying simple query');
-            chatsData = await this._graphFetch('/me/chats', { '$top': '30' });
+            chatsData = await this._graphFetch('/me/chats', { '$top': '50' });
         }
         if (!chatsData || !chatsData.value) {
             console.warn('[TeamsSync] fetchRecentChats: no data returned, error:', this._error);
             return [];
         }
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
+        const myName = (RUNTIME.userName || '').toLowerCase();
         const chats = [];
         for (const c of chatsData.value) {
             let label = c.topic || '';
             const chatType = c.chatType || 'unknown';
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
-                // If members came from $expand, use them directly
+                // Get members from $expand or fetch individually
                 let members = c.members || [];
-                // If no members from expand, fetch them individually
                 if (members.length === 0) {
                     try {
-                        const membersData = await this._graphFetch(`/me/chats/${c.id}/members`, { '$select': 'displayName,email' });
+                        const membersData = await this._graphFetch(`/me/chats/${c.id}/members`);
                         members = membersData?.value || [];
                     } catch (e) { /* skip member resolution */ }
                 }
-                const others = members
-                    .filter(m => (m.email || m.displayName || '').toLowerCase() !== myEmail && (m.displayName || '').toLowerCase() !== myEmail)
-                    .map(m => m.displayName || m.email || 'Unknown');
-                label = chatType === 'oneOnOne'
-                    ? `Chat with ${others[0] || 'Unknown'}`
-                    : others.length > 0 ? others.join(', ') : 'Group Chat';
+                // Filter out self — match by email only (not displayName)
+                const others = members.filter(m => {
+                    const memberEmail = (m.email || '').toLowerCase();
+                    return memberEmail && memberEmail !== myEmail;
+                }).map(m => m.displayName || m.email || 'Unknown');
+
+                if (chatType === 'oneOnOne') {
+                    // If no "others" remain, this is a self-chat (DM with yourself)
+                    label = others.length > 0 ? `Chat with ${others[0]}` : `Chat with ${RUNTIME.userName || 'Myself'} (You)`;
+                } else {
+                    label = others.length > 0 ? others.join(', ') : 'Group Chat';
+                }
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
             chats.push({ id: c.id, label, type: chatType });
         }
+        console.log(`[TeamsSync] fetchRecentChats: ${chats.length} chats found`, chats.map(c => c.label));
         this._recentChatsCache = chats;
         this._recentChatsCacheTime = Date.now();
         return chats;
@@ -16857,7 +16863,14 @@ async function testConnection() {
 
         // Save Outlook token if provided
         const outlookToken = document.getElementById('outlookTokenInput')?.value?.trim();
-        if (outlookToken) OutlookSync.setToken(outlookToken);
+        if (outlookToken) {
+            OutlookSync.setToken(outlookToken);
+            // Clear Teams picker caches so new token fetches fresh data
+            TeamsSync._recentChatsCache = null;
+            TeamsSync._recentChatsCacheTime = 0;
+            TeamsSync._teamsChannelsCache = null;
+            TeamsSync._teamsChannelsCacheTime = 0;
+        }
 
         // Save Fireflies token if provided
         const firefliesToken = document.getElementById('firefliesTokenInput')?.value?.trim();
