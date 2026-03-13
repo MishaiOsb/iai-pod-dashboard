@@ -7450,35 +7450,33 @@ const TeamsSync = {
             chats.push({ id: c.id, label, type: chatType });
         }
 
-        // Step 4: If no self-chat found, try to retrieve it via POST /chats
-        // (Graph API returns existing oneOnOne chat if it already exists between same members)
+        // Step 4: If no self-chat found, try beta endpoint which may include it
         const hasSelfChat = chats.some(c => c.label.includes('(You)'));
         if (!hasSelfChat && myId) {
             try {
                 const token = this.getToken();
-                const resp = await fetch('https://graph.microsoft.com/v1.0/chats', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chatType: 'oneOnOne',
-                        members: [{
-                            '@odata.type': '#microsoft.graph.aadUserConversationMember',
-                            roles: ['owner'],
-                            'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${myId}')`
-                        }]
-                    })
+                // Beta endpoint often returns chats that v1.0 omits (including self-chat)
+                const resp = await fetch('https://graph.microsoft.com/beta/me/chats?$top=50&$expand=members&$filter=chatType eq \'oneOnOne\'', {
+                    headers: { 'Authorization': 'Bearer ' + token }
                 });
                 if (resp.ok) {
-                    const selfChatData = await resp.json();
-                    if (selfChatData && selfChatData.id && !seenIds.has(selfChatData.id)) {
-                        chats.unshift({
-                            id: selfChatData.id,
-                            label: (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)',
-                            type: 'oneOnOne'
-                        });
+                    const betaData = await resp.json();
+                    for (const bc of (betaData.value || [])) {
+                        if (seenIds.has(bc.id)) continue;
+                        const members = bc.members || [];
+                        const allMe = members.length > 0 && members.every(m => _isMe(m));
+                        if (allMe) {
+                            seenIds.add(bc.id);
+                            chats.unshift({
+                                id: bc.id,
+                                label: (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)',
+                                type: 'oneOnOne'
+                            });
+                            break;
+                        }
                     }
                 }
-            } catch (e) { console.warn('[TeamsSync] Self-chat lookup failed:', e); }
+            } catch (e) {}
         }
 
         this._recentChatsCache = chats;
