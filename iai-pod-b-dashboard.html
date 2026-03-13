@@ -7380,12 +7380,29 @@ const TeamsSync = {
             }
         } catch (e) {}
 
-        // Step 2: Fetch chats with $expand=members
+        // Step 2: Fetch ALL chats with pagination (Graph may not return all in one page)
+        let allRawChats = [];
         let chatsData = await this._graphFetch('/me/chats', { '$top': '50', '$expand': 'members' });
         if (!chatsData || !chatsData.value) {
             chatsData = await this._graphFetch('/me/chats', { '$top': '50' });
         }
-        if (!chatsData || !chatsData.value) return [];
+        if (chatsData && chatsData.value) {
+            allRawChats = allRawChats.concat(chatsData.value);
+            // Follow pagination (up to 3 extra pages = ~200 chats max)
+            let nextLink = chatsData['@odata.nextLink'];
+            let pages = 0;
+            while (nextLink && pages < 3) {
+                try {
+                    const resp = await fetch(nextLink, { headers: { 'Authorization': 'Bearer ' + this.getToken() } });
+                    if (!resp.ok) break;
+                    const page = await resp.json();
+                    if (page.value) allRawChats = allRawChats.concat(page.value);
+                    nextLink = page['@odata.nextLink'];
+                    pages++;
+                } catch (e) { break; }
+            }
+        }
+        if (allRawChats.length === 0) return [];
 
         // Helpers
         const norm = (s) => (s || '').normalize('NFKD').replace(/[\u2018\u2019\u201A\u201B\u0060\u00B4\u2032]/g, "'").toLowerCase().trim();
@@ -7399,7 +7416,7 @@ const TeamsSync = {
         // Step 3: Build chat list
         const chats = [];
         const seenIds = new Set();
-        for (const c of chatsData.value) {
+        for (const c of allRawChats) {
             if (seenIds.has(c.id)) continue;
             seenIds.add(c.id);
             const chatType = c.chatType || 'unknown';
@@ -7420,7 +7437,6 @@ const TeamsSync = {
                     if (others.length > 0) {
                         label = others[0].displayName || others[0].email || 'Unknown';
                     } else if (members.length >= 1) {
-                        // Self-chat: all members are me
                         label = (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)';
                     } else {
                         label = 'Chat';
@@ -7432,6 +7448,37 @@ const TeamsSync = {
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
             chats.push({ id: c.id, label, type: chatType });
+        }
+
+        // Step 4: If no self-chat found, try to retrieve it via POST /chats
+        // (Graph API returns existing oneOnOne chat if it already exists between same members)
+        const hasSelfChat = chats.some(c => c.label.includes('(You)'));
+        if (!hasSelfChat && myId) {
+            try {
+                const token = this.getToken();
+                const resp = await fetch('https://graph.microsoft.com/v1.0/chats', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chatType: 'oneOnOne',
+                        members: [{
+                            '@odata.type': '#microsoft.graph.aadUserConversationMember',
+                            roles: ['owner'],
+                            'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${myId}')`
+                        }]
+                    })
+                });
+                if (resp.ok) {
+                    const selfChatData = await resp.json();
+                    if (selfChatData && selfChatData.id && !seenIds.has(selfChatData.id)) {
+                        chats.unshift({
+                            id: selfChatData.id,
+                            label: (myDisplayName || RUNTIME.userName || 'Myself') + ' (You)',
+                            type: 'oneOnOne'
+                        });
+                    }
+                }
+            } catch (e) { console.warn('[TeamsSync] Self-chat lookup failed:', e); }
         }
 
         this._recentChatsCache = chats;
