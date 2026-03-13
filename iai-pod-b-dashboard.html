@@ -15081,14 +15081,32 @@ async function generateWeeklyAISummary() {
 const ShareSnapshot = {
     _open: false,
 
-    open() {
+    async open() {
         if (!State.dataLoaded || !State.clients.length) {
             showToast('No client data loaded — connect to monday.com first', 'warning');
             return;
         }
         this._open = true;
-        this.render();
         document.getElementById('shareOverlay').classList.add('open');
+
+        // Refresh all data sources before rendering to ensure report accuracy
+        if (getConnectionMode() !== 'offline') {
+            const body = document.getElementById('shareSnapshotBody');
+            if (body) body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-muted);"><div class="spinner" style="width:28px;height:28px;border:3px solid rgba(107,48,255,0.15);border-top-color:var(--accent-purple-light);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px;"></div><div style="font-size:13px;">Refreshing data for accurate report…</div></div>';
+            try {
+                await loadData(false);
+                const syncs = [];
+                if (OutlookSync.hasToken()) syncs.push(OutlookSync.sync(false));
+                if (CalendarSync.hasToken()) syncs.push(CalendarSync.sync(false));
+                if (TeamsSync.hasToken()) syncs.push(TeamsSync.sync(false));
+                if (SlackSync.hasToken && SlackSync.getToken()) syncs.push(SlackSync.connect());
+                if (syncs.length > 0) await Promise.allSettled(syncs);
+            } catch (e) {
+                console.warn('[ShareSnapshot] Pre-report refresh failed:', e.message);
+            }
+        }
+
+        this.render();
     },
 
     close() {
