@@ -7364,11 +7364,23 @@ const TeamsSync = {
     _recentChatsCache: null,
     _recentChatsCacheTime: 0,
 
+    // Extract current user's Azure AD Object ID from the stored JWT token
+    _getMyUserId() {
+        try {
+            const token = this.getToken();
+            if (!token) return null;
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            return payload.oid || null;
+        } catch (e) { return null; }
+    },
+
     async fetchRecentChats() {
         // Cache for 5 minutes — chat list rarely changes within a session
         if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
             return this._recentChatsCache;
         }
+        // Get my Azure AD user ID for reliable self-filtering
+        const myUserId = this._getMyUserId();
         // Fetch chats with members expanded
         let chatsData = await this._graphFetch('/me/chats', {
             '$top': '50',
@@ -7383,14 +7395,9 @@ const TeamsSync = {
             console.warn('[TeamsSync] fetchRecentChats: no data returned, error:', this._error);
             return [];
         }
-        const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
-        const myName = (RUNTIME.userName || '').toLowerCase();
         const chats = [];
-        const seenIds = new Set();
+        const seenLabels = new Map(); // Deduplicate by label to collapse identical-looking chats
         for (const c of chatsData.value) {
-            // Deduplicate by chat ID
-            if (seenIds.has(c.id)) continue;
-            seenIds.add(c.id);
             let label = c.topic || '';
             const chatType = c.chatType || 'unknown';
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
@@ -7402,21 +7409,31 @@ const TeamsSync = {
                         members = membersData?.value || [];
                     } catch (e) { /* skip member resolution */ }
                 }
-                // Filter out self — match by email OR displayName
+                // Filter out self using Azure AD userId (bulletproof — no name/email matching issues)
                 const others = members.filter(m => {
-                    const mEmail = (m.email || '').toLowerCase();
-                    const mName = (m.displayName || '').toLowerCase();
-                    const isMe = (mEmail && mEmail === myEmail) || (mName && mName === myName);
-                    return !isMe;
+                    // aadUserConversationMember has userId buried in the @odata id or as a direct property
+                    const mUserId = m.userId || (m.id ? m.id.split("'").find(s => /^[0-9a-f-]{36}$/.test(s)) : null);
+                    if (myUserId && mUserId) return mUserId !== myUserId;
+                    // Fallback: skip members with no identifiable info
+                    return true;
                 }).map(m => m.displayName || m.email || 'Unknown');
 
                 if (chatType === 'oneOnOne') {
-                    label = others.length > 0 ? `Chat with ${others[0]}` : `Chat with ${RUNTIME.userName || 'Myself'} (You)`;
+                    if (others.length > 0 && others[0] !== 'Unknown') {
+                        label = others[0]; // Just the person's name, like Teams shows it
+                    } else {
+                        // Self-chat: all members are you
+                        label = (members[0]?.displayName || RUNTIME.userName || 'Myself') + ' (You)';
+                    }
                 } else {
+                    // Group: show other members' names (excluding self)
                     label = others.length > 0 ? others.join(', ') : 'Group Chat';
                 }
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
+            // Deduplicate by label — keep only the first chat with each label
+            if (seenLabels.has(label)) continue;
+            seenLabels.set(label, true);
             chats.push({ id: c.id, label, type: chatType });
         }
         console.log(`[TeamsSync] fetchRecentChats: ${chats.length} chats found`);
