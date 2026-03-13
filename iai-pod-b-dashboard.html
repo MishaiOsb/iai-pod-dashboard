@@ -7324,35 +7324,50 @@ const TeamsSync = {
     },
 
     // ── Fetch Teams & Channels for picker ──
+    _teamsChannelsCache: null,
+    _teamsChannelsCacheTime: 0,
+
     async fetchTeamsAndChannels() {
+        // Cache for 5 minutes — team/channel lists rarely change
+        if (this._teamsChannelsCache && (Date.now() - this._teamsChannelsCacheTime < 300000)) {
+            return this._teamsChannelsCache;
+        }
         const teamsData = await this._graphFetch('/me/joinedTeams');
         if (!teamsData || !teamsData.value) return [];
-        const teams = [];
-        for (const t of teamsData.value) {
+        // Fetch all channels in parallel instead of sequentially
+        const teams = await Promise.all(teamsData.value.map(async t => {
             const channelsData = await this._graphFetch(`/teams/${t.id}/channels`);
             const channels = (channelsData?.value || []).map(ch => ({ id: ch.id, name: ch.displayName }));
-            teams.push({ id: t.id, name: t.displayName, channels });
-        }
+            return { id: t.id, name: t.displayName, channels };
+        }));
+        this._teamsChannelsCache = teams;
+        this._teamsChannelsCacheTime = Date.now();
         return teams;
     },
 
     // ── Fetch Recent Chats for picker ──
+    _recentChatsCache: null,
+    _recentChatsCacheTime: 0,
+
     async fetchRecentChats() {
+        // Cache for 5 minutes — chat list rarely changes within a session
+        if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
+            return this._recentChatsCache;
+        }
         const chatsData = await this._graphFetch('/me/chats', {
             '$top': '30',
             '$orderby': 'lastMessagePreview/createdDateTime desc'
         });
         if (!chatsData || !chatsData.value) return [];
-        const chats = [];
-        for (const c of chatsData.value) {
+        const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
+        // Resolve all chat labels in parallel instead of sequentially
+        const chats = await Promise.all(chatsData.value.map(async c => {
             let label = c.topic || '';
-            const chatType = c.chatType || 'unknown'; // oneOnOne, group, meeting
-            // For 1:1 and unnamed group chats, fetch member names
+            const chatType = c.chatType || 'unknown';
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
                 try {
                     const membersData = await this._graphFetch(`/me/chats/${c.id}/members`);
                     if (membersData?.value) {
-                        const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
                         const others = membersData.value
                             .filter(m => (m.email || '').toLowerCase() !== myEmail)
                             .map(m => m.displayName || m.email || 'Unknown');
@@ -7363,8 +7378,10 @@ const TeamsSync = {
                 } catch (e) { label = chatType === 'oneOnOne' ? 'Direct Message' : 'Group Chat'; }
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
-            chats.push({ id: c.id, label, type: chatType });
-        }
+            return { id: c.id, label, type: chatType };
+        }));
+        this._recentChatsCache = chats;
+        this._recentChatsCacheTime = Date.now();
         return chats;
     },
 
@@ -15094,13 +15111,18 @@ const ShareSnapshot = {
             const body = document.getElementById('shareSnapshotBody');
             if (body) body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-muted);"><div class="spinner" style="width:28px;height:28px;border:3px solid rgba(107,48,255,0.15);border-top-color:var(--accent-purple-light);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px;"></div><div style="font-size:13px;">Refreshing data for accurate report…</div></div>';
             try {
+                // monday.com is the core data source — must complete before render
                 await loadData(false);
+                // Secondary syncs run in parallel, non-blocking — re-render when done
                 const syncs = [];
                 if (OutlookSync.hasToken()) syncs.push(OutlookSync.sync(false));
                 if (CalendarSync.hasToken()) syncs.push(CalendarSync.sync(false));
                 if (TeamsSync.hasToken()) syncs.push(TeamsSync.sync(false));
                 if (SlackSync.hasToken && SlackSync.getToken()) syncs.push(SlackSync.connect());
-                if (syncs.length > 0) await Promise.allSettled(syncs);
+                if (syncs.length > 0) {
+                    // Don't block render — re-render once secondary syncs settle
+                    Promise.allSettled(syncs).then(() => { if (this._open) this.render(); });
+                }
             } catch (e) {
                 console.warn('[ShareSnapshot] Pre-report refresh failed:', e.message);
             }
