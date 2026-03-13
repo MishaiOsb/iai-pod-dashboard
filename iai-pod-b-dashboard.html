@@ -7305,6 +7305,7 @@ const TeamsSync = {
         if (!token) { this._error = 'no-token'; return null; }
         try {
             const url = 'https://graph.microsoft.com/v1.0' + endpoint;
+            console.log('[TeamsSync] POST →', endpoint);
             const resp = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -7313,8 +7314,13 @@ const TeamsSync = {
                 },
                 body: JSON.stringify(body)
             });
-            if (resp.status === 401) { this._error = 'token-expired'; return null; }
-            if (resp.status === 403) { this._error = 'no-permission'; return null; }
+            if (resp.status === 401) { console.error('[TeamsSync] POST 401 — token expired'); this._error = 'token-expired'; return null; }
+            if (resp.status === 403) {
+                const errText = await resp.text().catch(() => '');
+                console.error('[TeamsSync] POST 403 — no permission:', errText);
+                this._error = 'no-permission';
+                return null;
+            }
             if (!resp.ok) {
                 const errText = await resp.text().catch(() => '');
                 console.error('[TeamsSync] POST error:', resp.status, errText);
@@ -16118,12 +16124,14 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
             }
 
             if (result) {
-                showToast(`Report shared to ${label}`, 'info');
+                showToast(`✅ Report shared to ${label}`, 'success');
                 if (overlay) overlay.remove();
             } else {
-                const errMsg = TeamsSync._error === 'token-expired' ? 'Token expired — reconnect in Settings'
-                    : TeamsSync._error === 'no-permission' ? 'Missing permission — need ChannelMessage.Send or Chat.ReadWrite'
-                    : 'Failed to send message';
+                const permScope = type === 'chat' ? 'Chat.ReadWrite' : 'ChannelMessage.Send';
+                const errMsg = TeamsSync._error === 'token-expired' ? 'Token expired — update in Settings and try again'
+                    : TeamsSync._error === 'no-permission' ? `Missing permission: ${permScope} — add it in Graph Explorer and get a new token`
+                    : TeamsSync._error === 'no-token' ? 'No Microsoft token — connect in Settings first'
+                    : `Failed to send (${TeamsSync._error || 'unknown error'}) — check console (F12) for details`;
                 showToast(errMsg, 'error');
                 if (clickedEl) {
                     clickedEl.style.opacity = '1';
