@@ -7357,30 +7357,46 @@ const TeamsSync = {
         if (this._recentChatsCache && (Date.now() - this._recentChatsCacheTime < 300000)) {
             return this._recentChatsCache;
         }
-        // $expand=members fetches all member info in ONE request instead of N+1
-        const chatsData = await this._graphFetch('/me/chats', {
+        // Try with $expand=members first (single request), fall back to simple query
+        let chatsData = await this._graphFetch('/me/chats', {
             '$top': '30',
-            '$orderby': 'lastMessagePreview/createdDateTime desc',
             '$expand': 'members($select=displayName,email)',
-            '$select': 'id,topic,chatType,members'
+            '$select': 'id,topic,chatType'
         });
-        if (!chatsData || !chatsData.value) return [];
+        // Fallback: if $expand fails (some tenants/permissions don't support it), try without
+        if (!chatsData || !chatsData.value) {
+            console.warn('[TeamsSync] Chat $expand failed, trying simple query');
+            chatsData = await this._graphFetch('/me/chats', { '$top': '30' });
+        }
+        if (!chatsData || !chatsData.value) {
+            console.warn('[TeamsSync] fetchRecentChats: no data returned, error:', this._error);
+            return [];
+        }
         const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
-        const chats = chatsData.value.map(c => {
+        const chats = [];
+        for (const c of chatsData.value) {
             let label = c.topic || '';
             const chatType = c.chatType || 'unknown';
             if (!label && (chatType === 'oneOnOne' || chatType === 'group')) {
-                const members = c.members || [];
+                // If members came from $expand, use them directly
+                let members = c.members || [];
+                // If no members from expand, fetch them individually
+                if (members.length === 0) {
+                    try {
+                        const membersData = await this._graphFetch(`/me/chats/${c.id}/members`, { '$select': 'displayName,email' });
+                        members = membersData?.value || [];
+                    } catch (e) { /* skip member resolution */ }
+                }
                 const others = members
-                    .filter(m => (m.email || '').toLowerCase() !== myEmail)
+                    .filter(m => (m.email || m.displayName || '').toLowerCase() !== myEmail && (m.displayName || '').toLowerCase() !== myEmail)
                     .map(m => m.displayName || m.email || 'Unknown');
                 label = chatType === 'oneOnOne'
                     ? `Chat with ${others[0] || 'Unknown'}`
                     : others.length > 0 ? others.join(', ') : 'Group Chat';
             }
             if (!label) label = chatType === 'meeting' ? 'Meeting Chat' : 'Chat';
-            return { id: c.id, label, type: chatType };
-        });
+            chats.push({ id: c.id, label, type: chatType });
+        }
         this._recentChatsCache = chats;
         this._recentChatsCacheTime = Date.now();
         return chats;
@@ -16282,6 +16298,9 @@ function toggleTokenVis() {
 
 function showSetup() {
     document.getElementById('setupOverlay').classList.remove('hidden');
+    // Always re-enable the connect button (may be frozen from previous successful connection)
+    const connectBtn = document.getElementById('btnTestConnect');
+    if (connectBtn) { connectBtn.disabled = false; connectBtn.textContent = 'Test Connection & Launch'; }
     document.getElementById('tokenInput').value = MondayAPI._token || '';
     const outlookInput = document.getElementById('outlookTokenInput');
     if (outlookInput) outlookInput.value = OutlookSync.getToken() || '';
