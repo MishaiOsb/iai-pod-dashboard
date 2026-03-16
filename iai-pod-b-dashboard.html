@@ -3947,6 +3947,17 @@ input, textarea, select { font-family: inherit; outline: none; }
 
 <script>
 /* ================================================================
+   GLOBAL UTILITIES
+   ================================================================ */
+function escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function escapeAttr(str) {
+    return escapeHtml(str);
+}
+
+/* ================================================================
    THEME MANAGER
    ================================================================ */
 const ThemeManager = {
@@ -6897,7 +6908,7 @@ const CalendarSync = {
 
         this._syncing = false;
         // Re-render planner if it's currently visible
-        if (Router.current === 'planner') {
+        if (typeof Router !== 'undefined' && Router.current === 'planner') {
             renderPlannerPage();
         }
         this._updateSyncStatusUI();
@@ -7156,7 +7167,8 @@ const TeamsSync = {
                 const msgList = [];
                 let skippedSystem = 0;
 
-                // 5. Process top-level messages + their replies
+                // 5. Process top-level messages + fetch replies in parallel batches
+                const replyFetches = [];
                 for (const m of messagesData.value) {
                     const msgDate = new Date(m.createdDateTime);
                     const inRange = msgDate >= sinceDate;
@@ -7166,22 +7178,26 @@ const TeamsSync = {
                         if (!this._countMessage(m, myEmail, msgList, counts, seenIds, myUserId, myGraphMail)) skippedSystem++;
                     }
 
-                    // Only fetch replies for messages within extended window (30 days)
+                    // Queue reply fetches for messages within extended window (30 days)
                     // AND that are real conversation starters (have a human sender)
-                    // This prevents hundreds of wasted API calls on old/system messages
                     if (m.id && msgDate >= replyWindowDate && m.from?.user) {
-                        const repliesData = await this._graphFetch(
-                            `/teams/${team.id}/channels/${channel.id}/messages/${m.id}/replies`,
-                            { '$top': '50' }
+                        replyFetches.push(
+                            this._graphFetch(`/teams/${team.id}/channels/${channel.id}/messages/${m.id}/replies`, { '$top': '50' })
+                                .then(repliesData => { totalApiCalls++; return repliesData; })
                         );
-                        totalApiCalls++;
-                        if (repliesData && repliesData.value) {
-                            for (const reply of repliesData.value) {
-                                if (reply.messageType !== 'message') continue;
-                                const replyDate = new Date(reply.createdDateTime);
-                                if (replyDate >= sinceDate) {
-                                    if (!this._countMessage(reply, myEmail, msgList, counts, seenIds, myUserId, myGraphMail)) skippedSystem++;
-                                }
+                    }
+                }
+
+                // Process all reply fetches in parallel (much faster than sequential)
+                if (replyFetches.length > 0) {
+                    const replyResults = await Promise.allSettled(replyFetches);
+                    for (const result of replyResults) {
+                        if (result.status !== 'fulfilled' || !result.value?.value) continue;
+                        for (const reply of result.value.value) {
+                            if (reply.messageType !== 'message') continue;
+                            const replyDate = new Date(reply.createdDateTime);
+                            if (replyDate >= sinceDate) {
+                                if (!this._countMessage(reply, myEmail, msgList, counts, seenIds, myUserId, myGraphMail)) skippedSystem++;
                             }
                         }
                     }
@@ -7333,7 +7349,10 @@ const TeamsSync = {
                 return null;
             }
             this._error = null;
-            return await resp.json();
+            // Handle empty responses (e.g. 201 Created with no body)
+            const text = await resp.text().catch(() => '');
+            if (!text) return { ok: true };
+            try { return JSON.parse(text); } catch { return { ok: true, raw: text }; }
         } catch (err) {
             this._error = 'network';
             console.error('[TeamsSync] POST network error:', err.message);
@@ -12007,7 +12026,7 @@ async function loadAIHealthInsights(bustCache) {
         body.innerHTML = html || 'No insights available.';
     } catch (err) {
         body.className = 'ai-card-content';
-        body.innerHTML = `<span style="color:var(--rag-red);font-size:12px;">&#9888; ${err.message}</span>`;
+        body.innerHTML = `<span style="color:var(--rag-red);font-size:12px;">&#9888; ${escapeHtml(err.message)}</span>`;
     }
 }
 
@@ -12377,7 +12396,7 @@ async function openMeetingPrepModal(clientName) {
         if (copyBtn) copyBtn.style.display = '';
     } catch (err) {
         const el = document.getElementById('aiPrepContent');
-        if (el) { el.className = 'ai-card-content'; el.innerHTML = `<span style="color:var(--rag-red);">&#9888; ${err.message}</span>`; }
+        if (el) { el.className = 'ai-card-content'; el.innerHTML = `<span style="color:var(--rag-red);">&#9888; ${escapeHtml(err.message)}</span>`; }
     }
 }
 
@@ -15361,14 +15380,14 @@ const ShareSnapshot = {
                 if (TeamsSync.hasToken()) syncs.push(TeamsSync.sync(false));
                 if (SlackSync.hasToken && SlackSync.getToken()) syncs.push(SlackSync.connect());
                 if (syncs.length > 0) {
-                    Promise.allSettled(syncs).then(() => { if (this._open) this.render(); });
+                    await Promise.allSettled(syncs);
                 }
             } catch (e) {
                 console.warn('[ShareSnapshot] Pre-report refresh failed:', e.message);
             }
         }
 
-        this.render();
+        if (this._open) this.render();
     },
 
     close() {
@@ -15966,8 +15985,8 @@ const ShareSnapshot = {
             html += `<div style="font-size:13px;font-weight:700;color:#df2f4a;margin-bottom:8px;">⚠️ Needs Attention</div>`;
             html += `<table style="width:100%;border-collapse:collapse;">`;
             s.needsAttention.forEach(n => {
-                html += `<tr><td style="padding:4px 0;font-size:12px;"><strong>${n.name}</strong></td>`;
-                html += `<td style="padding:4px 8px;font-size:12px;color:#666;">${n.reason}</td>`;
+                html += `<tr><td style="padding:4px 0;font-size:12px;"><strong>${escapeHtml(n.name)}</strong></td>`;
+                html += `<td style="padding:4px 8px;font-size:12px;color:#666;">${escapeHtml(n.reason)}</td>`;
                 html += `<td style="padding:4px 0;font-size:12px;font-weight:700;color:#df2f4a;text-align:right;">Health: ${n.health}</td></tr>`;
             });
             html += `</table></td></tr></table>`;
@@ -15991,7 +16010,7 @@ const ShareSnapshot = {
             html += `<table style="width:100%;border:none;border-collapse:collapse;margin-bottom:8px;"><tr>`;
             html += `<td style="padding:0;">`;
             html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ragC};vertical-align:middle;margin-right:8px;"></span>`;
-            html += `<strong style="font-size:15px;color:#1a1a2e;vertical-align:middle;">${c.name}</strong></td>`;
+            html += `<strong style="font-size:15px;color:#1a1a2e;vertical-align:middle;">${escapeHtml(c.name)}</strong></td>`;
             html += `<td style="text-align:right;padding:0;"><span style="font-size:13px;font-weight:700;color:${hColor};background:${hColor}15;padding:3px 10px;border-radius:12px;">Health: ${health}</span></td>`;
             html += `</tr></table>`;
 
@@ -15999,9 +16018,9 @@ const ShareSnapshot = {
             html += `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">`;
             html += `<tr style="background:#F0F0F0;">`;
             html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;width:25%;">Plan</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;width:25%;"><strong>${c.plan || 'N/A'}</strong></td>`;
+            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;width:25%;"><strong>${escapeHtml(c.plan || 'N/A')}</strong></td>`;
             html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;width:25%;">Billing</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;width:25%;"><strong>${c.billing}</strong></td></tr>`;
+            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;width:25%;"><strong>${escapeHtml(c.billing)}</strong></td></tr>`;
             html += `<tr>`;
             html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Update</td>`;
             html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;"><strong>${c.updateStatus}</strong></td>`;
@@ -16018,7 +16037,7 @@ const ShareSnapshot = {
             if (c.agents && c.agents.length > 0) {
                 html += `<div style="margin-top:6px;">`;
                 c.agents.forEach(a => {
-                    html += `<span style="display:inline-block;padding:3px 10px;margin:2px 3px 2px 0;background:#F3F0FF;color:#6B30FF;border-radius:12px;font-size:11px;font-weight:600;">🤖 ${a.name} — ${a.stage}${a.platform ? ' (' + a.platform + ')' : ''}</span>`;
+                    html += `<span style="display:inline-block;padding:3px 10px;margin:2px 3px 2px 0;background:#F3F0FF;color:#6B30FF;border-radius:12px;font-size:11px;font-weight:600;">🤖 ${escapeHtml(a.name)} — ${escapeHtml(a.stage)}${a.platform ? ' (' + escapeHtml(a.platform) + ')' : ''}</span>`;
                 });
                 html += `</div>`;
             }
@@ -16051,7 +16070,7 @@ const ShareSnapshot = {
                 const mDate = new Date(m.date);
                 const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
                 html += `<tr><td style="padding:5px 10px;font-size:12px;color:#888;border:1px solid #E8E8E8;width:80px;">${dateLabel}</td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#333;border:1px solid #E8E8E8;">${m.title || 'Untitled'}</td></tr>`;
+                html += `<td style="padding:5px 10px;font-size:12px;color:#333;border:1px solid #E8E8E8;">${escapeHtml(m.title || 'Untitled')}</td></tr>`;
             });
             html += `</table>`;
         }
@@ -16066,8 +16085,8 @@ const ShareSnapshot = {
                 const daysLeft = Math.ceil((d - now) / 86400000);
                 const urgentColor = daysLeft <= 7 ? '#df2f4a' : '#666';
                 html += `<tr><td style="padding:5px 10px;font-size:12px;font-weight:700;color:${urgentColor};border:1px solid #E8E8E8;width:50px;">${daysLeft}d</td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#333;border:1px solid #E8E8E8;"><strong>${u.client}</strong></td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#666;border:1px solid #E8E8E8;">${u.type}</td>`;
+                html += `<td style="padding:5px 10px;font-size:12px;color:#333;border:1px solid #E8E8E8;"><strong>${escapeHtml(u.client)}</strong></td>`;
+                html += `<td style="padding:5px 10px;font-size:12px;color:#666;border:1px solid #E8E8E8;">${escapeHtml(u.type)}</td>`;
                 html += `<td style="padding:5px 10px;font-size:12px;color:#888;border:1px solid #E8E8E8;">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</td></tr>`;
             });
             html += `</table>`;
@@ -16223,11 +16242,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
 
         let channelsHTML = '';
         teams.forEach(t => {
-            channelsHTML += `<div class="teams-picker-group" data-search-group="${t.name.toLowerCase()}">${t.name}</div>`;
+            channelsHTML += `<div class="teams-picker-group" data-search-group="${escapeAttr(t.name.toLowerCase())}">${escapeHtml(t.name)}</div>`;
             t.channels.forEach(ch => {
-                channelsHTML += `<div class="teams-picker-item" data-search="${(t.name + ' ' + ch.name).toLowerCase()}" onclick="ShareSnapshot._sendToDestination('channel','${t.id}','${ch.id}',this)" title="${t.name} → #${ch.name}">
+                channelsHTML += `<div class="teams-picker-item" data-search="${escapeAttr((t.name + ' ' + ch.name).toLowerCase())}" onclick="ShareSnapshot._sendToDestination('channel','${escapeAttr(t.id)}','${escapeAttr(ch.id)}',this)" title="${escapeAttr(t.name)} → #${escapeAttr(ch.name)}">
                     <div class="tp-icon" style="background:rgba(98,100,167,0.15);color:#6264a7;">#</div>
-                    <div class="tp-label">${ch.name}</div>
+                    <div class="tp-label">${escapeHtml(ch.name)}</div>
                 </div>`;
             });
         });
@@ -16237,11 +16256,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#222;paddin
         chats.forEach(c => {
             const icon = c.type === 'oneOnOne' ? '👤' : c.type === 'group' ? '👥' : '📅';
             const typeLabel = c.type === 'oneOnOne' ? 'DM' : c.type === 'group' ? 'Group' : 'Meeting';
-            const safeId = c.id.replace(/'/g, "\\'");
-            chatsHTML += `<div class="teams-picker-item" data-search="${(c.label || '').toLowerCase()}" style="position:relative;">
-                <div style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;" onclick="ShareSnapshot._sendToDestination('chat','${safeId}','',this.parentElement)" title="Send report to ${c.label}">
+            const safeId = escapeAttr(c.id.replace(/'/g, "\\'"));
+            const safeLabel = escapeHtml(c.label || '');
+            chatsHTML += `<div class="teams-picker-item" data-search="${escapeAttr((c.label || '').toLowerCase())}" style="position:relative;">
+                <div style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;" onclick="ShareSnapshot._sendToDestination('chat','${safeId}','',this.parentElement)" title="Send report to ${escapeAttr(c.label)}">
                     <div class="tp-icon" style="background:rgba(0,200,117,0.12);color:#00c875;">${icon}</div>
-                    <div class="tp-label">${c.label}</div>
+                    <div class="tp-label">${safeLabel}</div>
                     <div class="tp-type">${typeLabel}</div>
                 </div>
                 <button onclick="event.stopPropagation();ShareSnapshot._testChatSend('${safeId}',this)" style="font-size:10px;padding:2px 8px;border:1px solid var(--border-default);border-radius:4px;background:var(--bg-secondary);color:var(--text-muted);cursor:pointer;white-space:nowrap;" title="Send a tiny test message to verify permissions">Test</button>
@@ -16917,10 +16937,10 @@ const ConnectionStatus = {
     // Consolidated Microsoft status: best of outlook, calendar, teams
     getMicrosoftStatus() {
         if (!OutlookSync.hasToken()) return 'no-token';
-        const statuses = [this.outlook, this.calendar];
-        if (statuses.some(s => s === 'ok')) return 'ok';
+        const statuses = [this.outlook, this.calendar, this.teams];
+        if (statuses.some(s => s === 'ok' || s === 'connected')) return 'ok';
         if (statuses.some(s => s === 'token-expired')) return 'token-expired';
-        if (statuses.some(s => s === 'error')) return 'error';
+        if (statuses.some(s => s === 'error' || s === 'no-permission')) return 'error';
         return 'unknown';
     },
 
@@ -17202,7 +17222,7 @@ async function showPodSelection(userName) {
                 </button>`;
         }).join('');
     } catch (err) {
-        container.innerHTML = `<div style="color:var(--rag-red);padding:12px;">Failed to discover pods: ${err.message}</div>`;
+        container.innerHTML = `<div style="color:var(--rag-red);padding:12px;">Failed to discover pods: ${escapeHtml(err.message)}</div>`;
     }
 }
 
