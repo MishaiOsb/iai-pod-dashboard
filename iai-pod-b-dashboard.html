@@ -6135,7 +6135,7 @@ const AITaskAssist = {
   "alerts": [{"client": "name", "issue": "brief description", "severity": "high|medium|low"}],
   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
 }
-Be specific with client names and numbers. Focus on actionable insights. Max 5-7 alerts, max 3-5 recommendations. Your alerts feed directly into the dashboard's Smart Alerts system, so make them specific and actionable. Consider ALL available data: RAG status, health scores, billing, email status, contact recency, Teams/Slack activity, upcoming meetings, overdue tasks, and the pod lead's notes. If the pod lead has added notes on specific clients, factor those into your analysis — they represent the pod lead's own observations and priorities. Flag risks the rule-based system might miss, such as clients with declining engagement patterns, clients who need upselling, or combinations of factors that suggest trouble.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
+Be specific with client names and numbers. Focus on actionable insights. Max 5-7 alerts, max 3-5 recommendations. Your alerts feed directly into the dashboard's Smart Alerts system, so make them specific and actionable. Consider ALL available data: RAG status, health scores, billing, email status, contact recency, Teams/Slack activity, upcoming meetings, overdue tasks, and the pod lead's notes. CRITICAL: The pod lead's notes are ground truth — they override raw data. If a note says billing is handled (e.g. "automatic billing", "new billing model"), do NOT flag billing issues for that client. If a note says a client is paused or on hold, do NOT flag contact gaps. Always read and respect notes before generating alerts. Flag risks the rule-based system might miss, such as clients with declining engagement patterns, clients who need upselling, or combinations of factors that suggest trouble.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
             { role: 'user', content: portfolio + contextBlock }
         ], { max_tokens: 800 });
         this._cacheSet(cacheKey, result);
@@ -9774,14 +9774,29 @@ const State = {
             return ed && ed.discontinued === true;
         };
 
+        // Check if client notes mention keywords that explain/override a specific alert category
+        // Returns true if notes indicate the alert should be suppressed
+        const notesExplain = (clientId, keywords) => {
+            if (typeof NotesManager === 'undefined') return false;
+            const notes = NotesManager.get(clientId);
+            if (!notes.length) return false;
+            const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+            return keywords.some(kw => allText.includes(kw));
+        };
+
         this.clients.forEach(c => {
             // Skip all operational alerts for discontinued clients
             if (isDiscontinued(c.name)) return;
 
             const daysSince = getDaysSinceContact(getEffectiveLastContact(c));
 
-            // Critical: No contact in 14+ days
-            if (daysSince !== null && daysSince >= CONFIG.STALE_CRITICAL_DAYS) {
+            // Critical: No contact in 14+ days (skip if notes explain absence)
+            const contactExplained = notesExplain(c.id, [
+                'on holiday', 'on leave', 'away', 'unavailable', 'vacation',
+                'paused', 'on hold', 'no contact needed', 'low priority',
+                'self-service', 'autonomous', 'minimal contact'
+            ]);
+            if (daysSince !== null && daysSince >= CONFIG.STALE_CRITICAL_DAYS && !contactExplained) {
                 this.alerts.push({
                     type: 'critical',
                     icon: '&#128680;',
@@ -9792,7 +9807,7 @@ const State = {
                 });
             }
             // Warning: No contact in 7+ days
-            else if (daysSince !== null && daysSince >= CONFIG.STALE_WARNING_DAYS) {
+            else if (daysSince !== null && daysSince >= CONFIG.STALE_WARNING_DAYS && !contactExplained) {
                 this.alerts.push({
                     type: 'warning',
                     icon: '&#9888;&#65039;',
@@ -9815,16 +9830,27 @@ const State = {
                 });
             }
 
-            // Missing billing for non-pilot clients
+            // Missing billing for non-pilot clients (skip if notes explain billing situation)
             if (c.billing === 'No' && c.plan !== 'AIOS Pilot' && c.plan !== 'Free Demo') {
-                this.alerts.push({
-                    type: 'info',
-                    icon: '&#128179;',
-                    title: `${c.name} - Billing not active`,
-                    desc: `${c.plan} plan but billing is set to No`,
-                    clientId: c.id,
-                    timestamp: c.updatedAt,
-                });
+                const billingExplained = notesExplain(c.id, [
+                    'automatic billing', 'auto billing', 'auto-billing', 'autobill',
+                    'billed automatically', 'billing model', 'billing arranged',
+                    'billing sorted', 'billing confirmed', 'billing pending',
+                    'billing setup', 'billing set up', 'new billing',
+                    'free trial', 'trial period', 'grace period',
+                    'no billing', 'waived', 'complimentary',
+                    '30 day', '30-day', 'after 30'
+                ]);
+                if (!billingExplained) {
+                    this.alerts.push({
+                        type: 'info',
+                        icon: '&#128179;',
+                        title: `${c.name} - Billing not active`,
+                        desc: `${c.plan} plan but billing is set to No`,
+                        clientId: c.id,
+                        timestamp: c.updatedAt,
+                    });
+                }
             }
 
             // Zero agents deployed
