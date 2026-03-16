@@ -6011,9 +6011,12 @@ const AITaskAssist = {
 
     /* ---- Feature 3: Health Insights (overview page) ---- */
     async healthInsights() {
-        const cached = this._cacheGet('health_overview');
+        const userContext = (typeof getAIContext === 'function') ? getAIContext() : '';
+        const cacheKey = 'health_overview' + (userContext ? '_ctx_' + userContext.substring(0,30) : '');
+        const cached = this._cacheGet(cacheKey);
         if (cached) return cached;
         const portfolio = this._buildPortfolioSummary();
+        const contextBlock = userContext ? `\n\n--- Pod Lead's Context ---\nThe pod lead has provided this additional context to guide your analysis. Prioritise and tailor your insights accordingly:\n${userContext}\n--- End Context ---` : '';
         const result = await this._openaiChat([
             { role: 'system', content: `You are a digital marketing portfolio analyst for ImplementAI. Analyse this portfolio data and return JSON with:
 {
@@ -6021,10 +6024,10 @@ const AITaskAssist = {
   "alerts": [{"client": "name", "issue": "brief description", "severity": "high|medium|low"}],
   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
 }
-Be specific with client names and numbers. Focus on actionable insights. Max 3-5 alerts, max 3-4 recommendations.` },
-            { role: 'user', content: portfolio }
+Be specific with client names and numbers. Focus on actionable insights. Max 3-5 alerts, max 3-4 recommendations.${userContext ? ' The pod lead has provided additional context — use it to prioritise and focus your analysis.' : ''}` },
+            { role: 'user', content: portfolio + contextBlock }
         ], { max_tokens: 600 });
-        this._cacheSet('health_overview', result);
+        this._cacheSet(cacheKey, result);
         return result;
     },
 
@@ -11888,7 +11891,21 @@ function renderOverviewPage() {
         <div class="ai-card" id="aiHealthInsightsCard">
             <div class="ai-card-header">
                 <span>&#10024; AI Portfolio Insights</span>
-                <button class="btn-ai" onclick="loadAIHealthInsights(true)" title="Refresh insights">&#8635; Refresh</button>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button class="btn-ai" onclick="toggleAIContext()" title="Add context to refine insights" style="font-size:11px;padding:4px 10px;">&#128172; Context</button>
+                    <button class="btn-ai" onclick="loadAIHealthInsights(true)" title="Refresh insights">&#8635; Refresh</button>
+                </div>
+            </div>
+            <div id="aiContextPanel" style="display:none;padding:0 16px 12px;">
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Provide context to refine AI recommendations (e.g. priorities, upcoming events, known issues):</div>
+                <textarea id="aiContextInput" style="width:100%;min-height:70px;max-height:160px;padding:10px 12px;font-size:12px;font-family:inherit;line-height:1.5;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-default);border-radius:var(--radius-sm);resize:vertical;outline:none;transition:border-color 0.2s;" placeholder="e.g. &quot;Focus on onboarding clients this week&quot; or &quot;Ezy-Clean has a billing review on Thursday&quot; or &quot;Prioritise clients with low engagement&quot;"></textarea>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+                    <span id="aiContextStatus" style="font-size:10px;color:var(--text-muted);"></span>
+                    <div style="display:flex;gap:6px;">
+                        <button onclick="clearAIContext()" style="font-size:10px;padding:3px 8px;background:none;color:var(--text-muted);border:1px solid var(--border-subtle);border-radius:4px;cursor:pointer;">Clear</button>
+                        <button onclick="saveAIContext();loadAIHealthInsights(true)" class="btn-ai" style="font-size:11px;padding:4px 12px;">Apply &amp; Refresh</button>
+                    </div>
+                </div>
             </div>
             <div id="aiHealthInsightsBody" class="ai-card-loading ai-shimmer">Analysing portfolio...</div>
         </div>` : '';
@@ -11961,8 +11978,9 @@ async function loadAIHealthInsights(bustCache) {
     const body = document.getElementById('aiHealthInsightsBody');
     if (!body) return;
     if (bustCache) AITaskAssist._cache = {};
+    const ctx = (typeof getAIContext === 'function') ? getAIContext() : '';
     body.className = 'ai-card-loading ai-shimmer';
-    body.textContent = 'Analysing portfolio...';
+    body.textContent = ctx ? 'Analysing portfolio with your context...' : 'Analysing portfolio...';
     try {
         const data = await AITaskAssist.healthInsights();
         let html = '';
@@ -11981,11 +11999,60 @@ async function loadAIHealthInsights(bustCache) {
             data.recommendations.forEach(r => { html += `<li>${r}</li>`; });
             html += `</ul>`;
         }
+        if (ctx) {
+            html += `<div style="margin-top:8px;padding:5px 10px;background:rgba(107,48,255,0.06);border-radius:4px;font-size:10px;color:var(--text-muted);"><strong style="color:var(--accent-purple);">&#128172; Context applied</strong> — <em>${ctx.length > 60 ? ctx.substring(0,60) + '...' : ctx}</em></div>`;
+        }
         body.className = 'ai-card-content';
         body.innerHTML = html || 'No insights available.';
     } catch (err) {
         body.className = 'ai-card-content';
         body.innerHTML = `<span style="color:var(--rag-red);font-size:12px;">&#9888; ${err.message}</span>`;
+    }
+}
+
+// ── AI Context Panel helpers ──
+function toggleAIContext() {
+    const panel = document.getElementById('aiContextPanel');
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+        const input = document.getElementById('aiContextInput');
+        if (input) {
+            input.value = getAIContext();
+            input.focus();
+        }
+        updateAIContextStatus();
+    }
+}
+function getAIContext() {
+    return localStorage.getItem(UserSession.podKey() + '_ai_context') || '';
+}
+function saveAIContext() {
+    const input = document.getElementById('aiContextInput');
+    const val = (input?.value || '').trim();
+    if (val) {
+        localStorage.setItem(UserSession.podKey() + '_ai_context', val);
+    } else {
+        localStorage.removeItem(UserSession.podKey() + '_ai_context');
+    }
+    updateAIContextStatus();
+    AITaskAssist._cache = {}; // bust cache so new context takes effect
+}
+function clearAIContext() {
+    const input = document.getElementById('aiContextInput');
+    if (input) input.value = '';
+    localStorage.removeItem(UserSession.podKey() + '_ai_context');
+    AITaskAssist._cache = {};
+    updateAIContextStatus();
+    showToast('Context cleared', 'info');
+}
+function updateAIContextStatus() {
+    const status = document.getElementById('aiContextStatus');
+    const ctx = getAIContext();
+    if (status) {
+        status.textContent = ctx ? `Context saved (${ctx.length} chars)` : 'No context set';
+        status.style.color = ctx ? 'var(--rag-green)' : 'var(--text-muted)';
     }
 }
 
