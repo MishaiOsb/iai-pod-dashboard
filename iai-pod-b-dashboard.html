@@ -4149,11 +4149,59 @@ const Router = {
 };
 
 /* ================================================================
+   AUTO-CONTACT DETECTION
+   Checks Teams, Email, and Slack for recent outbound messages to a
+   client. Used by UpdateConfirmations and ClientCheckIn to auto-
+   credit targets when a message has been sent within the cycle.
+   ================================================================ */
+function getLastOutboundContact(clientName) {
+    // Returns { date: Date|null, source: string|null } for the most recent
+    // message SENT BY ME to this client across Teams, Email, Slack.
+    let bestDate = null;
+    let bestSource = null;
+
+    try {
+        // Teams: check for sent messages (isFromMe)
+        const td = typeof TEAMS_DATA !== 'undefined' ? TEAMS_DATA.clients?.[clientName] : null;
+        if (td && td.messages) {
+            const myMsg = td.messages.find(m => m.isFromMe);
+            if (myMsg && myMsg.date) {
+                const d = new Date(myMsg.date);
+                if (!bestDate || d > bestDate) { bestDate = d; bestSource = 'teams'; }
+            }
+        }
+
+        // Email: check for sent emails
+        const ed = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients?.[clientName] : null;
+        if (ed) {
+            const lastFromMe = typeof getLastEmailFromMe === 'function' ? getLastEmailFromMe(ed) : null;
+            if (lastFromMe && lastFromMe.date) {
+                const d = new Date(lastFromMe.date);
+                if (!bestDate || d > bestDate) { bestDate = d; bestSource = 'email'; }
+            }
+        }
+
+        // Slack: check for sent messages
+        const sd = typeof SLACK_DATA !== 'undefined' ? SLACK_DATA.clients?.[clientName] : null;
+        if (sd && sd.messages) {
+            const mySlack = sd.messages.find(m => m.isFromMe);
+            if (mySlack && mySlack.date) {
+                const d = new Date(mySlack.date);
+                if (!bestDate || d > bestDate) { bestDate = d; bestSource = 'slack'; }
+            }
+        }
+    } catch (e) { /* graceful fallback */ }
+
+    return { date: bestDate, source: bestSource };
+}
+
+/* ================================================================
    UPDATE CONFIRMATIONS TRACKER
    Tracks when each client's update was last confirmed/reviewed.
    Auto-resets after CONFIG.CHECKIN_CYCLE_DAYS (3 days) so clients
    reappear as needing their updates re-confirmed.
    Syncs with monday.com updateStatus for real-time context.
+   Now also auto-credits when a Teams/email/Slack message is sent.
    ================================================================ */
 const UpdateConfirmations = {
     _key: 'iai_update_confirmations',
@@ -4225,15 +4273,35 @@ const UpdateConfirmations = {
         if (changed) this.save();
     },
 
-    /** Get confirmation status for a client */
+    /** Get confirmation status for a client (manual + auto-detection) */
     getStatus(clientName) {
-        const entry = this._confirmations[clientName];
-        if (!entry) return { confirmed: false, hoursAgo: null };
-        const confirmedAt = new Date(entry.confirmedAt);
-        const hoursAgo = Math.round((Date.now() - confirmedAt) / 3600000);
         const cycleDays = typeof CONFIG !== 'undefined' ? CONFIG.CHECKIN_CYCLE_DAYS : 3;
-        const expired = hoursAgo >= cycleDays * 24;
-        return { confirmed: !expired, confirmedAt: entry.confirmedAt, hoursAgo };
+        const cycleMs = cycleDays * 24 * 3600000;
+
+        // 1. Check manual confirmation
+        const entry = this._confirmations[clientName];
+        let manualConfirmed = false, manualAt = null, manualHoursAgo = null;
+        if (entry) {
+            manualAt = new Date(entry.confirmedAt);
+            manualHoursAgo = Math.round((Date.now() - manualAt) / 3600000);
+            manualConfirmed = manualHoursAgo < cycleDays * 24;
+        }
+
+        // 2. Check auto-detection (Teams/email/Slack outbound message)
+        const autoContact = getLastOutboundContact(clientName);
+        let autoConfirmed = false, autoSource = null;
+        if (autoContact.date && (Date.now() - autoContact.date.getTime()) < cycleMs) {
+            autoConfirmed = true;
+            autoSource = autoContact.source;
+        }
+
+        const confirmed = manualConfirmed || autoConfirmed;
+        const bestDate = (manualAt && autoContact.date)
+            ? (manualAt > autoContact.date ? manualAt : autoContact.date)
+            : (manualAt || autoContact.date);
+        const hoursAgo = bestDate ? Math.round((Date.now() - bestDate) / 3600000) : null;
+
+        return { confirmed, confirmedAt: bestDate?.toISOString() || null, hoursAgo, autoSource, isAuto: autoConfirmed && !manualConfirmed };
     },
 
     /** Is a client fully on track? Confirmed within cycle AND updateStatus is good on monday */
@@ -4310,16 +4378,35 @@ const ClientCheckIn = {
         if (changed) this.save();
     },
 
-    /** Get check-in status for a client */
+    /** Get check-in status for a client (manual + auto-detection) */
     getStatus(clientName) {
-        const entry = this._checkins[clientName];
-        if (!entry) return { checked: false, daysAgo: null, hoursAgo: null };
-        const checkedAt = new Date(entry.checkedAt);
-        const hoursAgo = Math.round((Date.now() - checkedAt) / 3600000);
-        const daysAgo = Math.round(hoursAgo / 24);
         const cycleDays = typeof CONFIG !== 'undefined' ? CONFIG.CHECKIN_CYCLE_DAYS : 3;
-        const expired = hoursAgo >= cycleDays * 24;
-        return { checked: !expired, checkedAt: entry.checkedAt, daysAgo, hoursAgo, note: entry.note };
+        const cycleMs = cycleDays * 24 * 3600000;
+
+        // 1. Check manual check-in
+        const entry = this._checkins[clientName];
+        let manualChecked = false, manualAt = null;
+        if (entry) {
+            manualAt = new Date(entry.checkedAt);
+            manualChecked = (Date.now() - manualAt.getTime()) < cycleMs;
+        }
+
+        // 2. Check auto-detection (Teams/email/Slack outbound message)
+        const autoContact = getLastOutboundContact(clientName);
+        let autoChecked = false, autoSource = null;
+        if (autoContact.date && (Date.now() - autoContact.date.getTime()) < cycleMs) {
+            autoChecked = true;
+            autoSource = autoContact.source;
+        }
+
+        const checked = manualChecked || autoChecked;
+        const bestDate = (manualAt && autoContact.date)
+            ? (manualAt > autoContact.date ? manualAt : autoContact.date)
+            : (manualAt || autoContact.date);
+        const hoursAgo = bestDate ? Math.round((Date.now() - bestDate) / 3600000) : null;
+        const daysAgo = hoursAgo !== null ? Math.round(hoursAgo / 24) : null;
+
+        return { checked, checkedAt: bestDate?.toISOString() || null, daysAgo, hoursAgo, note: entry?.note || '', autoSource, isAuto: autoChecked && !manualChecked };
     },
 
     /** Get all clients needing check-in (not checked or expired) */
@@ -4717,7 +4804,7 @@ const TargetsManager = {
         const confirmed = activeClients.filter(c => UpdateConfirmations.isOnTrack(c.name));
         const needsConfirmation = activeClients.filter(c => !UpdateConfirmations.isOnTrack(c.name));
 
-        const description = `This target tracks whether all client <strong>updates are confirmed</strong> on a <strong>${CONFIG.CHECKIN_CYCLE_DAYS}-day cycle</strong>. Every ${CONFIG.CHECKIN_CYCLE_DAYS} days, confirmations reset automatically so you need to re-review each client's status. If a client's monday.com status is "Need Contact", they won't count as confirmed even if recently checked.`;
+        const description = `This target tracks whether all client <strong>updates are confirmed</strong> on a <strong>${CONFIG.CHECKIN_CYCLE_DAYS}-day cycle</strong>. Every ${CONFIG.CHECKIN_CYCLE_DAYS} days, confirmations reset automatically. <strong>Auto-detection:</strong> sending a Teams message, email, or Slack message to a client automatically counts as a confirmation. Manual confirmations still work alongside.`;
 
         const statsHtml = `
             <div class="target-detail-stats">
@@ -4764,8 +4851,10 @@ const TargetsManager = {
                 if (isConfirmed) {
                     const hoursLeft = Math.max(0, CONFIG.CHECKIN_CYCLE_DAYS * 24 - confStatus.hoursAgo);
                     const timeLabel = hoursLeft >= 24 ? Math.round(hoursLeft / 24) + 'd' : hoursLeft + 'h';
-                    statusHtml = `<span class="tcl-status met">✓ Confirmed (resets in ${timeLabel})</span>`;
-                    actionBtn = `<button class="target-override-btn revert" onclick="event.stopPropagation();UpdateConfirmations.reset('${esc}')" title="Reset confirmation">↩</button>`;
+                    const sourceIcon = confStatus.isAuto ? (confStatus.autoSource === 'teams' ? '💬' : confStatus.autoSource === 'email' ? '📧' : '💬') : '✓';
+                    const sourceLabel = confStatus.isAuto ? `Auto (${confStatus.autoSource})` : 'Manual';
+                    statusHtml = `<span class="tcl-status met">${sourceIcon} ${sourceLabel} (${timeLabel})</span>`;
+                    actionBtn = confStatus.isAuto ? '' : `<button class="target-override-btn revert" onclick="event.stopPropagation();UpdateConfirmations.reset('${esc}')" title="Reset confirmation">↩</button>`;
                 } else {
                     // Show why not confirmed
                     const reason = !confStatus.confirmed && mondayStatus === 'Need Contact' ?
@@ -4825,7 +4914,7 @@ const TargetsManager = {
         const needsCheckIn = activeClients.filter(c => !ClientCheckIn.getStatus(c.name).checked);
         const checkedIn = activeClients.filter(c => ClientCheckIn.getStatus(c.name).checked);
 
-        const description = `This target tracks your <strong>${CONFIG.CHECKIN_CYCLE_DAYS}-day client check-in cycle</strong>. Every ${CONFIG.CHECKIN_CYCLE_DAYS} days, all check-ins reset automatically so you know which clients need attention. Click the ✓ button to mark a client as checked.`;
+        const description = `This target tracks your <strong>${CONFIG.CHECKIN_CYCLE_DAYS}-day client check-in cycle</strong>. Every ${CONFIG.CHECKIN_CYCLE_DAYS} days, all check-ins reset automatically. <strong>Auto-detection:</strong> sending a Teams message, email, or Slack message to a client automatically counts as a check-in. Manual check-ins still work alongside.`;
 
         const statsHtml = `
             <div class="target-detail-stats">
@@ -4856,8 +4945,10 @@ const TargetsManager = {
             if (isMet) {
                 const hoursLeft = Math.max(0, CONFIG.CHECKIN_CYCLE_DAYS * 24 - status.hoursAgo);
                 const timeLabel = hoursLeft >= 24 ? Math.round(hoursLeft / 24) + 'd' : hoursLeft + 'h';
-                statusHtml = `<span class="tcl-status met">✓ Checked (resets in ${timeLabel})</span>`;
-                actionBtn = `<button class="target-override-btn revert" onclick="event.stopPropagation();ClientCheckIn.resetCheckIn('${esc}')" title="Reset check-in">↩</button>`;
+                const sourceIcon = status.isAuto ? (status.autoSource === 'teams' ? '💬' : status.autoSource === 'email' ? '📧' : '💬') : '✓';
+                const sourceLabel = status.isAuto ? `Auto (${status.autoSource})` : 'Manual';
+                statusHtml = `<span class="tcl-status met">${sourceIcon} ${sourceLabel} (${timeLabel})</span>`;
+                actionBtn = status.isAuto ? '' : `<button class="target-override-btn revert" onclick="event.stopPropagation();ClientCheckIn.resetCheckIn('${esc}')" title="Reset check-in">↩</button>`;
             } else {
                 statusHtml = `<span class="tcl-status unmet">✗ Needs Check-In</span>`;
                 actionBtn = `<button class="target-override-btn" onclick="event.stopPropagation();ClientCheckIn.checkIn('${esc}')" title="Mark as checked">✓</button>`;
