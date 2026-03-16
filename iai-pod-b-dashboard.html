@@ -14040,7 +14040,7 @@ function renderPlannerPage() {
                 </div>
             </div>
             <span class="email-followup-tag ${f.tagClass}">${f.tag}</span>
-            ${_aiAvail ? `<a class="email-followup-action" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#1a1a2e;border:none;font-weight:600;" onclick="openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</a>` : ''}
+            ${_aiAvail ? `<a class="email-followup-action" onclick="openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</a>` : ''}
             ${f.clientId ? `<a class="email-followup-action" onclick="Router.navigate('client/${f.clientId}')">View &#8599;</a>` : ''}
             ${f.webLink ? `<a class="email-followup-action" href="${f.webLink}" target="_blank" onclick="event.stopPropagation()">Open &#128231;</a>` : ''}
         </div>
