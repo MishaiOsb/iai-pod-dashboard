@@ -12077,7 +12077,7 @@ function getEmailDetailHTML(clientName) {
         <div style="margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
             <span class="email-status-tag ${st.class}" style="font-size:11px;">${st.text}</span>
             ${ed.lastClientEmail ? `<span style="font-size:11px;color:var(--text-muted);">Last from: ${ed.lastClientEmail}</span>` : ''}
-            ${showFollowUp ? `<button class="btn-ai" onclick="openEmailDraftModal('${clientName.replace(/'/g,"\\'")}', 5)" style="font-size:11px;padding:4px 12px;margin-left:auto;background:linear-gradient(135deg,#6366f1,#8b5cf6);">&#128260; Follow Up</button>` : ''}
+            ${showFollowUp ? `<button class="btn-ai" onclick="openEmailDraftModal('${clientName.replace(/'/g,"\\'")}', 5)" style="font-size:11px;padding:4px 12px;margin-left:auto;background:linear-gradient(135deg,#f59e0b,#f97316);color:#1a1a2e;font-weight:600;">&#128260; Follow Up</button>` : ''}
         </div>
         <div class="detail-emails-list">
             ${ed.emails.map(e => {
@@ -13130,7 +13130,7 @@ function renderClientFullPage(clientId) {
         ${AITaskAssist.isAvailable() ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
             <button class="btn-ai" onclick="openMeetingPrepModal('${c.name.replace(/'/g,"\\'")}')">&#128203; AI Prep Brief</button>
             <button class="btn-ai" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}')">&#128231; Draft Email</button>
-            <button class="btn-ai" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}', 5)" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">&#128260; Follow Up</button>
+            <button class="btn-ai" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}', 5)" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#1a1a2e;font-weight:600;">&#128260; Follow Up</button>
         </div>` : ''}
 
         <div class="client-detail-metrics">
@@ -14040,7 +14040,7 @@ function renderPlannerPage() {
                 </div>
             </div>
             <span class="email-followup-tag ${f.tagClass}">${f.tag}</span>
-            ${_aiAvail ? `<a class="email-followup-action" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;" onclick="openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</a>` : ''}
+            ${_aiAvail ? `<a class="email-followup-action" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#1a1a2e;border:none;font-weight:600;" onclick="openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</a>` : ''}
             ${f.clientId ? `<a class="email-followup-action" onclick="Router.navigate('client/${f.clientId}')">View &#8599;</a>` : ''}
             ${f.webLink ? `<a class="email-followup-action" href="${f.webLink}" target="_blank" onclick="event.stopPropagation()">Open &#128231;</a>` : ''}
         </div>
@@ -14126,7 +14126,7 @@ function renderPlannerPage() {
                 <span class="week-event-time">&#128231;</span>
                 <span class="week-event-title">${f.name}${f.latestEmail ? ` <span style="color:var(--text-muted);font-size:10px;">Re: ${f.latestEmail.subject.length > 30 ? f.latestEmail.subject.substring(0,30) + '...' : f.latestEmail.subject}</span>` : ''}</span>
                 <span class="week-event-type email-${f.tagClass}">${f.tag}</span>
-                ${_aiAvail ? `<span style="font-size:10px;color:#8b5cf6;margin-left:4px;cursor:pointer;" title="AI Follow Up">&#128260;</span>` : ''}
+                ${_aiAvail ? `<span style="font-size:10px;color:#f59e0b;margin-left:4px;cursor:pointer;font-weight:700;" title="AI Follow Up">&#128260;</span>` : ''}
             </div>
         `).join('');
 
