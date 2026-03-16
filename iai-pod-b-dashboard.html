@@ -2713,6 +2713,14 @@ input, textarea, select { font-family: inherit; outline: none; }
 .btn-ai:hover { background: linear-gradient(135deg, rgba(107,48,255,0.25), rgba(87,155,252,0.15)); transform: translateY(-1px); }
 .btn-ai:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .btn-ai .ai-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(107,48,255,0.2); border-top-color: var(--accent-purple-light); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 4px; }
+.btn-followup {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 20px; cursor: pointer;
+    background: transparent; color: #f59e0b;
+    border: 1.5px solid rgba(245,158,11,0.5);
+    transition: all var(--transition-fast); white-space: nowrap; text-decoration: none;
+}
+.btn-followup:hover { background: rgba(245,158,11,0.12); border-color: #f59e0b; transform: translateY(-1px); color: #fbbf24; }
 .ai-alert { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; position: relative; }
 .ai-alert .ai-alert-dismiss { cursor: pointer; opacity: 0.5; font-size: 13px; line-height: 1; padding: 0 2px; margin-left: 2px; transition: opacity 0.2s; }
 .ai-alert .ai-alert-dismiss:hover { opacity: 1; }
@@ -12077,7 +12085,7 @@ function getEmailDetailHTML(clientName) {
         <div style="margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
             <span class="email-status-tag ${st.class}" style="font-size:11px;">${st.text}</span>
             ${ed.lastClientEmail ? `<span style="font-size:11px;color:var(--text-muted);">Last from: ${ed.lastClientEmail}</span>` : ''}
-            ${showFollowUp ? `<button class="btn-ai" onclick="openEmailDraftModal('${clientName.replace(/'/g,"\\'")}', 5)" style="font-size:11px;padding:4px 12px;margin-left:auto;background:linear-gradient(135deg,#f59e0b,#f97316);color:#1a1a2e;font-weight:600;">&#128260; Follow Up</button>` : ''}
+            ${showFollowUp ? `<button class="btn-followup" onclick="openEmailDraftModal('${clientName.replace(/'/g,"\\'")}', 5)" style="margin-left:auto;">&#128260; Follow Up</button>` : ''}
         </div>
         <div class="detail-emails-list">
             ${ed.emails.map(e => {
@@ -13130,7 +13138,7 @@ function renderClientFullPage(clientId) {
         ${AITaskAssist.isAvailable() ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
             <button class="btn-ai" onclick="openMeetingPrepModal('${c.name.replace(/'/g,"\\'")}')">&#128203; AI Prep Brief</button>
             <button class="btn-ai" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}')">&#128231; Draft Email</button>
-            <button class="btn-ai" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}', 5)" style="background:linear-gradient(135deg,#f59e0b,#f97316);color:#1a1a2e;font-weight:600;">&#128260; Follow Up</button>
+            <button class="btn-followup" onclick="openEmailDraftModal('${c.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</button>
         </div>` : ''}
 
         <div class="client-detail-metrics">
@@ -14040,7 +14048,7 @@ function renderPlannerPage() {
                 </div>
             </div>
             <span class="email-followup-tag ${f.tagClass}">${f.tag}</span>
-            ${_aiAvail ? `<a class="email-followup-action" onclick="openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</a>` : ''}
+            ${_aiAvail ? `<a class="btn-followup" onclick="openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)">&#128260; Follow Up</a>` : ''}
             ${f.clientId ? `<a class="email-followup-action" onclick="Router.navigate('client/${f.clientId}')">View &#8599;</a>` : ''}
             ${f.webLink ? `<a class="email-followup-action" href="${f.webLink}" target="_blank" onclick="event.stopPropagation()">Open &#128231;</a>` : ''}
         </div>
@@ -14126,7 +14134,7 @@ function renderPlannerPage() {
                 <span class="week-event-time">&#128231;</span>
                 <span class="week-event-title">${f.name}${f.latestEmail ? ` <span style="color:var(--text-muted);font-size:10px;">Re: ${f.latestEmail.subject.length > 30 ? f.latestEmail.subject.substring(0,30) + '...' : f.latestEmail.subject}</span>` : ''}</span>
                 <span class="week-event-type email-${f.tagClass}">${f.tag}</span>
-                ${_aiAvail ? `<span style="font-size:10px;color:#f59e0b;margin-left:4px;cursor:pointer;font-weight:700;" title="AI Follow Up">&#128260;</span>` : ''}
+                ${_aiAvail ? `<a class="btn-followup" onclick="event.stopPropagation();openEmailDraftModal('${f.name.replace(/'/g,"\\'")}', 5)" style="font-size:9px;padding:2px 8px;">&#128260; Follow Up</a>` : ''}
             </div>
         `).join('');
 
