@@ -12017,12 +12017,13 @@ function renderOverviewPage() {
                 </div>
             </div>
             <div id="aiContextPanel" style="display:none;padding:0 16px 12px;">
-                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Provide context to refine AI recommendations (e.g. priorities, upcoming events, known issues):</div>
-                <textarea id="aiContextInput" style="width:100%;min-height:70px;max-height:160px;padding:10px 12px;font-size:12px;font-family:inherit;line-height:1.5;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-default);border-radius:var(--radius-sm);resize:vertical;outline:none;transition:border-color 0.2s;" placeholder="e.g. &quot;Focus on onboarding clients this week&quot; or &quot;Ezy-Clean has a billing review on Thursday&quot; or &quot;Prioritise clients with low engagement&quot;"></textarea>
+                <div id="aiContextChips" style="display:none;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Add context to refine AI recommendations (stacks with existing context):</div>
+                <textarea id="aiContextInput" style="width:100%;min-height:60px;max-height:140px;padding:10px 12px;font-size:12px;font-family:inherit;line-height:1.5;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-default);border-radius:var(--radius-sm);resize:vertical;outline:none;transition:border-color 0.2s;" placeholder="e.g. &quot;Focus on onboarding clients this week&quot; or &quot;Ezy-Clean has a billing review on Thursday&quot;"></textarea>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
                     <span id="aiContextStatus" style="font-size:10px;color:var(--text-muted);"></span>
                     <div style="display:flex;gap:6px;">
-                        <button onclick="clearAIContext()" style="font-size:10px;padding:3px 8px;background:none;color:var(--text-muted);border:1px solid var(--border-subtle);border-radius:4px;cursor:pointer;">Clear</button>
+                        <button onclick="clearAllAIContext()" style="font-size:10px;padding:3px 8px;background:none;color:var(--text-muted);border:1px solid var(--border-subtle);border-radius:4px;cursor:pointer;">Clear All</button>
                         <button id="btnAIContextUndo" onclick="undoAIContext()" style="display:none;font-size:10px;padding:3px 8px;background:none;color:var(--rag-amber);border:1px solid var(--rag-amber);border-radius:4px;cursor:pointer;">&#8630; Undo</button>
                         <button onclick="applyAIContext()" class="btn-ai" style="font-size:11px;padding:4px 12px;">Apply &amp; Refresh</button>
                     </div>
@@ -12131,7 +12132,32 @@ async function loadAIHealthInsights(bustCache) {
     }
 }
 
-// ── AI Context Panel helpers ──
+// ── AI Context Panel helpers (stackable context items) ──
+function _aiContextKey() { return UserSession.podKey() + '_ai_context_items'; }
+function _getAIContextItems() {
+    try { return JSON.parse(localStorage.getItem(_aiContextKey()) || '[]'); } catch { return []; }
+}
+function _saveAIContextItems(items) {
+    if (items.length) {
+        localStorage.setItem(_aiContextKey(), JSON.stringify(items));
+    } else {
+        localStorage.removeItem(_aiContextKey());
+    }
+    // Also keep legacy key in sync for prompt injection
+    const combined = items.join('\n');
+    if (combined) {
+        localStorage.setItem(UserSession.podKey() + '_ai_context', combined);
+    } else {
+        localStorage.removeItem(UserSession.podKey() + '_ai_context');
+    }
+    AITaskAssist._cache = {};
+}
+function getAIContext() {
+    // Return combined context string for AI prompt
+    return _getAIContextItems().join('\n');
+}
+let _aiContextPreviousItems = null; // snapshot for undo
+
 function toggleAIContext() {
     const panel = document.getElementById('aiContextPanel');
     if (!panel) return;
@@ -12139,76 +12165,110 @@ function toggleAIContext() {
     panel.style.display = isHidden ? 'block' : 'none';
     if (isHidden) {
         const input = document.getElementById('aiContextInput');
-        if (input) {
-            input.value = getAIContext();
-            input.focus();
-        }
+        if (input) { input.value = ''; input.focus(); }
+        renderAIContextChips();
         updateAIContextStatus();
     }
 }
-function getAIContext() {
-    return localStorage.getItem(UserSession.podKey() + '_ai_context') || '';
-}
-let _aiContextPrevious = null; // stores previous context for undo
-function saveAIContext() {
-    const input = document.getElementById('aiContextInput');
-    const val = (input?.value || '').trim();
-    if (val) {
-        localStorage.setItem(UserSession.podKey() + '_ai_context', val);
-    } else {
-        localStorage.removeItem(UserSession.podKey() + '_ai_context');
-    }
-    updateAIContextStatus();
-    AITaskAssist._cache = {};
-}
 function applyAIContext() {
-    _aiContextPrevious = getAIContext(); // snapshot before saving
-    saveAIContext();
-    // Close the panel
-    const panel = document.getElementById('aiContextPanel');
-    if (panel) panel.style.display = 'none';
-    // Show undo button briefly
+    const input = document.getElementById('aiContextInput');
+    const newText = (input?.value || '').trim();
+    if (!newText) { showToast('Enter some context first', 'info'); return; }
+    // Snapshot for undo
+    _aiContextPreviousItems = [..._getAIContextItems()];
+    // Append new context item
+    const items = _getAIContextItems();
+    items.push(newText);
+    _saveAIContextItems(items);
+    // Clear textarea for next input
+    if (input) input.value = '';
+    // Show undo button
     const undoBtn = document.getElementById('btnAIContextUndo');
     if (undoBtn) undoBtn.style.display = 'inline-block';
-    // Refresh insights with new context
+    // Update chips & status
+    renderAIContextChips();
+    updateAIContextStatus();
+    // Refresh insights
     loadAIHealthInsights(true);
-    const ctx = getAIContext();
-    showToast(ctx ? 'Context applied — refreshing insights' : 'Context cleared — refreshing insights', 'success');
+    showToast('Context added — refreshing insights', 'success');
+}
+function removeAIContextItem(index) {
+    _aiContextPreviousItems = [..._getAIContextItems()];
+    const items = _getAIContextItems();
+    if (index >= 0 && index < items.length) {
+        items.splice(index, 1);
+        _saveAIContextItems(items);
+        renderAIContextChips();
+        updateAIContextStatus();
+        loadAIHealthInsights(true);
+        showToast('Context item removed — refreshing insights', 'info');
+        const undoBtn = document.getElementById('btnAIContextUndo');
+        if (undoBtn) undoBtn.style.display = 'inline-block';
+    }
 }
 function undoAIContext() {
-    if (_aiContextPrevious === null) return;
-    // Restore previous context
-    if (_aiContextPrevious) {
-        localStorage.setItem(UserSession.podKey() + '_ai_context', _aiContextPrevious);
-    } else {
-        localStorage.removeItem(UserSession.podKey() + '_ai_context');
-    }
-    AITaskAssist._cache = {};
-    _aiContextPrevious = null;
+    if (_aiContextPreviousItems === null) return;
+    _saveAIContextItems(_aiContextPreviousItems);
+    _aiContextPreviousItems = null;
     const undoBtn = document.getElementById('btnAIContextUndo');
     if (undoBtn) undoBtn.style.display = 'none';
+    renderAIContextChips();
+    updateAIContextStatus();
     loadAIHealthInsights(true);
     showToast('Context reverted to previous state', 'info');
 }
-function clearAIContext() {
-    _aiContextPrevious = getAIContext(); // snapshot for undo
+function clearAllAIContext() {
+    const items = _getAIContextItems();
+    if (!items.length) return;
+    _aiContextPreviousItems = [...items];
+    _saveAIContextItems([]);
     const input = document.getElementById('aiContextInput');
     if (input) input.value = '';
-    localStorage.removeItem(UserSession.podKey() + '_ai_context');
-    AITaskAssist._cache = {};
+    renderAIContextChips();
     updateAIContextStatus();
     const undoBtn = document.getElementById('btnAIContextUndo');
-    if (undoBtn && _aiContextPrevious) undoBtn.style.display = 'inline-block';
-    showToast('Context cleared', 'info');
+    if (undoBtn) undoBtn.style.display = 'inline-block';
+    loadAIHealthInsights(true);
+    showToast('All context cleared — refreshing insights', 'info');
+}
+function renderAIContextChips() {
+    const container = document.getElementById('aiContextChips');
+    if (!container) return;
+    const items = _getAIContextItems();
+    if (!items.length) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+    container.style.display = 'flex';
+    container.innerHTML = items.map((item, i) => {
+        const label = escapeHtml(item.length > 60 ? item.substring(0, 57) + '...' : item);
+        return `<div style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:12px;font-size:10px;color:var(--accent-purple-light);max-width:280px;" title="${escapeAttr(item)}">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
+            <span onclick="removeAIContextItem(${i})" style="cursor:pointer;font-size:13px;line-height:1;opacity:0.7;padding:0 2px;flex-shrink:0;" title="Remove this context">&times;</span>
+        </div>`;
+    }).join('');
 }
 function updateAIContextStatus() {
     const status = document.getElementById('aiContextStatus');
-    const ctx = getAIContext();
+    const items = _getAIContextItems();
     if (status) {
-        status.textContent = ctx ? `Context saved (${ctx.length} chars)` : 'No context set';
-        status.style.color = ctx ? 'var(--rag-green)' : 'var(--text-muted)';
+        status.textContent = items.length ? `${items.length} context item${items.length > 1 ? 's' : ''} active` : 'No context set';
+        status.style.color = items.length ? 'var(--rag-green)' : 'var(--text-muted)';
     }
 }
+// Migrate old single-string context to new array format on first load
+(function _migrateAIContext() {
+    try {
+        const key = UserSession.podKey() + '_ai_context';
+        const itemsKey = UserSession.podKey() + '_ai_context_items';
+        const oldVal = localStorage.getItem(key);
+        const newVal = localStorage.getItem(itemsKey);
+        if (oldVal && !newVal) {
+            localStorage.setItem(itemsKey, JSON.stringify([oldVal]));
+        }
+    } catch(e) {}
+})();
 
 /* ================================================================
    CLIENT FULL PAGE (INDIVIDUAL CLIENT DETAIL)
