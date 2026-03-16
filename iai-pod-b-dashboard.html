@@ -5991,6 +5991,11 @@ const AITaskAssist = {
             items.forEach(it => { byStatus[it.status] = (byStatus[it.status] || 0) + 1; });
             parts.push(`Board items: ${items.length} total — ${Object.entries(byStatus).map(([s,n]) => n + ' ' + s).join(', ')}`);
         }
+        // Pod lead's notes
+        const clientNotes = typeof NotesManager !== 'undefined' ? NotesManager.get(c.id) : [];
+        if (clientNotes.length > 0) {
+            parts.push(`Pod lead's notes: ${clientNotes.slice(0, 5).map(n => '"' + n.text.substring(0, 120) + '"').join('; ')}`);
+        }
         return parts.join('\n');
     },
 
@@ -6011,7 +6016,10 @@ const AITaskAssist = {
             const lastContact = typeof getEffectiveLastContact === 'function' ? getEffectiveLastContact(c) : null;
             const days = lastContact && typeof getDaysSinceContact === 'function' ? getDaysSinceContact(lastContact) : null;
             const es = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : '';
-            lines.push(`- ${c.name}: ${c.rag} RAG, Health ${h}, ${c.plan}, ${c.agentCount} agents, billing=${c.billing}, email=${es}${days !== null ? ', last contact ' + days + 'd ago' : ''}`);
+            // Include pod lead's notes for this client
+            const clientNotes = typeof NotesManager !== 'undefined' ? NotesManager.get(c.id) : [];
+            const notesStr = clientNotes.length > 0 ? ', notes: ' + clientNotes.slice(0, 5).map(n => '"' + n.text.substring(0, 80) + '"').join('; ') : '';
+            lines.push(`- ${c.name}: ${c.rag} RAG, Health ${h}, ${c.plan}, ${c.agentCount} agents, billing=${c.billing}, email=${es}${days !== null ? ', last contact ' + days + 'd ago' : ''}${notesStr}`);
         });
         // Overdue tasks
         const allTodos = typeof DashTodo !== 'undefined' ? DashTodo._items || [] : [];
@@ -6114,7 +6122,8 @@ const AITaskAssist = {
     /* ---- Feature 3: Health Insights (overview page) ---- */
     async healthInsights() {
         const userContext = (typeof getAIContext === 'function') ? getAIContext() : '';
-        const cacheKey = 'health_overview' + (userContext ? '_ctx_' + userContext.substring(0,30) : '');
+        const notesCount = (State.clients || []).reduce((s, c) => s + (typeof NotesManager !== 'undefined' ? NotesManager.get(c.id).length : 0), 0);
+        const cacheKey = 'health_overview_n' + notesCount + (userContext ? '_ctx_' + userContext.substring(0,30) : '');
         const cached = this._cacheGet(cacheKey);
         if (cached) return cached;
         const portfolio = this._buildPortfolioSummary();
@@ -6126,7 +6135,7 @@ const AITaskAssist = {
   "alerts": [{"client": "name", "issue": "brief description", "severity": "high|medium|low"}],
   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
 }
-Be specific with client names and numbers. Focus on actionable insights. Max 3-5 alerts, max 3-4 recommendations.${userContext ? ' The pod lead has provided additional context — use it to prioritise and focus your analysis.' : ''}` },
+Be specific with client names and numbers. Focus on actionable insights. Max 3-5 alerts, max 3-4 recommendations. If the pod lead has added notes on specific clients, factor those into your analysis — they represent the pod lead's own observations and priorities.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
             { role: 'user', content: portfolio + contextBlock }
         ], { max_tokens: 600 });
         this._cacheSet(cacheKey, result);
