@@ -2150,6 +2150,15 @@ input, textarea, select { font-family: inherit; outline: none; }
     font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
     background: rgba(107,48,255,0.15); color: var(--accent-purple-light);
 }
+.planner-section-title .collapse-toggle {
+    margin-left: auto; cursor: pointer; font-size: 13px; padding: 3px 8px;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle);
+    border-radius: 6px; color: var(--text-muted); transition: all 0.2s;
+    user-select: none; line-height: 1;
+}
+.planner-section-title .collapse-toggle:hover { background: rgba(255,255,255,0.1); color: var(--text-secondary); }
+.planner-collapsible-body { transition: max-height 0.3s ease, opacity 0.2s ease; overflow: hidden; }
+.planner-collapsible-body.collapsed { max-height: 0 !important; opacity: 0; margin: 0; padding: 0; }
 
 /* To-Do Cards */
 /* Task Prompt Modal */
@@ -13271,10 +13280,15 @@ function buildFirefliesSection() {
     <div class="fireflies-section">
         <div class="fireflies-section-header">
             <h3>🎙️ Meeting Notes <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(${meetings.length} meeting${meetings.length !== 1 ? 's' : ''}${totalActions > 0 ? ' · ' + totalActions + ' new actions' : ''})</span></h3>
-            <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <button class="btn-ff-sync" onclick="FirefliesSync.sync(true).then(()=>renderPlannerPage())">&#128260; Sync</button>
+                <span class="collapse-toggle" id="plannerToggle_meetings" onclick="PlannerSections.toggle('meetings')" style="font-size:13px;padding:3px 8px;background:rgba(255,255,255,0.06);border:1px solid var(--border-subtle);border-radius:6px;color:var(--text-muted);cursor:pointer;">${PlannerSections.isCollapsed('meetings') ? '▸' : '▾'}</span>
+            </div>
         </div>
-        ${meetings.length === 0 ? '<div class="ff-empty">All meetings dismissed. Use the toggle below to restore.</div>' : meetingHTML}
-        ${dismissedHTML}
+        <div id="plannerBody_meetings" class="planner-collapsible-body ${PlannerSections.isCollapsed('meetings') ? 'collapsed' : ''}">
+            ${meetings.length === 0 ? '<div class="ff-empty">All meetings dismissed. Use the toggle below to restore.</div>' : meetingHTML}
+            ${dismissedHTML}
+        </div>
     </div>`;
 }
 
@@ -13370,12 +13384,70 @@ async function runAISearch() {
     }
 }
 
+// ── Collapsible planner sections ──
+const PlannerSections = {
+    _key() { return UserSession.podKey() + '_planner_collapsed'; },
+    _state: null,
+    load() {
+        if (this._state) return this._state;
+        try { this._state = JSON.parse(localStorage.getItem(this._key()) || '{}'); } catch { this._state = {}; }
+        return this._state;
+    },
+    isCollapsed(sectionId) { return !!this.load()[sectionId]; },
+    toggle(sectionId) {
+        const state = this.load();
+        state[sectionId] = !state[sectionId];
+        localStorage.setItem(this._key(), JSON.stringify(state));
+        // Toggle DOM
+        const body = document.getElementById('plannerBody_' + sectionId);
+        const btn = document.getElementById('plannerToggle_' + sectionId);
+        if (body) body.classList.toggle('collapsed');
+        if (btn) btn.textContent = state[sectionId] ? '▸' : '▾';
+    },
+};
+
+// ── Slack weekly archive: clear completed Slack-related tasks on Monday ──
+function _slackWeeklyArchiveCheck() {
+    const key = UserSession.podKey() + '_slack_archive_week';
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon
+    // Get ISO week number
+    const jan1 = new Date(today.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((today - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+    const weekKey = today.getFullYear() + '-W' + weekNum;
+    const lastArchived = localStorage.getItem(key);
+    if (dayOfWeek === 1 && lastArchived !== weekKey) {
+        // It's Monday and we haven't archived this week yet
+        localStorage.setItem(key, weekKey);
+        // Archive completed tasks from last week
+        if (typeof DashTodo !== 'undefined') {
+            const items = DashTodo._items || [];
+            const lastFriday = new Date(today);
+            lastFriday.setDate(today.getDate() - 3); // 3 days back = Friday
+            lastFriday.setHours(23, 59, 59);
+            let archived = 0;
+            DashTodo._items = items.filter(t => {
+                if (t.completed && t.completedAt && new Date(t.completedAt) < lastFriday) {
+                    archived++;
+                    return false; // remove
+                }
+                return true;
+            });
+            if (archived > 0) {
+                DashTodo.save();
+                showToast(`New week! Archived ${archived} completed task${archived > 1 ? 's' : ''} from last week`, 'info');
+            }
+        }
+    }
+}
+
 function renderPlannerPage() {
     const container = document.getElementById('plannerContent');
     if (!container) return;
 
     DashTodo.load();
     AutoTodoGen.generate();
+    _slackWeeklyArchiveCheck();
     // Auto-expire stale "done" overrides if new activity has arrived
     EmailActionOverrides.autoExpireCheck();
 
@@ -13850,12 +13922,15 @@ function renderPlannerPage() {
             <div class="planner-section-title" style="flex-wrap:wrap;gap:8px;">
                 <span>&#128197; Today's Schedule — ${today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
                 <span class="section-count">${todayEvents.length} meeting${todayEvents.length !== 1 ? 's' : ''}</span>
-                <div class="email-sync-status" style="margin-left:auto;">
+                <div class="email-sync-status" style="margin-left:auto;margin-right:6px;">
                     <span class="email-sync-text" id="calSyncText">Loading...</span>
                     <button class="email-sync-btn" id="btnCalSync" onclick="CalendarSync.sync(true)" title="Sync calendar now">&#128260; Sync</button>
                 </div>
+                <span class="collapse-toggle" id="plannerToggle_calendar" onclick="PlannerSections.toggle('calendar')">${PlannerSections.isCollapsed('calendar') ? '▸' : '▾'}</span>
             </div>
-            ${todayCalendarHTML}
+            <div id="plannerBody_calendar" class="planner-collapsible-body ${PlannerSections.isCollapsed('calendar') ? 'collapsed' : ''}">
+                ${todayCalendarHTML}
+            </div>
         </div>
 
         <!-- Communications Follow-Ups Due -->
@@ -13863,8 +13938,11 @@ function renderPlannerPage() {
             <div class="planner-section-title">
                 &#128172; Communications Follow-Ups
                 <span class="section-count">${todayFollowUps.length} action${todayFollowUps.length !== 1 ? 's' : ''} needed</span>
+                <span class="collapse-toggle" id="plannerToggle_comms" onclick="PlannerSections.toggle('comms')">${PlannerSections.isCollapsed('comms') ? '▸' : '▾'}</span>
             </div>
-            ${todayEmailHTML}
+            <div id="plannerBody_comms" class="planner-collapsible-body ${PlannerSections.isCollapsed('comms') ? 'collapsed' : ''}">
+                ${todayEmailHTML}
+            </div>
         </div>
 
         <!-- Client Check-In Cycle -->
@@ -13893,9 +13971,12 @@ function renderPlannerPage() {
                 <div class="planner-section-title">
                     &#128270; Client Check-Ins (${CONFIG.CHECKIN_CYCLE_DAYS}-Day Cycle)
                     <span class="section-count">${checkedCount}/${totalActive} checked · ${needsCheckIn.length} remaining</span>
+                    <span class="collapse-toggle" id="plannerToggle_checkin" onclick="PlannerSections.toggle('checkin')">${PlannerSections.isCollapsed('checkin') ? '▸' : '▾'}</span>
                 </div>
-                ${needsCheckIn.length > 0 ? checkInCards + moreCount :
-                    '<div style="padding:16px;text-align:center;color:var(--rag-green);font-size:13px;">🎉 All clients checked in for this cycle!</div>'}
+                <div id="plannerBody_checkin" class="planner-collapsible-body ${PlannerSections.isCollapsed('checkin') ? 'collapsed' : ''}">
+                    ${needsCheckIn.length > 0 ? checkInCards + moreCount :
+                        '<div style="padding:16px;text-align:center;color:var(--rag-green);font-size:13px;">🎉 All clients checked in for this cycle!</div>'}
+                </div>
             </div>`;
         })()}
 
@@ -13923,8 +14004,11 @@ function renderPlannerPage() {
                 <div class="planner-section-title">
                     &#128172; Slack Activity
                     <span class="section-count">${slackClients.length} client${slackClients.length !== 1 ? 's' : ''} with recent messages</span>
+                    <span class="collapse-toggle" id="plannerToggle_slack" onclick="PlannerSections.toggle('slack')">${PlannerSections.isCollapsed('slack') ? '▸' : '▾'}</span>
                 </div>
-                ${cards}
+                <div id="plannerBody_slack" class="planner-collapsible-body ${PlannerSections.isCollapsed('slack') ? 'collapsed' : ''}">
+                    ${cards}
+                </div>
             </div>`;
         })()}
 
@@ -13934,22 +14018,24 @@ function renderPlannerPage() {
                 <div class="planner-section-title">
                     ✅ Action Items
                     <span class="section-count">${todayCount} today (${emailActionsToday.length} email${emailActionsToday.length !== 1 ? 's' : ''} + ${todayTodoCount} task${todayTodoCount !== 1 ? 's' : ''})</span>
+                    <span class="collapse-toggle" id="plannerToggle_actions" onclick="PlannerSections.toggle('actions')">${PlannerSections.isCollapsed('actions') ? '▸' : '▾'}</span>
                 </div>
+                <div id="plannerBody_actions" class="planner-collapsible-body ${PlannerSections.isCollapsed('actions') ? 'collapsed' : ''}">
+                    <div class="todo-filters">
+                        <button class="todo-filter-btn ${DashTodo._filter === 'all' ? 'active' : ''}" onclick="DashTodo.setFilter('all')">Active (${todayCount})</button>
+                        <button class="todo-filter-btn ${DashTodo._filter === 'today' ? 'active' : ''}" onclick="DashTodo.setFilter('today')">Today (${todayCount})</button>
+                        <button class="todo-filter-btn ${DashTodo._filter === 'week' ? 'active' : ''}" onclick="DashTodo.setFilter('week')">This Week (${weekCount})</button>
+                        <button class="todo-filter-btn ${DashTodo._filter === 'completed' ? 'active' : ''}" onclick="DashTodo.setFilter('completed')">Done (${completedCount})</button>
+                    </div>
 
-                <div class="todo-filters">
-                    <button class="todo-filter-btn ${DashTodo._filter === 'all' ? 'active' : ''}" onclick="DashTodo.setFilter('all')">Active (${todayCount})</button>
-                    <button class="todo-filter-btn ${DashTodo._filter === 'today' ? 'active' : ''}" onclick="DashTodo.setFilter('today')">Today (${todayCount})</button>
-                    <button class="todo-filter-btn ${DashTodo._filter === 'week' ? 'active' : ''}" onclick="DashTodo.setFilter('week')">This Week (${weekCount})</button>
-                    <button class="todo-filter-btn ${DashTodo._filter === 'completed' ? 'active' : ''}" onclick="DashTodo.setFilter('completed')">Done (${completedCount})</button>
-                </div>
+                    <button class="btn-open-prompt" onclick="openTaskPrompt()">&#10010; Add Tasks</button>
 
-                <button class="btn-open-prompt" onclick="openTaskPrompt()">&#10010; Add Tasks</button>
-
-                <div class="todo-list">
-                    ${emailActionsHTML}
-                    ${sortedTodos.length > 0 && filteredEmailActions.length > 0 ? '<div style="margin-bottom:8px;margin-top:12px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0;">📋 Tasks</div>' : ''}
-                    ${todoListHTML}
-                    ${emptyMessage}
+                    <div class="todo-list">
+                        ${emailActionsHTML}
+                        ${sortedTodos.length > 0 && filteredEmailActions.length > 0 ? '<div style="margin-bottom:8px;margin-top:12px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;padding:4px 0;">📋 Tasks</div>' : ''}
+                        ${todoListHTML}
+                        ${emptyMessage}
+                    </div>
                 </div>
             </div>
 
@@ -13958,8 +14044,11 @@ function renderPlannerPage() {
                 <div class="planner-section-title">
                     &#128197; Week at a Glance
                     <span class="section-count">${weekDays[0].toLocaleDateString('en-GB', {day:'numeric',month:'short'})} — ${weekDays[6].toLocaleDateString('en-GB', {day:'numeric',month:'short'})}</span>
+                    <span class="collapse-toggle" id="plannerToggle_week" onclick="PlannerSections.toggle('week')">${PlannerSections.isCollapsed('week') ? '▸' : '▾'}</span>
                 </div>
-                ${weekProjectionHTML}
+                <div id="plannerBody_week" class="planner-collapsible-body ${PlannerSections.isCollapsed('week') ? 'collapsed' : ''}">
+                    ${weekProjectionHTML}
+                </div>
             </div>
         </div>
     `;
