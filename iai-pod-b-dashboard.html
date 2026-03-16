@@ -8704,11 +8704,12 @@ const NotesManager = {
 
     renderInDetail(clientId) {
         const notes = this.get(clientId);
+        const safeId = escapeAttr(clientId);
         return `
             <div class="detail-notes-section">
                 <div class="note-input-row">
-                    <input type="text" id="noteInput_${clientId}" placeholder="Add a note..." onkeydown="if(event.key==='Enter'){NotesManager.addFromInput('${clientId}');}">
-                    <button onclick="NotesManager.addFromInput('${clientId}')">Add Note</button>
+                    <input type="text" id="noteInput_${safeId}" placeholder="Add a note..." onkeydown="if(event.key==='Enter'){NotesManager.addFromInput('${safeId}');}">
+                    <button onclick="NotesManager.addFromInput('${safeId}')">Add Note</button>
                 </div>
                 ${notes.length > 0 ? `<div class="notes-list">
                     ${notes.map(n => {
@@ -8716,10 +8717,10 @@ const NotesManager = {
                         const ts = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
                         return `<div class="note-item">
                             <div class="note-content">
-                                <div class="note-text">${n.text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+                                <div class="note-text">${escapeHtml(n.text)}</div>
                                 <div class="note-time">${ts}</div>
                             </div>
-                            <button class="note-delete" onclick="NotesManager.deleteAndRefresh('${clientId}','${n.id}')" title="Delete note">&#128465;</button>
+                            <button class="note-delete" onclick="NotesManager.deleteAndRefresh('${safeId}','${escapeAttr(n.id)}')" title="Delete note">&#128465;</button>
                         </div>`;
                     }).join('')}
                 </div>` : '<div style="color:var(--text-muted);font-size:12px;font-style:italic;">No notes yet</div>'}
@@ -8730,20 +8731,33 @@ const NotesManager = {
         const input = document.getElementById('noteInput_' + clientId);
         if (!input || !input.value.trim()) return;
         this.add(clientId, input.value);
-        // Re-render the notes section in detail panel
-        if (State.selectedId === clientId) {
-            openDetail(clientId);
-        }
-        // Update client cards to show notes badge
-        renderClients(State.filtered);
+        this._refreshNotesUI(clientId);
     },
 
     deleteAndRefresh(clientId, noteId) {
         this.delete(clientId, noteId);
-        if (State.selectedId === clientId) {
-            openDetail(clientId);
+        this._refreshNotesUI(clientId);
+    },
+
+    _refreshNotesUI(clientId) {
+        // Re-render just the notes section without full page reload
+        const notesContainer = document.querySelector('.client-detail-notes');
+        if (notesContainer) {
+            const notes = this.get(clientId);
+            notesContainer.innerHTML = `
+                <h3>&#128221; Notes (${notes.length})</h3>
+                ${this.renderInDetail(clientId)}`;
+            // Focus input for quick consecutive note-adding
+            const input = document.getElementById('noteInput_' + clientId);
+            if (input) input.focus();
+        } else if (State.selectedId === clientId) {
+            // Fallback: full re-render if notes container not found
+            renderClientFullPage(clientId);
         }
-        renderClients(State.filtered);
+        // Update client cards only if they're visible (portfolio page)
+        if (typeof renderClients === 'function' && document.querySelector('.client-card-large')) {
+            renderClients(State.filtered);
+        }
     },
 
     countBadge(clientId) {
