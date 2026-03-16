@@ -11520,9 +11520,19 @@ function getEffectiveEmailStatus(clientName) {
         }
     }
 
-    // Meeting override — suppress follow-up for non-urgent statuses only
-    if (hasMeeting && emailStatus !== 'needs-response' && emailStatus !== 'within-grace') {
-        return 'meeting-scheduled';
+    // Meeting override — if a meeting is scheduled, no follow-up needed
+    // A today/upcoming meeting means you'll address things in person
+    if (hasMeeting) {
+        // Check if meeting is today (within next 12h or past 12h)
+        const todayMeeting = upcomingMeetings.find(m => Math.abs(m.hoursUntil) <= 12);
+        if (todayMeeting) {
+            // Meeting today — suppress ALL follow-up statuses including needs-response
+            return 'meeting-scheduled';
+        }
+        // Meeting upcoming (within 48h) — suppress non-urgent statuses
+        if (emailStatus !== 'needs-response' && emailStatus !== 'within-grace') {
+            return 'meeting-scheduled';
+        }
     }
 
     return emailStatus;
