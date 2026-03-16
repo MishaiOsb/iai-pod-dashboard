@@ -11903,7 +11903,8 @@ function renderOverviewPage() {
                     <span id="aiContextStatus" style="font-size:10px;color:var(--text-muted);"></span>
                     <div style="display:flex;gap:6px;">
                         <button onclick="clearAIContext()" style="font-size:10px;padding:3px 8px;background:none;color:var(--text-muted);border:1px solid var(--border-subtle);border-radius:4px;cursor:pointer;">Clear</button>
-                        <button onclick="saveAIContext();loadAIHealthInsights(true)" class="btn-ai" style="font-size:11px;padding:4px 12px;">Apply &amp; Refresh</button>
+                        <button id="btnAIContextUndo" onclick="undoAIContext()" style="display:none;font-size:10px;padding:3px 8px;background:none;color:var(--rag-amber);border:1px solid var(--rag-amber);border-radius:4px;cursor:pointer;">&#8630; Undo</button>
+                        <button onclick="applyAIContext()" class="btn-ai" style="font-size:11px;padding:4px 12px;">Apply &amp; Refresh</button>
                     </div>
                 </div>
             </div>
@@ -12028,6 +12029,7 @@ function toggleAIContext() {
 function getAIContext() {
     return localStorage.getItem(UserSession.podKey() + '_ai_context') || '';
 }
+let _aiContextPrevious = null; // stores previous context for undo
 function saveAIContext() {
     const input = document.getElementById('aiContextInput');
     const val = (input?.value || '').trim();
@@ -12037,14 +12039,46 @@ function saveAIContext() {
         localStorage.removeItem(UserSession.podKey() + '_ai_context');
     }
     updateAIContextStatus();
-    AITaskAssist._cache = {}; // bust cache so new context takes effect
+    AITaskAssist._cache = {};
+}
+function applyAIContext() {
+    _aiContextPrevious = getAIContext(); // snapshot before saving
+    saveAIContext();
+    // Close the panel
+    const panel = document.getElementById('aiContextPanel');
+    if (panel) panel.style.display = 'none';
+    // Show undo button briefly
+    const undoBtn = document.getElementById('btnAIContextUndo');
+    if (undoBtn) undoBtn.style.display = 'inline-block';
+    // Refresh insights with new context
+    loadAIHealthInsights(true);
+    const ctx = getAIContext();
+    showToast(ctx ? 'Context applied — refreshing insights' : 'Context cleared — refreshing insights', 'success');
+}
+function undoAIContext() {
+    if (_aiContextPrevious === null) return;
+    // Restore previous context
+    if (_aiContextPrevious) {
+        localStorage.setItem(UserSession.podKey() + '_ai_context', _aiContextPrevious);
+    } else {
+        localStorage.removeItem(UserSession.podKey() + '_ai_context');
+    }
+    AITaskAssist._cache = {};
+    _aiContextPrevious = null;
+    const undoBtn = document.getElementById('btnAIContextUndo');
+    if (undoBtn) undoBtn.style.display = 'none';
+    loadAIHealthInsights(true);
+    showToast('Context reverted to previous state', 'info');
 }
 function clearAIContext() {
+    _aiContextPrevious = getAIContext(); // snapshot for undo
     const input = document.getElementById('aiContextInput');
     if (input) input.value = '';
     localStorage.removeItem(UserSession.podKey() + '_ai_context');
     AITaskAssist._cache = {};
     updateAIContextStatus();
+    const undoBtn = document.getElementById('btnAIContextUndo');
+    if (undoBtn && _aiContextPrevious) undoBtn.style.display = 'inline-block';
     showToast('Context cleared', 'info');
 }
 function updateAIContextStatus() {
