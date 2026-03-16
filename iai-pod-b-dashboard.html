@@ -2713,7 +2713,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 .btn-ai:hover { background: linear-gradient(135deg, rgba(107,48,255,0.25), rgba(87,155,252,0.15)); transform: translateY(-1px); }
 .btn-ai:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .btn-ai .ai-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(107,48,255,0.2); border-top-color: var(--accent-purple-light); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 4px; }
-.ai-alert { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.ai-alert { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; position: relative; }
+.ai-alert .ai-alert-dismiss { cursor: pointer; opacity: 0.5; font-size: 13px; line-height: 1; padding: 0 2px; margin-left: 2px; transition: opacity 0.2s; }
+.ai-alert .ai-alert-dismiss:hover { opacity: 1; }
 .ai-alert.high { background: rgba(232,73,73,0.12); color: var(--rag-red); }
 .ai-alert.medium { background: rgba(253,171,61,0.12); color: var(--rag-amber); }
 .ai-alert.low { background: rgba(0,200,117,0.12); color: var(--rag-green); }
@@ -12275,7 +12277,7 @@ function renderOverviewPage() {
 async function loadAIHealthInsights(bustCache) {
     const body = document.getElementById('aiHealthInsightsBody');
     if (!body) return;
-    if (bustCache) AITaskAssist._cache = {};
+    if (bustCache) { AITaskAssist._cache = {}; _clearDismissedAIInsights(); }
     const ctx = (typeof getAIContext === 'function') ? getAIContext() : '';
     body.className = 'ai-card-loading ai-shimmer';
     body.textContent = ctx ? 'Analysing portfolio with your context...' : 'Analysing portfolio...';
@@ -12284,12 +12286,17 @@ async function loadAIHealthInsights(bustCache) {
         let html = '';
         if (data.summary) html += `<div style="margin-bottom:10px;font-size:12.5px;line-height:1.6;color:var(--text-secondary);">${data.summary}</div>`;
         if (data.alerts && data.alerts.length > 0) {
-            html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">`;
-            data.alerts.forEach(a => {
-                const cls = a.severity === 'high' ? 'high' : a.severity === 'medium' ? 'medium' : 'low';
-                html += `<span class="ai-alert ${cls}">${a.severity === 'high' ? '&#9888;' : a.severity === 'medium' ? '&#9889;' : '&#10003;'} ${(a.client || '')} — ${a.issue}</span>`;
-            });
-            html += `</div>`;
+            const dismissed = _getDismissedAIInsights();
+            const visibleAlerts = data.alerts.filter(a => !dismissed.includes(_aiInsightKey(a)));
+            if (visibleAlerts.length > 0) {
+                html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">`;
+                visibleAlerts.forEach(a => {
+                    const cls = a.severity === 'high' ? 'high' : a.severity === 'medium' ? 'medium' : 'low';
+                    const key = _aiInsightKey(a).replace(/'/g, "\\'");
+                    html += `<span class="ai-alert ${cls}">${a.severity === 'high' ? '&#9888;' : a.severity === 'medium' ? '&#9889;' : '&#10003;'} ${escapeHtml(a.client || '')} — ${escapeHtml(a.issue)}<span class="ai-alert-dismiss" onclick="event.stopPropagation();dismissAIInsight('${key}')" title="Dismiss">&#10005;</span></span>`;
+                });
+                html += `</div>`;
+            }
         }
         if (data.recommendations && data.recommendations.length > 0) {
             html += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Recommendations:</div>`;
@@ -12339,6 +12346,46 @@ function _syncAIAlertsToSmartAlerts(data) {
     });
     // Re-render alerts to include AI insights
     if (typeof renderAlerts === 'function') renderAlerts();
+}
+
+// ── AI Insight dismiss helpers ──
+function _aiInsightKey(a) { return (a.client || '') + '::' + (a.issue || ''); }
+function _getDismissedAIInsights() {
+    try { return JSON.parse(localStorage.getItem(UserSession.podKey() + '_ai_dismissed') || '[]'); } catch { return []; }
+}
+function dismissAIInsight(key) {
+    const dismissed = _getDismissedAIInsights();
+    if (!dismissed.includes(key)) {
+        dismissed.push(key);
+        localStorage.setItem(UserSession.podKey() + '_ai_dismissed', JSON.stringify(dismissed));
+    }
+    // Remove from DOM immediately
+    const body = document.getElementById('aiHealthInsightsBody');
+    if (body) {
+        const alerts = body.querySelectorAll('.ai-alert');
+        alerts.forEach(el => {
+            const dismissBtn = el.querySelector('.ai-alert-dismiss');
+            if (dismissBtn && dismissBtn.getAttribute('onclick')?.includes(key.replace(/'/g, "\\'"))) {
+                el.style.transition = 'opacity 0.2s, transform 0.2s';
+                el.style.opacity = '0';
+                el.style.transform = 'scale(0.8)';
+                setTimeout(() => el.remove(), 200);
+            }
+        });
+    }
+    // Also remove from Smart Alerts
+    if (State._aiAlerts) {
+        State._aiAlerts = State._aiAlerts.filter(a => {
+            const aKey = (a.clientName || '') + '::' + (a.title?.replace(/.*AI: /, '') || '');
+            return aKey !== key;
+        });
+        if (typeof renderAlerts === 'function') renderAlerts();
+    }
+    showToast('Insight dismissed', 'info');
+}
+// Clear dismissed AI insights when cache is busted (new analysis)
+function _clearDismissedAIInsights() {
+    localStorage.removeItem(UserSession.podKey() + '_ai_dismissed');
 }
 
 // ── AI Context Panel helpers (stackable context items) ──
