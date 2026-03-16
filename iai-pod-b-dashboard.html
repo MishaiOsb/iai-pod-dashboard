@@ -5762,6 +5762,19 @@ const TaskContextEngine = {
         // Deadline proximity
         if (ctx.deadlineDays !== null) { score += 1; reasons.push(`Deadline in ${ctx.deadlineDays} day${ctx.deadlineDays !== 1 ? 's' : ''}`); }
 
+        // Client notes signals — boost if notes mention urgency, lower if notes explain situation
+        const _noteClientId = ctx.clientObj?.id || ctx.clientId;
+        if (_noteClientId && typeof NotesManager !== 'undefined') {
+            const notes = NotesManager.get(_noteClientId);
+            if (notes.length > 0) {
+                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+                const urgentKeywords = ['urgent', 'critical', 'asap', 'high priority', 'escalat', 'important', 'time-sensitive', 'immediate'];
+                const calmKeywords = ['on hold', 'paused', 'low priority', 'no rush', 'not urgent', 'can wait', 'self-service', 'autonomous'];
+                if (urgentKeywords.some(kw => allText.includes(kw))) { score += 2; reasons.push('Client notes indicate urgency'); }
+                else if (calmKeywords.some(kw => allText.includes(kw))) { score -= 1; reasons.push('Client notes indicate low urgency'); }
+            }
+        }
+
         // Never downgrade below keyword-inferred base
         if (score < baseScore) score = baseScore;
 
@@ -9687,9 +9700,33 @@ const State = {
         if (client.agentCount >= 3) score += 5;
         else if (client.agentCount >= 1) score += 2;
 
+        // Billing — notes-aware: if notes explain billing, don't penalise
+        if (client.billing !== 'Yes' && typeof NotesManager !== 'undefined') {
+            const notes = NotesManager.get(client.id);
+            if (notes.length > 0) {
+                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+                const billingHandled = ['automatic billing', 'auto billing', 'billing model', 'billing arranged',
+                    'billing sorted', 'billing confirmed', 'billing handled', 'billing agreed',
+                    'free trial', 'trial period', 'grace period', 'waived'].some(kw => allText.includes(kw));
+                if (billingHandled) score += 10; // treat as if billing is active
+            }
+        }
+
         // Confidence from local slider
         const conf = this.getLocal(client.id, 'confidence', 50);
         score += Math.round((conf - 50) * 0.1); // -5 to +5
+
+        // Notes context modifier (±5 points)
+        if (typeof NotesManager !== 'undefined') {
+            const notes = NotesManager.get(client.id);
+            if (notes.length > 0) {
+                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+                const positiveKw = ['on track', 'going well', 'happy', 'satisfied', 'excellent', 'great progress', 'ahead of schedule', 'strong relationship'];
+                const negativeKw = ['at risk', 'unhappy', 'complaint', 'concerned', 'struggling', 'behind schedule', 'escalat', 'churn risk', 'may leave'];
+                if (positiveKw.some(kw => allText.includes(kw))) score += 5;
+                else if (negativeKw.some(kw => allText.includes(kw))) score -= 5;
+            }
+        }
 
         return Math.max(0, Math.min(100, score));
     },
@@ -9740,11 +9777,44 @@ const State = {
         score += agentPts;
         factors.push({ name: 'Agents', points: agentPts, detail: `${client.agentCount} agent${client.agentCount !== 1 ? 's' : ''}`, max: 5 });
 
+        // Billing — notes-aware override
+        if (client.billing !== 'Yes' && typeof NotesManager !== 'undefined') {
+            const notes = NotesManager.get(client.id);
+            if (notes.length > 0) {
+                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+                const billingHandled = ['automatic billing', 'auto billing', 'billing model', 'billing arranged',
+                    'billing sorted', 'billing confirmed', 'billing handled', 'billing agreed',
+                    'free trial', 'trial period', 'grace period', 'waived'].some(kw => allText.includes(kw));
+                if (billingHandled) {
+                    score += 10; // add the 10 pts that were 0
+                    const billingIdx = factors.findIndex(f => f.name === 'Billing');
+                    if (billingIdx >= 0) factors[billingIdx] = { name: 'Billing', points: 10, detail: 'Handled (per notes)', max: 10 };
+                }
+            }
+        }
+
         // Confidence
         const conf = this.getLocal(client.id, 'confidence', 50);
         const confPts = Math.round((conf - 50) * 0.1);
         score += confPts;
         factors.push({ name: 'Confidence', points: confPts, detail: `${conf}%`, max: 5 });
+
+        // Notes context modifier
+        let notesPts = 0;
+        let notesDetail = 'No notes';
+        if (typeof NotesManager !== 'undefined') {
+            const notes = NotesManager.get(client.id);
+            if (notes.length > 0) {
+                notesDetail = `${notes.length} note${notes.length > 1 ? 's' : ''}`;
+                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+                const positiveKw = ['on track', 'going well', 'happy', 'satisfied', 'excellent', 'great progress', 'ahead of schedule', 'strong relationship'];
+                const negativeKw = ['at risk', 'unhappy', 'complaint', 'concerned', 'struggling', 'behind schedule', 'escalat', 'churn risk', 'may leave'];
+                if (positiveKw.some(kw => allText.includes(kw))) { notesPts = 5; notesDetail += ' (positive)'; }
+                else if (negativeKw.some(kw => allText.includes(kw))) { notesPts = -5; notesDetail += ' (concern)'; }
+            }
+        }
+        score += notesPts;
+        factors.push({ name: 'Notes Context', points: notesPts, detail: notesDetail, max: 5 });
 
         return { total: Math.max(0, Math.min(100, score)), base: 50, factors };
     },
@@ -9818,16 +9888,23 @@ const State = {
                 });
             }
 
-            // Red RAG alert
+            // Red RAG alert (skip if notes explain the situation)
             if (c.rag === 'Red') {
-                this.alerts.push({
-                    type: 'critical',
-                    icon: '&#128308;',
-                    title: `${c.name} - Red RAG Status`,
-                    desc: 'Requires immediate attention and action plan',
-                    clientId: c.id,
-                    timestamp: c.updatedAt,
-                });
+                const ragExplained = notesExplain(c.id, [
+                    'red rag explained', 'known issue', 'temporary', 'escalation planned',
+                    'being addressed', 'action plan in place', 'aware of red', 'expected red',
+                    'transitioning', 'improvement underway'
+                ]);
+                if (!ragExplained) {
+                    this.alerts.push({
+                        type: 'critical',
+                        icon: '&#128308;',
+                        title: `${c.name} - Red RAG Status`,
+                        desc: 'Requires immediate attention and action plan',
+                        clientId: c.id,
+                        timestamp: c.updatedAt,
+                    });
+                }
             }
 
             // Missing billing for non-pilot clients (skip if notes explain billing situation)
@@ -9839,7 +9916,8 @@ const State = {
                     'billing setup', 'billing set up', 'new billing',
                     'free trial', 'trial period', 'grace period',
                     'no billing', 'waived', 'complimentary',
-                    '30 day', '30-day', 'after 30'
+                    '30 day', '30-day', 'after 30', 'invoicing',
+                    'payment plan', 'billing handled', 'billing agreed'
                 ]);
                 if (!billingExplained) {
                     this.alerts.push({
@@ -9853,38 +9931,56 @@ const State = {
                 }
             }
 
-            // Zero agents deployed
+            // Zero agents deployed (skip if notes explain)
             if (c.agentCount === 0) {
-                this.alerts.push({
-                    type: 'warning',
-                    icon: '&#129302;',
-                    title: `${c.name} - No agents deployed`,
-                    desc: 'Client has zero agents configured',
-                    clientId: c.id,
-                    timestamp: c.updatedAt,
-                });
+                const agentsExplained = notesExplain(c.id, [
+                    'agents pending', 'in progress', 'setup phase', 'being built',
+                    'deployment planned', 'starting deployment', 'agents coming',
+                    'no agents needed', 'not ready', 'onboarding', 'pre-launch',
+                    'building agents', 'agent development'
+                ]);
+                if (!agentsExplained) {
+                    this.alerts.push({
+                        type: 'warning',
+                        icon: '&#129302;',
+                        title: `${c.name} - No agents deployed`,
+                        desc: 'Client has zero agents configured',
+                        clientId: c.id,
+                        timestamp: c.updatedAt,
+                    });
+                }
             }
 
-            // Update status: Need Contact
+            // Update status: Need Contact (skip if notes explain)
             if (c.updateStatus === 'Need Contact') {
-                this.alerts.push({
-                    type: 'warning',
-                    icon: '&#128222;',
-                    title: `${c.name} - Needs contact`,
-                    desc: 'Update status is set to "Need Contact"',
-                    clientId: c.id,
-                    timestamp: c.updatedAt,
-                });
+                const contactExplainedUpdate = notesExplain(c.id, [
+                    'contact scheduled', 'meeting booked', 'following up',
+                    'response pending', 'waiting for reply', 'call arranged',
+                    'will contact', 'reaching out'
+                ]);
+                if (!contactExplainedUpdate) {
+                    this.alerts.push({
+                        type: 'warning',
+                        icon: '&#128222;',
+                        title: `${c.name} - Needs contact`,
+                        desc: 'Update status is set to "Need Contact"',
+                        clientId: c.id,
+                        timestamp: c.updatedAt,
+                    });
+                }
             }
 
-            // Deadline / go-live approaching or overdue
-            // If goLive date has passed, the client already launched — no overdue alert needed
-            // The deadline is "go live BY this date"; if goLive exists, the launch happened
+            // Deadline / go-live approaching or overdue (skip if notes explain)
             const goLivePassed = c.goLive && Math.ceil((new Date(c.goLive) - new Date()) / 86400000) < 0;
             const effectiveDeadline = c.deadline || c.goLive;
             if (effectiveDeadline && !goLivePassed) {
+                const deadlineExplained = notesExplain(c.id, [
+                    'deadline extended', 'go-live postponed', 'pushed back', 'revised timeline',
+                    'delay explained', 'new deadline', 'timeline adjusted', 'rescheduled',
+                    'extension granted', 'deadline moved'
+                ]);
                 const daysToDeadline = Math.ceil((new Date(effectiveDeadline) - new Date()) / 86400000);
-                if (daysToDeadline >= 0 && daysToDeadline <= 7) {
+                if (daysToDeadline >= 0 && daysToDeadline <= 7 && !deadlineExplained) {
                     this.alerts.push({
                         type: 'warning',
                         icon: '&#9200;',
@@ -9893,7 +9989,7 @@ const State = {
                         clientId: c.id,
                         timestamp: effectiveDeadline,
                     });
-                } else if (daysToDeadline < 0) {
+                } else if (daysToDeadline < 0 && !deadlineExplained) {
                     const overdueDays = Math.abs(daysToDeadline);
                     this.alerts.push({
                         type: 'critical',
@@ -9916,8 +10012,17 @@ const State = {
 
             const effectiveStatus = getEffectiveEmailStatus(c.name);
 
+            // Check if notes explain communication situation for this client
+            const commsExplained = notesExplain(c.id, [
+                'no response needed', 'response not required', 'awaiting client',
+                'client will respond', 'no email needed', 'email not required',
+                'communication paused', 'comms paused', 'no follow-up needed',
+                'follow up not needed', 'auto-reply', 'out of office',
+                'on holiday', 'on leave', 'away', 'unavailable'
+            ]);
+
             // Email-specific alerts (only when email data exists)
-            if (ed) {
+            if (ed && !commsExplained) {
                 if (effectiveStatus === 'needs-response') {
                     const latestEmail = ed.emails[0];
                     const fromName = latestEmail?.from?.split('@')[0]?.replace(/\./g, ' ') || 'Client';
@@ -9945,7 +10050,7 @@ const State = {
             }
 
             // Teams follow-up alert (works for Teams-only AND email+Teams clients)
-            if (effectiveStatus === 'teams-stale') {
+            if (effectiveStatus === 'teams-stale' && !commsExplained) {
                 const lastMsg = td?.messages?.[0];
                 const lastDate = lastMsg ? new Date(lastMsg.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : 'unknown';
                 this.alerts.push({
@@ -9959,7 +10064,7 @@ const State = {
             }
 
             // Stale alert for Teams-only clients with very old messages
-            if (!ed && effectiveStatus === 'stale') {
+            if (!ed && effectiveStatus === 'stale' && !commsExplained) {
                 const lastMsg = td?.messages?.[0];
                 const lastDate = lastMsg ? new Date(lastMsg.date).toLocaleDateString('en-GB', {day:'numeric',month:'short'}) : 'unknown';
                 this.alerts.push({
@@ -15688,11 +15793,21 @@ const ShareSnapshot = {
             agentsByStage[a.stage] = (agentsByStage[a.stage] || 0) + 1;
         }));
 
-        // Clients needing attention (Red RAG or stale contact)
+        // Clients needing attention (Red RAG or stale contact) — respect notes
+        const _notesSuppressAttention = (clientId, reason) => {
+            if (typeof NotesManager === 'undefined') return false;
+            const notes = NotesManager.get(clientId);
+            if (!notes.length) return false;
+            const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+            if (reason === 'rag') return ['known issue', 'temporary', 'being addressed', 'action plan', 'expected red', 'improvement underway'].some(kw => allText.includes(kw));
+            if (reason === 'contact') return ['on holiday', 'on leave', 'away', 'paused', 'on hold', 'low priority', 'self-service', 'no contact needed'].some(kw => allText.includes(kw));
+            return false;
+        };
         const needsAttention = clients.filter(c => {
-            if (c.rag === 'Red') return true;
+            if (c.rag === 'Red' && !_notesSuppressAttention(c.id, 'rag')) return true;
             const days = getDaysSinceContact(getEffectiveLastContact(c));
-            return days !== null && days > 14;
+            if (days !== null && days > 14 && !_notesSuppressAttention(c.id, 'contact')) return true;
+            return false;
         }).map(c => ({
             name: c.name, rag: c.rag, health: State.calcHealth(c),
             daysSinceContact: getDaysSinceContact(getEffectiveLastContact(c)),
