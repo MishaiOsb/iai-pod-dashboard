@@ -6135,9 +6135,9 @@ const AITaskAssist = {
   "alerts": [{"client": "name", "issue": "brief description", "severity": "high|medium|low"}],
   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
 }
-Be specific with client names and numbers. Focus on actionable insights. Max 3-5 alerts, max 3-4 recommendations. If the pod lead has added notes on specific clients, factor those into your analysis — they represent the pod lead's own observations and priorities.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
+Be specific with client names and numbers. Focus on actionable insights. Max 5-7 alerts, max 3-5 recommendations. Your alerts feed directly into the dashboard's Smart Alerts system, so make them specific and actionable. Consider ALL available data: RAG status, health scores, billing, email status, contact recency, Teams/Slack activity, upcoming meetings, overdue tasks, and the pod lead's notes. If the pod lead has added notes on specific clients, factor those into your analysis — they represent the pod lead's own observations and priorities. Flag risks the rule-based system might miss, such as clients with declining engagement patterns, clients who need upselling, or combinations of factors that suggest trouble.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
             { role: 'user', content: portfolio + contextBlock }
-        ], { max_tokens: 600 });
+        ], { max_tokens: 800 });
         this._cacheSet(cacheKey, result);
         return result;
     },
@@ -9965,6 +9965,18 @@ const State = {
             }
         }
 
+        // Merge AI-generated alerts (from Portfolio Insights)
+        if (State._aiAlerts && State._aiAlerts.length > 0) {
+            State._aiAlerts.forEach(a => {
+                // Avoid duplicating if a rule-based alert already covers the same client + similar issue
+                const isDuplicate = this.alerts.some(existing =>
+                    existing.clientId === a.clientId &&
+                    existing.title.toLowerCase().includes(a.clientName?.toLowerCase()?.split(' ')[0] || '___')
+                );
+                if (!isDuplicate) this.alerts.push(a);
+            });
+        }
+
         // Sort: critical first, then warning, then info; within same type, oldest first (most urgent)
         const order = { critical: 0, warning: 1, info: 2 };
         this.alerts.sort((a, b) => {
@@ -10598,12 +10610,13 @@ function renderAlerts() {
         const safeKey = alertKey.replace(/'/g, "\\'");
         const ts = formatAlertTimestamp(a.timestamp);
         const tsHTML = ts ? `<div class="alert-timestamp" title="${ts.absolute}"><span class="ts-dot ${ts.freshness}"></span>${ts.label}</div>` : '';
+        const aiTag = a.isAI ? '<span style="font-size:9px;padding:1px 5px;background:rgba(139,92,246,0.2);color:var(--accent-purple-light);border-radius:3px;margin-left:4px;vertical-align:middle;">AI</span>' : '';
         return `
-        <div class="alert-card ${a.type}" onclick="openDetail('${a.clientId}')">
+        <div class="alert-card ${a.type}${a.isAI ? ' ai-alert-card' : ''}" onclick="${a.clientId ? `openDetail('${a.clientId}')` : ''}" style="${a.isAI ? 'border-left:3px solid var(--accent-purple);' : ''}${!a.clientId ? 'cursor:default;' : ''}">
             <button class="alert-dismiss" onclick="event.stopPropagation();dismissAlert('${safeKey}')" title="Dismiss this alert">&#10005;</button>
             <span class="alert-icon">${a.icon}</span>
             <div class="alert-content">
-                <div class="alert-title">${a.title}</div>
+                <div class="alert-title">${a.title}${aiTag}</div>
                 <div class="alert-desc">${a.desc}</div>
                 ${tsHTML}
             </div>
@@ -12149,10 +12162,43 @@ async function loadAIHealthInsights(bustCache) {
         }
         body.className = 'ai-card-content';
         body.innerHTML = html || 'No insights available.';
+
+        // Feed AI alerts into Smart Alerts system
+        _syncAIAlertsToSmartAlerts(data);
     } catch (err) {
         body.className = 'ai-card-content';
         body.innerHTML = `<span style="color:var(--rag-red);font-size:12px;">&#9888; ${escapeHtml(err.message)}</span>`;
     }
+}
+
+function _syncAIAlertsToSmartAlerts(data) {
+    if (!data || !data.alerts || data.alerts.length === 0) {
+        State._aiAlerts = [];
+        return;
+    }
+    // Convert AI alert format to Smart Alert format
+    State._aiAlerts = data.alerts.map(a => {
+        const severityMap = { high: 'critical', medium: 'warning', low: 'info' };
+        const iconMap = { high: '&#129504;', medium: '&#129504;', low: '&#129504;' }; // brain emoji for AI alerts
+        // Try to match client name to a client ID
+        const matchedClient = (State.clients || []).find(c =>
+            c.name.toLowerCase() === (a.client || '').toLowerCase() ||
+            c.name.toLowerCase().includes((a.client || '').toLowerCase()) ||
+            (a.client || '').toLowerCase().includes(c.name.toLowerCase().split(' ')[0])
+        );
+        return {
+            type: severityMap[a.severity] || 'info',
+            icon: iconMap[a.severity] || '&#129504;',
+            title: `${a.client || 'Portfolio'} - AI: ${a.issue}`,
+            desc: 'AI-generated insight based on portfolio analysis',
+            clientId: matchedClient ? matchedClient.id : null,
+            clientName: a.client || '',
+            timestamp: new Date().toISOString(),
+            isAI: true,
+        };
+    });
+    // Re-render alerts to include AI insights
+    if (typeof renderAlerts === 'function') renderAlerts();
 }
 
 // ── AI Context Panel helpers (stackable context items) ──
