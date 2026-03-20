@@ -9886,35 +9886,52 @@ const State = {
 
     // Calculate health score (0-100) from multiple factors
     calcHealth(client) {
-        let score = 50; // base
+        let score = 40; // base — lower start, must earn health
 
-        // RAG weight (30 points)
-        if (client.rag === 'Green') score += 30;
-        else if (client.rag === 'Amber') score += 15;
-        else if (client.rag === 'Red') score -= 10;
+        // RAG weight (25 points max)
+        if (client.rag === 'Green') score += 25;
+        else if (client.rag === 'Amber') score += 10;
+        else if (client.rag === 'Red') score -= 15;
 
-        // Last contact recency (20 points) — considers email + Teams
+        // Last contact recency (15 points) — considers email + Teams
         const daysSince = getDaysSinceContact(getEffectiveLastContact(client));
         if (daysSince !== null) {
-            if (daysSince <= 3) score += 20;
-            else if (daysSince <= 7) score += 12;
-            else if (daysSince <= 14) score += 5;
+            if (daysSince <= 3) score += 15;
+            else if (daysSince <= 7) score += 8;
+            else if (daysSince <= 14) score += 2;
             else score -= 10;
+        } else {
+            score -= 5; // no contact data is a concern
         }
 
-        // Update status (10 points)
-        if (client.updateStatus === 'Yes') score += 10;
-        else if (client.updateStatus === 'Working on it') score += 5;
-        else if (client.updateStatus === 'Need Contact') score -= 5;
+        // Update status (8 points)
+        if (client.updateStatus === 'Yes') score += 8;
+        else if (client.updateStatus === 'Working on it') score += 3;
+        else if (client.updateStatus === 'Need Contact') score -= 8;
 
-        // Billing (10 points)
-        if (client.billing === 'Yes') score += 10;
+        // Billing (8 points)
+        if (client.billing === 'Yes') score += 8;
+        else score -= 3; // not billing is a negative signal
 
-        // Agent count (relative)
-        if (client.agentCount >= 3) score += 5;
-        else if (client.agentCount >= 1) score += 2;
+        // Agent maturity (8 points) — stage matters, not just count
+        const agentStages = (client.agents || []).map(a => (a.stage || '').toLowerCase());
+        const hasLive = agentStages.some(s => s.includes('live') || s.includes('production') || s.includes('active'));
+        const hasStalled = agentStages.some(s => s.includes('stalled') || s.includes('paused') || s.includes('on hold'));
+        if (hasLive && client.agentCount >= 2) score += 8;
+        else if (hasLive) score += 5;
+        else if (client.agentCount >= 1 && !hasStalled) score += 2;
+        else if (hasStalled) score -= 5;
+        else if (client.agentCount === 0) score -= 3;
 
-        // Billing — notes-aware: if notes explain billing, don't penalise
+        // Communication balance — is the client engaging back?
+        const emailData = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients[client.name] : null;
+        const teamsData = typeof TEAMS_DATA !== 'undefined' ? TEAMS_DATA.clients[client.name] : null;
+        const sentToClient = (emailData?.sentCount || 0) + (teamsData?.sentCount || 0);
+        const receivedFromClient = (emailData?.receivedCount || 0) + (teamsData?.receivedCount || 0);
+        if (sentToClient > 0 && receivedFromClient === 0) score -= 5; // one-sided, no engagement
+        else if (receivedFromClient > 0) score += 3; // client is engaging
+
+        // Billing — notes-aware: if notes explain billing, recover the penalty
         if (client.billing !== 'Yes' && typeof NotesManager !== 'undefined') {
             const notes = NotesManager.get(client.id);
             if (notes.length > 0) {
@@ -9922,23 +9939,25 @@ const State = {
                 const billingHandled = ['automatic billing', 'auto billing', 'billing model', 'billing arranged',
                     'billing sorted', 'billing confirmed', 'billing handled', 'billing agreed',
                     'free trial', 'trial period', 'grace period', 'waived'].some(kw => allText.includes(kw));
-                if (billingHandled) score += 10; // treat as if billing is active
+                if (billingHandled) score += 11; // recover -3 penalty + treat as active
             }
         }
 
         // Confidence from local slider
         const conf = this.getLocal(client.id, 'confidence', 50);
-        score += Math.round((conf - 50) * 0.1); // -5 to +5
+        score += Math.round((conf - 50) * 0.15); // -7 to +7
 
-        // Notes context modifier (±5 points)
+        // Notes context modifier — stronger impact (±15 points)
         if (typeof NotesManager !== 'undefined') {
             const notes = NotesManager.get(client.id);
             if (notes.length > 0) {
                 const allText = notes.map(n => n.text.toLowerCase()).join(' ');
-                const positiveKw = ['on track', 'going well', 'happy', 'satisfied', 'excellent', 'great progress', 'ahead of schedule', 'strong relationship'];
-                const negativeKw = ['at risk', 'unhappy', 'complaint', 'concerned', 'struggling', 'behind schedule', 'escalat', 'churn risk', 'may leave'];
-                if (positiveKw.some(kw => allText.includes(kw))) score += 5;
-                else if (negativeKw.some(kw => allText.includes(kw))) score -= 5;
+                const positiveKw = ['on track', 'going well', 'happy', 'satisfied', 'excellent', 'great progress', 'ahead of schedule', 'strong relationship', 'renewed', 'expansion'];
+                const severeNegKw = ['cancel', 'cancelling', 'terminate', 'wants to leave', 'pulling out', 'losing them', 'win back', 'win them back', 'lost faith', 'not renewing'];
+                const negativeKw = ['at risk', 'unhappy', 'complaint', 'concerned', 'struggling', 'behind schedule', 'escalat', 'churn risk', 'may leave', 'frustrated', 'disappointed', 'never.*100', 'not.*happy', 'difficult'];
+                if (severeNegKw.some(kw => allText.includes(kw))) score -= 20; // severe: cancellation/churn signals
+                else if (negativeKw.some(kw => allText.includes(kw))) score -= 10; // moderate concern
+                else if (positiveKw.some(kw => allText.includes(kw))) score += 5;
             }
         }
 
@@ -9948,48 +9967,70 @@ const State = {
     // Detailed health breakdown for KPI insight popover
     calcHealthBreakdown(client) {
         const factors = [];
-        let score = 50;
+        let score = 40;
 
-        // RAG weight (30 points)
+        // RAG weight (25 points)
         let ragPts = 0;
-        if (client.rag === 'Green') ragPts = 30;
-        else if (client.rag === 'Amber') ragPts = 15;
-        else if (client.rag === 'Red') ragPts = -10;
+        if (client.rag === 'Green') ragPts = 25;
+        else if (client.rag === 'Amber') ragPts = 10;
+        else if (client.rag === 'Red') ragPts = -15;
         score += ragPts;
-        factors.push({ name: 'RAG Status', points: ragPts, detail: client.rag || 'Unknown', max: 30 });
+        factors.push({ name: 'RAG Status', points: ragPts, detail: client.rag || 'Unknown', max: 25 });
 
-        // Last contact recency (20 points) — considers email + Teams
+        // Last contact recency (15 points) — considers email + Teams
         const daysSince = getDaysSinceContact(getEffectiveLastContact(client));
         let contactPts = 0;
         let contactDetail = 'No data';
         if (daysSince !== null) {
-            if (daysSince <= 3) { contactPts = 20; contactDetail = `${daysSince}d ago`; }
-            else if (daysSince <= 7) { contactPts = 12; contactDetail = `${daysSince}d ago`; }
-            else if (daysSince <= 14) { contactPts = 5; contactDetail = `${daysSince}d ago`; }
+            if (daysSince <= 3) { contactPts = 15; contactDetail = `${daysSince}d ago`; }
+            else if (daysSince <= 7) { contactPts = 8; contactDetail = `${daysSince}d ago`; }
+            else if (daysSince <= 14) { contactPts = 2; contactDetail = `${daysSince}d ago`; }
             else { contactPts = -10; contactDetail = `${daysSince}d ago (stale)`; }
+        } else {
+            contactPts = -5; contactDetail = 'No data';
         }
         score += contactPts;
-        factors.push({ name: 'Last Contact', points: contactPts, detail: contactDetail, max: 20 });
+        factors.push({ name: 'Last Contact', points: contactPts, detail: contactDetail, max: 15 });
 
-        // Update status (10 points)
+        // Update status (8 points)
         let updatePts = 0;
-        if (client.updateStatus === 'Yes') updatePts = 10;
-        else if (client.updateStatus === 'Working on it') updatePts = 5;
-        else if (client.updateStatus === 'Need Contact') updatePts = -5;
+        if (client.updateStatus === 'Yes') updatePts = 8;
+        else if (client.updateStatus === 'Working on it') updatePts = 3;
+        else if (client.updateStatus === 'Need Contact') updatePts = -8;
         score += updatePts;
-        factors.push({ name: 'Update Status', points: updatePts, detail: client.updateStatus || 'Unknown', max: 10 });
+        factors.push({ name: 'Update Status', points: updatePts, detail: client.updateStatus || 'Unknown', max: 8 });
 
-        // Billing (10 points)
-        let billingPts = client.billing === 'Yes' ? 10 : 0;
+        // Billing (8 points)
+        let billingPts = client.billing === 'Yes' ? 8 : -3;
         score += billingPts;
-        factors.push({ name: 'Billing', points: billingPts, detail: client.billing || 'Unknown', max: 10 });
+        factors.push({ name: 'Billing', points: billingPts, detail: client.billing || 'Unknown', max: 8 });
 
-        // Agent count
+        // Agent maturity (8 points) — stage matters, not just count
+        const agentStages = (client.agents || []).map(a => (a.stage || '').toLowerCase());
+        const hasLive = agentStages.some(s => s.includes('live') || s.includes('production') || s.includes('active'));
+        const hasStalled = agentStages.some(s => s.includes('stalled') || s.includes('paused') || s.includes('on hold'));
         let agentPts = 0;
-        if (client.agentCount >= 3) agentPts = 5;
-        else if (client.agentCount >= 1) agentPts = 2;
+        let agentDetail = `${client.agentCount} agent${client.agentCount !== 1 ? 's' : ''}`;
+        if (hasLive && client.agentCount >= 2) { agentPts = 8; agentDetail += ' (live)'; }
+        else if (hasLive) { agentPts = 5; agentDetail += ' (live)'; }
+        else if (client.agentCount >= 1 && !hasStalled) { agentPts = 2; agentDetail += ' (in progress)'; }
+        else if (hasStalled) { agentPts = -5; agentDetail += ' (stalled)'; }
+        else if (client.agentCount === 0) { agentPts = -3; agentDetail = 'No agents'; }
         score += agentPts;
-        factors.push({ name: 'Agents', points: agentPts, detail: `${client.agentCount} agent${client.agentCount !== 1 ? 's' : ''}`, max: 5 });
+        factors.push({ name: 'Agent Maturity', points: agentPts, detail: agentDetail, max: 8 });
+
+        // Communication balance (3 points)
+        const emailData = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients[client.name] : null;
+        const teamsData = typeof TEAMS_DATA !== 'undefined' ? TEAMS_DATA.clients[client.name] : null;
+        const sentToClient = (emailData?.sentCount || 0) + (teamsData?.sentCount || 0);
+        const receivedFromClient = (emailData?.receivedCount || 0) + (teamsData?.receivedCount || 0);
+        let commsPts = 0;
+        let commsDetail = 'No comms data';
+        if (sentToClient > 0 && receivedFromClient === 0) { commsPts = -5; commsDetail = `Sent ${sentToClient}, received 0 (one-sided)`; }
+        else if (receivedFromClient > 0) { commsPts = 3; commsDetail = `Sent ${sentToClient}, received ${receivedFromClient}`; }
+        else if (sentToClient > 0) { commsPts = 0; commsDetail = `Sent ${sentToClient}`; }
+        score += commsPts;
+        factors.push({ name: 'Engagement', points: commsPts, detail: commsDetail, max: 3 });
 
         // Billing — notes-aware override
         if (client.billing !== 'Yes' && typeof NotesManager !== 'undefined') {
@@ -10000,20 +10041,20 @@ const State = {
                     'billing sorted', 'billing confirmed', 'billing handled', 'billing agreed',
                     'free trial', 'trial period', 'grace period', 'waived'].some(kw => allText.includes(kw));
                 if (billingHandled) {
-                    score += 10; // add the 10 pts that were 0
+                    score += 11;
                     const billingIdx = factors.findIndex(f => f.name === 'Billing');
-                    if (billingIdx >= 0) factors[billingIdx] = { name: 'Billing', points: 10, detail: 'Handled (per notes)', max: 10 };
+                    if (billingIdx >= 0) factors[billingIdx] = { name: 'Billing', points: 8, detail: 'Handled (per notes)', max: 8 };
                 }
             }
         }
 
         // Confidence
         const conf = this.getLocal(client.id, 'confidence', 50);
-        const confPts = Math.round((conf - 50) * 0.1);
+        const confPts = Math.round((conf - 50) * 0.15);
         score += confPts;
-        factors.push({ name: 'Confidence', points: confPts, detail: `${conf}%`, max: 5 });
+        factors.push({ name: 'Confidence', points: confPts, detail: `${conf}%`, max: 7 });
 
-        // Notes context modifier
+        // Notes context modifier — stronger impact
         let notesPts = 0;
         let notesDetail = 'No notes';
         if (typeof NotesManager !== 'undefined') {
@@ -10021,16 +10062,18 @@ const State = {
             if (notes.length > 0) {
                 notesDetail = `${notes.length} note${notes.length > 1 ? 's' : ''}`;
                 const allText = notes.map(n => n.text.toLowerCase()).join(' ');
-                const positiveKw = ['on track', 'going well', 'happy', 'satisfied', 'excellent', 'great progress', 'ahead of schedule', 'strong relationship'];
-                const negativeKw = ['at risk', 'unhappy', 'complaint', 'concerned', 'struggling', 'behind schedule', 'escalat', 'churn risk', 'may leave'];
-                if (positiveKw.some(kw => allText.includes(kw))) { notesPts = 5; notesDetail += ' (positive)'; }
-                else if (negativeKw.some(kw => allText.includes(kw))) { notesPts = -5; notesDetail += ' (concern)'; }
+                const positiveKw = ['on track', 'going well', 'happy', 'satisfied', 'excellent', 'great progress', 'ahead of schedule', 'strong relationship', 'renewed', 'expansion'];
+                const severeNegKw = ['cancel', 'cancelling', 'terminate', 'wants to leave', 'pulling out', 'losing them', 'win back', 'win them back', 'lost faith', 'not renewing'];
+                const negativeKw = ['at risk', 'unhappy', 'complaint', 'concerned', 'struggling', 'behind schedule', 'escalat', 'churn risk', 'may leave', 'frustrated', 'disappointed', 'never.*100', 'not.*happy', 'difficult'];
+                if (severeNegKw.some(kw => allText.includes(kw))) { notesPts = -20; notesDetail += ' (churn risk)'; }
+                else if (negativeKw.some(kw => allText.includes(kw))) { notesPts = -10; notesDetail += ' (concern)'; }
+                else if (positiveKw.some(kw => allText.includes(kw))) { notesPts = 5; notesDetail += ' (positive)'; }
             }
         }
         score += notesPts;
         factors.push({ name: 'Notes Context', points: notesPts, detail: notesDetail, max: 5 });
 
-        return { total: Math.max(0, Math.min(100, score)), base: 50, factors };
+        return { total: Math.max(0, Math.min(100, score)), base: 40, factors };
     },
 
     // Auto-calculate progress from dates
