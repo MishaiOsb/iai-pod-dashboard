@@ -16661,171 +16661,113 @@ const ShareSnapshot = {
         const weekRange = `${weekStart.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} — ${weekEnd.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}`;
         const sorted = [...State.clients].sort((a, b) => State.calcHealth(b) - State.calcHealth(a));
 
-        // Teams-optimised HTML — uses tables for layout (Teams doesn't support flexbox/grid)
-        let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;color:#242424;max-width:680px;margin:0 auto;">`;
+        // Teams-optimised HTML — simple tags Teams actually renders well
+        let h = '';
 
         // ── Header ──
-        html += `<table style="width:100%;border:none;border-collapse:collapse;margin-bottom:16px;"><tr>`;
-        html += `<td style="padding:16px 20px;background:linear-gradient(135deg,#6B30FF,#4B0ECC);border-radius:8px;">`;
-        html += `<div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">📊 IAI ${RUNTIME.podName || 'Pod B'} — Weekly Report</div>`;
-        html += `<div style="font-size:13px;color:rgba(255,255,255,0.8);">Week of ${weekRange}</div>`;
-        html += `<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:2px;">Generated ${dateStr} at ${timeStr} · Pod Lead: ${RUNTIME.userName || 'Mishai'}</div>`;
-        html += `</td></tr></table>`;
+        h += `<h2>📊 IAI ${escapeHtml(RUNTIME.podName || 'Pod B')} — Weekly Report</h2>`;
+        h += `<p><b>Week of ${weekRange}</b><br>`;
+        h += `Generated ${dateStr} at ${timeStr} · Pod Lead: ${escapeHtml(RUNTIME.userName || 'Mishai')}</p>`;
+        h += `<hr>`;
 
         // ── Executive Summary ──
         const execText = edits.execSummary || this._generateExecSummary(s);
-        html += `<table style="width:100%;border:none;border-collapse:collapse;margin-bottom:16px;"><tr>`;
-        html += `<td style="padding:12px 16px;background:#F3F0FF;border-left:4px solid #6B30FF;border-radius:6px;">`;
-        html += `<div style="font-size:11px;font-weight:700;color:#6B30FF;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Executive Summary</div>`;
-        html += `<div style="font-size:13px;color:#333;line-height:1.5;">${execText}</div>`;
-        html += `</td></tr></table>`;
+        h += `<h3>💡 Executive Summary</h3>`;
+        h += `<p>${execText}</p>`;
+        h += `<hr>`;
 
-        // ── KPI Cards ──
-        html += `<table style="width:100%;border-collapse:separate;border-spacing:6px;margin-bottom:16px;"><tr>`;
-        const kpis = [
-            { val: s.total, label: 'Clients', color: '#242424' },
-            { val: s.avgHealth, label: 'Avg Health', color: healthColor(s.avgHealth) },
-            { val: s.green, label: 'Green', color: '#00c875' },
-            { val: s.amber, label: 'Amber', color: '#fdab3d' },
-            { val: s.red, label: 'Red', color: '#df2f4a' },
-            { val: s.totalAgents, label: 'Agents', color: '#6B30FF' }
-        ];
-        kpis.forEach(k => {
-            html += `<td style="text-align:center;padding:10px 6px;background:#F5F5F5;border:1px solid #E8E8E8;border-radius:8px;width:${Math.floor(100/6)}%;">`;
-            html += `<div style="font-size:22px;font-weight:800;color:${k.color};">${k.val}</div>`;
-            html += `<div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;">${k.label}</div></td>`;
-        });
-        html += `</tr></table>`;
-
-        // ── Activity Stats ──
-        html += `<table style="width:100%;border-collapse:separate;border-spacing:6px;margin-bottom:16px;"><tr>`;
-        html += `<td style="padding:8px 12px;background:#F0FFF4;border-radius:6px;border:1px solid #D0F0D0;font-size:12px;">💳 <strong>${s.billingActive}/${s.total}</strong> Billing</td>`;
-        html += `<td style="padding:8px 12px;background:#F0F4FF;border-radius:6px;border:1px solid #D0D8F0;font-size:12px;">📧 <strong>${s.emailsSent}</strong>↑ <strong>${s.emailsReceived}</strong>↓ Email</td>`;
-        html += `<td style="padding:8px 12px;background:#F3F0FF;border-radius:6px;border:1px solid #E0D6FF;font-size:12px;">💬 <strong>${s.teamsSent}</strong>↑ <strong>${s.teamsReceived}</strong>↓ Teams</td>`;
-        html += `<td style="padding:8px 12px;background:#F5F5F5;border-radius:6px;border:1px solid #E8E8E8;font-size:12px;">🎙️ <strong>${s.meetingsList.length}</strong> Meetings</td>`;
-        html += `</tr></table>`;
+        // ── KPIs ──
+        h += `<h3>📈 Key Metrics</h3>`;
+        h += `<p>`;
+        h += `<b>${s.total}</b> Clients · `;
+        h += `Avg Health: <b>${s.avgHealth}</b> · `;
+        h += `🟢 <b>${s.green}</b> Green · `;
+        h += `🟡 <b>${s.amber}</b> Amber · `;
+        h += `🔴 <b>${s.red}</b> Red · `;
+        h += `🤖 <b>${s.totalAgents}</b> Agents</p>`;
+        h += `<p>`;
+        h += `💳 Billing: <b>${s.billingActive}/${s.total}</b> · `;
+        h += `📧 Email: <b>${s.emailsSent}</b> sent / <b>${s.emailsReceived}</b> received · `;
+        h += `💬 Teams: <b>${s.teamsSent}</b> sent / <b>${s.teamsReceived}</b> received · `;
+        h += `🎙️ Meetings: <b>${s.meetingsList.length}</b></p>`;
+        h += `<hr>`;
 
         // ── Needs Attention ──
         if (s.needsAttention.length > 0) {
-            html += `<table style="width:100%;border:none;border-collapse:collapse;margin-bottom:16px;"><tr>`;
-            html += `<td style="padding:12px 16px;background:#FFF5F5;border-left:4px solid #df2f4a;border-radius:6px;">`;
-            html += `<div style="font-size:13px;font-weight:700;color:#df2f4a;margin-bottom:8px;">⚠️ Needs Attention</div>`;
-            html += `<table style="width:100%;border-collapse:collapse;">`;
+            h += `<h3>⚠️ Needs Attention</h3>`;
             s.needsAttention.forEach(n => {
-                html += `<tr><td style="padding:4px 0;font-size:12px;"><strong>${escapeHtml(n.name)}</strong></td>`;
-                html += `<td style="padding:4px 8px;font-size:12px;color:#666;">${escapeHtml(n.reason)}</td>`;
-                html += `<td style="padding:4px 0;font-size:12px;font-weight:700;color:#df2f4a;text-align:right;">Health: ${n.health}</td></tr>`;
+                h += `<p>🔴 <b>${escapeHtml(n.name)}</b> — ${escapeHtml(n.reason)} (Health: ${n.health})</p>`;
             });
-            html += `</table></td></tr></table>`;
+            h += `<hr>`;
         }
 
         // ── Client Details ──
-        html += `<div style="font-size:14px;font-weight:700;color:#242424;margin:20px 0 12px;padding-bottom:6px;border-bottom:2px solid #6B30FF;">📋 Client Details</div>`;
+        h += `<h3>📋 Client Overview</h3>`;
 
         sorted.forEach(c => {
             const health = State.calcHealth(c);
-            const hColor = healthColor(health);
-            const ragC = this._ragColor(c.rag);
+            const ragEmoji = c.rag === 'Green' ? '🟢' : c.rag === 'Amber' ? '🟡' : c.rag === 'Red' ? '🔴' : '⚪';
             const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
             const emailLabel = emailStatus && typeof emailStatusLabel === 'function' ? emailStatusLabel(emailStatus) : null;
 
-            // Client card
-            html += `<table style="width:100%;border:none;border-collapse:collapse;margin-bottom:10px;"><tr>`;
-            html += `<td style="padding:14px 16px;background:#FAFAFA;border:1px solid #E8E8E8;border-left:4px solid ${ragC};border-radius:8px;">`;
-
-            // Client header
-            html += `<table style="width:100%;border:none;border-collapse:collapse;margin-bottom:8px;"><tr>`;
-            html += `<td style="padding:0;">`;
-            html += `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ragC};vertical-align:middle;margin-right:8px;"></span>`;
-            html += `<strong style="font-size:15px;color:#1a1a2e;vertical-align:middle;">${escapeHtml(c.name)}</strong></td>`;
-            html += `<td style="text-align:right;padding:0;"><span style="font-size:13px;font-weight:700;color:${hColor};background:${hColor}15;padding:3px 10px;border-radius:12px;">Health: ${health}</span></td>`;
-            html += `</tr></table>`;
-
-            // Client metrics table
-            html += `<table style="width:100%;border-collapse:collapse;margin-bottom:6px;">`;
-            html += `<tr style="background:#F0F0F0;">`;
-            html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;width:25%;">Plan</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;width:25%;"><strong>${escapeHtml(c.plan || 'N/A')}</strong></td>`;
-            html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;width:25%;">Billing</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;width:25%;"><strong>${escapeHtml(c.billing)}</strong></td></tr>`;
-            html += `<tr>`;
-            html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Update</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;"><strong>${c.updateStatus}</strong></td>`;
-            html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Agents</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;"><strong>${c.agentCount}</strong></td></tr>`;
-            html += `<tr style="background:#F0F0F0;">`;
-            html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Last Contact</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;"><strong>${daysAgo(getEffectiveLastContact(c))}</strong></td>`;
-            html += `<td style="padding:5px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Email</td>`;
-            html += `<td style="padding:5px 10px;font-size:12px;font-weight:600;color:#333;border:1px solid #E0E0E0;"><strong>${emailLabel ? emailLabel.text : 'N/A'}</strong></td></tr>`;
-            html += `</table>`;
+            h += `<p><b>${ragEmoji} ${escapeHtml(c.name)}</b> — Health: <b>${health}</b></p>`;
+            h += `<ul>`;
+            h += `<li>Plan: <b>${escapeHtml(c.plan || 'N/A')}</b> · Billing: <b>${escapeHtml(c.billing)}</b> · Agents: <b>${c.agentCount}</b></li>`;
+            h += `<li>Update: <b>${escapeHtml(c.updateStatus)}</b> · Last Contact: <b>${daysAgo(getEffectiveLastContact(c))}</b> · Email: <b>${emailLabel ? emailLabel.text : 'N/A'}</b></li>`;
 
             // Agents
             if (c.agents && c.agents.length > 0) {
-                html += `<div style="margin-top:6px;">`;
-                c.agents.forEach(a => {
-                    html += `<span style="display:inline-block;padding:3px 10px;margin:2px 3px 2px 0;background:#F3F0FF;color:#6B30FF;border-radius:12px;font-size:11px;font-weight:600;">🤖 ${escapeHtml(a.name)} — ${escapeHtml(a.stage)}${a.platform ? ' (' + escapeHtml(a.platform) + ')' : ''}</span>`;
-                });
-                html += `</div>`;
+                const agentList = c.agents.map(a => `${escapeHtml(a.name)} (${escapeHtml(a.stage)}${a.platform ? ', ' + escapeHtml(a.platform) : ''})`).join(' · ');
+                h += `<li>🤖 ${agentList}</li>`;
             }
 
-            // Current State / Summary
+            // Current State
             const clientSum = edits['clientSummary_' + c.name] || (c.summary || '');
             if (clientSum) {
-                html += `<table style="width:100%;border:none;border-collapse:collapse;margin-top:8px;"><tr>`;
-                html += `<td style="padding:8px 12px;background:#F8F8F8;border-left:3px solid #CCC;border-radius:4px;font-size:12px;color:#444;line-height:1.5;">`;
-                html += `<strong style="color:#666;font-size:10px;text-transform:uppercase;letter-spacing:0.3px;">Current State</strong><br>${clientSum}</td></tr></table>`;
+                h += `<li><i>${clientSum}</i></li>`;
             }
 
             // Progress
             const clientProg = edits['clientProgress_' + c.name] || this._generateClientProgress(c);
             if (clientProg) {
-                html += `<table style="width:100%;border:none;border-collapse:collapse;margin-top:6px;"><tr>`;
-                html += `<td style="padding:8px 12px;background:#F9F7FF;border-left:3px solid #6B30FF;border-radius:4px;font-size:12px;color:#444;line-height:1.5;">`;
-                html += `<strong style="color:#6B30FF;font-size:10px;text-transform:uppercase;letter-spacing:0.3px;">Progress</strong><br>${clientProg}</td></tr></table>`;
+                h += `<li>📌 ${clientProg}</li>`;
             }
 
-            html += `</td></tr></table>`; // close client card
+            h += `</ul>`;
         });
 
         // ── Meetings ──
         if (s.meetingsList.length > 0) {
-            html += `<div style="font-size:14px;font-weight:700;color:#242424;margin:20px 0 10px;padding-bottom:6px;border-bottom:2px solid #784bd1;">🎙️ Recent Meetings</div>`;
-            html += `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">`;
-            html += `<tr style="background:#F5F5F5;"><th style="text-align:left;padding:6px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Date</th><th style="text-align:left;padding:6px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Meeting</th></tr>`;
+            h += `<hr>`;
+            h += `<h3>🎙️ Recent Meetings</h3>`;
+            h += `<ul>`;
             s.meetingsList.forEach(m => {
                 const mDate = new Date(m.date);
                 const dateLabel = isNaN(mDate.getTime()) ? '?' : mDate.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
-                html += `<tr><td style="padding:5px 10px;font-size:12px;color:#888;border:1px solid #E8E8E8;width:80px;">${dateLabel}</td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#333;border:1px solid #E8E8E8;">${escapeHtml(m.title || 'Untitled')}</td></tr>`;
+                h += `<li>${dateLabel} — ${escapeHtml(m.title || 'Untitled')}</li>`;
             });
-            html += `</table>`;
+            h += `</ul>`;
         }
 
         // ── Upcoming ──
         if (s.upcoming.length > 0) {
-            html += `<div style="font-size:14px;font-weight:700;color:#242424;margin:20px 0 10px;padding-bottom:6px;border-bottom:2px solid #fdab3d;">📅 Upcoming Key Dates</div>`;
-            html += `<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">`;
-            html += `<tr style="background:#F5F5F5;"><th style="text-align:left;padding:6px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Days</th><th style="text-align:left;padding:6px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Client</th><th style="text-align:left;padding:6px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Type</th><th style="text-align:left;padding:6px 10px;font-size:11px;color:#666;border:1px solid #E0E0E0;">Date</th></tr>`;
+            h += `<hr>`;
+            h += `<h3>📅 Upcoming Key Dates</h3>`;
+            h += `<ul>`;
             s.upcoming.forEach(u => {
                 const d = new Date(u.date);
                 const daysLeft = Math.ceil((d - now) / 86400000);
-                const urgentColor = daysLeft <= 7 ? '#df2f4a' : '#666';
-                html += `<tr><td style="padding:5px 10px;font-size:12px;font-weight:700;color:${urgentColor};border:1px solid #E8E8E8;width:50px;">${daysLeft}d</td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#333;border:1px solid #E8E8E8;"><strong>${escapeHtml(u.client)}</strong></td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#666;border:1px solid #E8E8E8;">${escapeHtml(u.type)}</td>`;
-                html += `<td style="padding:5px 10px;font-size:12px;color:#888;border:1px solid #E8E8E8;">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</td></tr>`;
+                const urgentFlag = daysLeft <= 7 ? '🚨 ' : '';
+                h += `<li>${urgentFlag}<b>${escapeHtml(u.client)}</b> — ${escapeHtml(u.type)} · ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} (${daysLeft} days)</li>`;
             });
-            html += `</table>`;
+            h += `</ul>`;
         }
 
         // ── Footer ──
-        html += `<table style="width:100%;border:none;border-collapse:collapse;margin-top:20px;"><tr>`;
-        html += `<td style="text-align:center;padding:10px;font-size:10px;color:#AAA;border-top:1px solid #E0E0E0;">`;
-        html += `IAI ${RUNTIME.podName || 'Pod B'} Dashboard · ImplementAI · Weekly Report · ${dateStr}</td></tr></table>`;
+        h += `<hr>`;
+        h += `<p><i>IAI ${escapeHtml(RUNTIME.podName || 'Pod B')} Dashboard · ImplementAI · ${dateStr}</i></p>`;
 
-        html += `</div>`;
-        return html;
+        return h;
     },
 
     // CSS for standalone export documents (dark theme with print overrides)
