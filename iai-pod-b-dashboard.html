@@ -8379,10 +8379,16 @@ const FirefliesSync = {
         return this._cache.dismissedIds.length;
     },
 
-    // Get all meetings (with summary data) — excludes dismissed meetings
-    getMeetings() {
+    // Get all meetings (with summary data) — excludes dismissed and meetings user didn't attend
+    getMeetings(includeAll = false) {
+        const myEmail = (RUNTIME.userEmail || CONFIG.USER_EMAIL || '').toLowerCase();
         return this._cache.transcripts
             .filter(t => !this.isDismissed(t.id))
+            .filter(t => {
+                if (includeAll || !myEmail) return true;
+                const participants = (t.participants || []).map(p => (p || '').toLowerCase());
+                return participants.includes(myEmail) || (t.organizer || '').toLowerCase() === myEmail;
+            })
             .map(t => ({
                 ...t,
                 actions: this._cache.actions[t.id] || [],
