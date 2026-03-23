@@ -6782,11 +6782,13 @@ TYPE 5 — Follow Up (continuing an existing thread):
 - Keep it brief: 3-6 sentences max for follow-ups
 
 **FORMAT:**
-- Start with "Hi [first name]," (use client name context to infer)
-- Sign off with "Best regards," (no name — user will add)
-- No subject line needed — just the email body
+- Start with a suggested Subject line in format: "IAI x [Client]: [Topic]"
+- Then "To: [client email]  CC: neo@implementai.io" (add other relevant IAI CCs if the context shows them)
+- Greeting: "Hello [first name]," (use client contact context to infer)
+- Sign off with "Regards" (no name — user will add)
 - Keep paragraphs short (2-3 sentences max)
-- Max 200 words — respect their time`;
+- Max 200 words for the body — respect their time
+- Write in British English throughout`;
     },
 
     async emailDraft(clientName, emailType, userContext, isFollowUp) {
@@ -6797,7 +6799,7 @@ TYPE 5 — Follow Up (continuing an existing thread):
         let lastEmailCtx = '';
         const ed = EMAIL_DATA.clients?.[clientName];
         if (ed && ed.emails && ed.emails.length > 0) {
-            const lastFromClient = ed.emails.find(e => e.isFromClient);
+            const lastFromClient = ed.emails.find(e => e.isFromClient && !isAutoReply(e) && !isBillingEmail(e) && !e.isCcOnly);
             const lastFromMe = ed.emails.find(e => e.isFromMe);
             if (lastFromClient) {
                 const d = new Date(lastFromClient.date);
@@ -6807,15 +6809,56 @@ TYPE 5 — Follow Up (continuing an existing thread):
                 const d = new Date(lastFromMe.date);
                 lastEmailCtx += `\nLast email FROM ME (IAI): "${lastFromMe.subject}" on ${d.toLocaleDateString('en-GB')}`;
             }
+            // Include recent thread (up to 5 emails) for full context
+            const recentThread = ed.emails.slice(0, 5).map((e, i) => {
+                const d = new Date(e.date);
+                const who = e.isFromMe ? 'ME (IAI)' : e.isFromClient ? 'CLIENT' : '3RD PARTY';
+                return `  ${i+1}. [${who}] "${e.subject}" — ${d.toLocaleDateString('en-GB')}`;
+            }).join('\n');
+            if (recentThread) lastEmailCtx += `\n\nRecent email thread (newest first):\n${recentThread}`;
             const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(clientName) : null;
             if (emailStatus) lastEmailCtx += `\nCurrent email status: ${emailStatus}`;
         }
 
+        // Build Slack context — recent internal channel activity
+        let slackCtx = '';
+        const sd = SLACK_DATA.clients?.[clientName];
+        if (sd && sd.messages && sd.messages.length > 0) {
+            const recentSlack = sd.messages.slice(0, 10).map(m => {
+                const d = new Date(m.date);
+                return `  [${m.userName || 'unknown'}] ${d.toLocaleDateString('en-GB')}: ${m.text?.substring(0, 200) || ''}`;
+            }).join('\n');
+            slackCtx = `\n\n--- Internal Slack Channel Activity (DO NOT share with client) ---\n${recentSlack}\n--- End Slack ---`;
+        }
+
+        // Build Teams context
+        let teamsCtx = '';
+        const td = TEAMS_DATA.clients?.[clientName];
+        if (td && td.messages && td.messages.length > 0) {
+            const recentTeams = td.messages.slice(0, 5).map(m => {
+                const d = new Date(m.date);
+                return `  [${m.isFromMe ? 'ME' : 'CLIENT'}] ${d.toLocaleDateString('en-GB')}: ${m.text?.substring(0, 200) || ''}`;
+            }).join('\n');
+            teamsCtx = `\n\n--- Teams Messages ---\n${recentTeams}\n--- End Teams ---`;
+        }
+
+        const strategicInstructions = `\n\nSTRATEGIC COMMUNICATION RULES:
+- Synthesise ALL sources (email thread, Slack activity, Teams messages, monday.com data) to build a complete picture before drafting
+- Slack messages are INTERNAL — never reference internal team members, engineering details, tickets, or backend work in the client email
+- If previous emails made timeline commitments that have slipped, do NOT draw attention to the missed deadline — shift focus to what's been achieved and what's next
+- Place the ball clearly — make it obvious who has the next action (us, the client, or a third party)
+- Always CC neo@implementai.io (GANESHA standard)
+- Subject format: "IAI x [Client Name]: [Topic]" for new threads
+- If there are wins (completed work, milestones hit), lead with them — even in difficult updates
+- Never expose internal blockers (dev tickets, team capacity, backend issues) — translate to client-friendly language
+- Frame dependencies on third parties diplomatically ("I am awaiting confirmation from [party]")
+- Every email should leave the client feeling informed, confident, and clear on next steps`;
+
         let userMsg = '';
         if (isFollowUp || emailType === 5) {
-            userMsg = `Write a FOLLOW-UP email for this client. This should directly reference and continue the last email conversation thread. If the client emailed us, follow up on what they raised. If we last emailed them and are awaiting a reply, write a polite but assertive chase-up. Be specific — reference the last email subject and context.\n\nClient Data:\n${ctx}${lastEmailCtx}\n\n${userContext ? 'Additional context from me: ' + userContext : 'Use the email thread context to write an appropriate follow-up.'}`;
+            userMsg = `Write a FOLLOW-UP email for this client. This should directly reference and continue the last email conversation thread. Cross-reference the Slack channel for the latest internal updates to ensure the email is accurate and up-to-date. If the client emailed us, follow up on what they raised. If we last emailed and await a reply, write a polite but assertive chase-up.\n\nClient Data:\n${ctx}${lastEmailCtx}${slackCtx}${teamsCtx}${strategicInstructions}\n\n${userContext ? 'Additional context from me: ' + userContext : 'Use the email thread + Slack/Teams context to write an appropriate follow-up.'}`;
         } else {
-            userMsg = `Write a "${typeLabel}" email for this client. IMPORTANT: Consider the recent email thread below — the draft must be relevant to the ongoing conversation and not repeat information already sent.\n\nClient Data:\n${ctx}${lastEmailCtx}\n\n${userContext ? 'Additional context from me: ' + userContext : 'Use the client data to write an appropriate email.'}`;
+            userMsg = `Write a "${typeLabel}" email for this client. Cross-reference ALL available data sources (emails, Slack, Teams, monday.com) to build the most accurate and relevant draft. The draft must be relevant to the ongoing conversation and not repeat information already sent.\n\nClient Data:\n${ctx}${lastEmailCtx}${slackCtx}${teamsCtx}${strategicInstructions}\n\n${userContext ? 'Additional context from me: ' + userContext : 'Use ALL available context to write the most relevant email.'}`;
         }
 
         const result = await this._aiChatText([
