@@ -3490,20 +3490,36 @@ input, textarea, select { font-family: inherit; outline: none; }
                 </div>
 
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
-                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#10024; AI Task Assistant</h3>
-                    <div class="setup-input-group">
-                        <label>OpenAI API Key</label>
-                        <input type="password" id="openaiKeyInput" placeholder="sk-...">
-                        <button class="toggle-vis" onclick="const i=document.getElementById('openaiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#129504; AI Engine</h3>
+                    <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <button class="mode-toggle-btn" id="aiProviderClaude" data-provider="claude" onclick="setAIProvider('claude')" style="flex:1;font-size:12px;padding:6px 10px;">&#129504; Claude (Default)</button>
+                        <button class="mode-toggle-btn" id="aiProviderOpenai" data-provider="openai" onclick="setAIProvider('openai')" style="flex:1;font-size:12px;padding:6px 10px;">&#10024; OpenAI (Fallback)</button>
+                    </div>
+                    <div id="aiClaudeSection">
+                        <div class="setup-input-group">
+                            <label>Claude API Key</label>
+                            <input type="password" id="claudeKeyInput" placeholder="sk-ant-...">
+                            <button class="toggle-vis" onclick="const i=document.getElementById('claudeKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                        </div>
+                        <div class="setup-hint" style="margin-top:4px;">
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> &#8594; API Keys &#8594; Create key. Uses claude-sonnet-4. Claude is the primary AI brain for this dashboard.
+                        </div>
+                    </div>
+                    <div id="aiOpenaiSection" style="display:none;">
+                        <div class="setup-input-group">
+                            <label>OpenAI API Key</label>
+                            <input type="password" id="openaiKeyInput" placeholder="sk-...">
+                            <button class="toggle-vis" onclick="const i=document.getElementById('openaiKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
+                        </div>
+                        <div class="setup-hint" style="margin-top:4px;">
+                            <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-purple-light);">OpenAI Platform</a> &#8594; API Keys &#8594; Create secret key. Uses gpt-4o-mini (~$0.001 per task).
+                        </div>
                     </div>
                     <div style="display:flex;gap:8px;margin-top:10px;">
-                        <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="testOpenAI()">Test Connection</button>
-                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="clearOpenAI()">Clear Key</button>
+                        <button class="btn-primary" style="font-size:12px;padding:6px 14px;" onclick="testAIConnection()">Test Connection</button>
+                        <button class="btn-primary" style="background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);font-size:12px;padding:6px 14px;" onclick="clearAIKey()">Clear Key</button>
                     </div>
-                    <div id="openaiConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
-                    <div class="setup-hint" style="margin-top:4px;">
-                        <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-purple-light);">OpenAI Platform</a> &#8594; API Keys &#8594; Create secret key. Uses gpt-4o-mini (~$0.001 per task). Key never expires.
-                    </div>
+                    <div id="aiConnStatus" style="font-size:11px;margin-top:6px;color:var(--text-muted);"></div>
                 </div>
 
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
@@ -3713,7 +3729,7 @@ input, textarea, select { font-family: inherit; outline: none; }
                 </div>
                 <div class="conn-dropdown-row" id="connRow-openai" style="display:none;">
                     <span class="conn-svc-dot gray"></span>
-                    <span class="conn-svc-name">&#10024; OpenAI</span>
+                    <span class="conn-svc-name">&#129504; Claude</span>
                     <span class="conn-svc-label gray">Pending</span>
                 </div>
             </div>
@@ -5951,17 +5967,33 @@ const TranscriptParser = {
 };
 
 /* ================================================================
-   AI TASK ASSISTANT — OpenAI-powered task breakdown & transcript extraction
-   Uses the Cloudflare Worker proxy (same as Slack) to call OpenAI API.
+   AI TASK ASSISTANT — Multi-provider AI (Claude default, GPT fallback)
+   Uses the Cloudflare Worker proxy for CORS. Supports Anthropic Claude + OpenAI.
    ================================================================ */
 const AITaskAssist = {
     _keyLs: 'iai_openai_key',
+    _claudeKeyLs: 'iai_claude_key',
+    _providerLs: 'iai_ai_provider',  // 'claude' | 'openai'
     _sk() { return UserSession.podKey(this._keyLs); },
+    _claudeSk() { return UserSession.podKey(this._claudeKeyLs); },
+    _providerSk() { return UserSession.podKey(this._providerLs); },
 
+    // OpenAI key
     getKey()   { return localStorage.getItem(this._sk()) || ''; },
     setKey(k)  { localStorage.setItem(this._sk(), k || ''); },
     hasKey()   { return !!this.getKey(); },
     clearKey() { localStorage.removeItem(this._sk()); },
+
+    // Claude key
+    getClaudeKey()   { return localStorage.getItem(this._claudeSk()) || ''; },
+    setClaudeKey(k)  { localStorage.setItem(this._claudeSk(), k || ''); },
+    hasClaudeKey()   { return !!this.getClaudeKey(); },
+    clearClaudeKey() { localStorage.removeItem(this._claudeSk()); },
+
+    // Provider selection — default Claude
+    getProvider()  { return localStorage.getItem(this._providerSk()) || 'claude'; },
+    setProvider(p) { localStorage.setItem(this._providerSk(), p); this._cache = {}; },
+    isUsingClaude() { return this.getProvider() === 'claude'; },
 
     // ── GANESHA Spec Essence — company DNA injected into all AI calls ──
     _ganeshaContext() {
@@ -5992,8 +6024,9 @@ DELIVERY OWNERSHIP STANDARDS:
 - Ownership Language: "I am doing X" not "We are waiting for Y"
 - Specific Timelines: "Thursday 2pm" not "soon" or "shortly"
 - 24-Hour Rule: Every client issue acknowledged within 24 hours with action plan
-- CC neo@implementai.io on all customer comms
+- CC neo@implementai.io on ALL customer comms (email, updates, meeting notes, status reports)
 - Driver mindset: control the agenda, steer toward blueprints
+- Driver/Passenger Framework: Always be the Driver — prescribe, don't ask. If a client is being a Passenger (low engagement), escalate proactively.
 
 EMAIL STANDARDS:
 - Subject lines: Always "IAI x [Topic]"
@@ -6006,6 +6039,7 @@ EMAIL STANDARDS:
 - TYPE 2 (Status Update): COMPLETE / IN PROGRESS / NOT STARTED with proof/ETAs
 - TYPE 3 (Query Response): Lead with direct answer + next steps
 - TYPE 4 (Proactive): Context + status + next steps (≤5 sentences)
+- PRE-SEND CHECKLIST: Subject "IAI x"? Hello not Dear? Jargon-free? Specific timelines? Solution-first? CC neo? Every sentence earns its place?
 
 CLIENT COMMUNICATION (LEAD FRAMEWORK):
 L — Lead with Wins: Always open with success. Anchor in value, not process. If no obvious win, iteration IS a win.
@@ -6016,13 +6050,23 @@ D — Drive Expansion: Plant seeds for growth. "That's Phase 2. Once we dial in 
 - Translate technical to business: "Gatekeeper handling" → "Getting to decision-makers faster", "IVR detection" → "Handling all phone systems", "Agent prompt refinement" → "Fine-tuning conversation approach"
 - Fidelity Hierarchy: Working prototype > Live demo > Presentation > Document > Call > Async message. If going back-and-forth, stop — pick up the phone.
 - Calls-First Rule: 15 minutes on call > week of emails for technical setup
+- Technical Handoff: Always live call first, email confirmation AFTER (not instead of). 4-step: Prepare → Call → Confirm → Follow-up.
 
 PRICING & SCOPE:
-- ACTIVATE: Standard blueprint agent + single integration + minor tweaks
-- SCALE/TRANSFORM: Custom agent + multiple integrations + change request process
-- NOT INCLUDED: Data cleaning, system simplification, IT support
+- ACTIVATE: Standard blueprint agent + single integration + minor tweaks. Client provides clean data.
+- SCALE/TRANSFORM: Custom agent + multiple integrations + change request process. Guided data advice.
+- NOT INCLUDED (ANY plan): Data cleaning/merging, system simplification, column moves/UI changes to client systems, IT support
 - Lemonade Principle: We build the stand; clients grow the lemons (provide clean data)
 - Expansion target: 50%+ in 90 days, 2.5+ agents/client by Month 6
+- How to Say No: "That sits outside the current scope. I recommend we complete X first, then we can scope that as a Phase 2 add-on."
+
+21-DAY DELIVERY FRAMEWORK:
+- Week 1: Foundation (system access, authentication, basic connections)
+- Week 2: Core Function (primary workflow, basic integration, initial testing)
+- Week 3: Polish & Deploy (edge cases, optimization, handoff)
+- Day 28-30: Value Report (measurable outcomes)
+- Day 30-45: Expansion conversation
+- Blueprint Compliance target: 100%
 
 THE SIX USE CASES (The Only Menu):
 1. Out-of-Hours Response  2. Lead Reactivation  3. Call Analyst
@@ -6030,6 +6074,7 @@ THE SIX USE CASES (The Only Menu):
 
 AIOS AGENT LIBRARY (49 agents, 7 categories):
 Voice & Call (11), Analysis (7), Customer Success (14), Support (6), Scheduling (5), Recruitment (3), Strategic (3). Standard vs Advanced tiers.
+Agent Teams: Sales Team (outbound, inbound, email, messaging, campaign), Support Team, Task Team (workflow automation, computer use), Analyst Team, Research Team.
 
 NEO v6.5 + AMENDMENT G:
 - 22 expanded digital worker blueprints
@@ -6037,7 +6082,8 @@ NEO v6.5 + AMENDMENT G:
 - See.Then Do. client deployment philosophy
 - AIOS Command with three intelligence levels
 - Client Blocker Escalation: Stage 1 (Notify) → Stage 2 (Day 7 escalate) → Stage 3 (Day 14 pause) → Stage 4 (Day 30+ review)
-- 21-day time-to-value target
+- Anti-Patterns: scope creep, async-only for tech issues, vague timelines, apologising excessively, reporting problems without solutions
+- Incident Response: P0 (service down, 15min response) → P1 (major impact, 1hr) → P2 (moderate, 4hr) → P3 (minor, 24hr)
 --- End GANESHA Context ---`;
     },
 
@@ -6101,7 +6147,17 @@ CORE PRINCIPLES:
     },
 
     isAvailable() {
-        return this.hasKey() && !!SlackSync.getProxy();
+        const hasProxy = !!SlackSync.getProxy();
+        if (this.isUsingClaude()) return this.hasClaudeKey() && hasProxy;
+        return this.hasKey() && hasProxy;
+    },
+
+    // Active provider's key
+    getActiveKey() {
+        return this.isUsingClaude() ? this.getClaudeKey() : this.getKey();
+    },
+    hasActiveKey() {
+        return this.isUsingClaude() ? this.hasClaudeKey() : this.hasKey();
     },
 
     /* ---- In-memory cache (10min TTL) ---- */
@@ -6250,7 +6306,7 @@ CORE PRINCIPLES:
             const data = await resp.json();
             const content = data?.choices?.[0]?.message?.content;
             if (!content) throw new Error('Empty AI response');
-            ConnectionStatus.setOpenAI('connected');
+            ConnectionStatus.setAI('connected');
             try {
                 return JSON.parse(content);
             } catch (e) {
@@ -6258,7 +6314,7 @@ CORE PRINCIPLES:
             }
         } catch (e) {
             if (e.name === 'AbortError') throw new Error('Request timed out (30s)');
-            ConnectionStatus.setOpenAI('error');
+            ConnectionStatus.setAI('error');
             throw e;
         } finally {
             clearTimeout(timeout);
@@ -6287,13 +6343,126 @@ CORE PRINCIPLES:
             const data = await resp.json();
             const content = data?.choices?.[0]?.message?.content;
             if (!content) throw new Error('Empty AI response');
-            ConnectionStatus.setOpenAI('connected');
+            ConnectionStatus.setAI('connected');
             return content;
         } catch (e) {
             if (e.name === 'AbortError') throw new Error('Request timed out (45s)');
-            ConnectionStatus.setOpenAI('error');
+            ConnectionStatus.setAI('error');
             throw e;
         } finally { clearTimeout(timeout); }
+    },
+
+    /* ---- Claude (Anthropic) API methods ---- */
+    _convertToClaudeMessages(messages) {
+        // Convert OpenAI-style messages to Claude format
+        // Claude uses system as a separate param, not in messages array
+        let system = '';
+        const claudeMessages = [];
+        for (const m of messages) {
+            if (m.role === 'system') {
+                system += (system ? '\n\n' : '') + m.content;
+            } else {
+                claudeMessages.push({ role: m.role, content: m.content });
+            }
+        }
+        return { system, messages: claudeMessages };
+    },
+
+    async _claudeChat(messages, opts = {}) {
+        const key = this.getClaudeKey();
+        const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
+        if (!key || !proxy) throw new Error('AI not configured');
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const { system, messages: claudeMessages } = this._convertToClaudeMessages(messages);
+        try {
+            const url = proxy + '/anthropic/messages';
+            const resp = await fetch(url, {
+                method: 'POST',
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Anthropic-Key': key
+                },
+                body: JSON.stringify({
+                    model: opts.model || 'claude-sonnet-4-20250514',
+                    max_tokens: opts.max_tokens || 512,
+                    system: system + '\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences.',
+                    messages: claudeMessages,
+                    temperature: opts.temperature ?? 0.3
+                })
+            });
+            if (!resp.ok) {
+                const errText = await resp.text().catch(() => '');
+                throw new Error(`API ${resp.status}: ${errText.substring(0, 200)}`);
+            }
+            const data = await resp.json();
+            const content = data?.content?.[0]?.text;
+            if (!content) throw new Error('Empty AI response');
+            ConnectionStatus.setAI('connected');
+            try {
+                // Claude may wrap JSON in code fences, strip them
+                const cleaned = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+                return JSON.parse(cleaned);
+            } catch (e) {
+                throw new Error('Failed to parse AI response');
+            }
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Request timed out (30s)');
+            ConnectionStatus.setAI('error');
+            throw e;
+        } finally {
+            clearTimeout(timeout);
+        }
+    },
+
+    async _claudeChatText(messages, opts = {}) {
+        const key = this.getClaudeKey();
+        const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
+        if (!key || !proxy) throw new Error('AI not configured');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+        const { system, messages: claudeMessages } = this._convertToClaudeMessages(messages);
+        try {
+            const url = proxy + '/anthropic/messages';
+            const resp = await fetch(url, {
+                method: 'POST', signal: controller.signal,
+                headers: { 'Content-Type': 'application/json', 'X-Anthropic-Key': key },
+                body: JSON.stringify({
+                    model: opts.model || 'claude-sonnet-4-20250514',
+                    max_tokens: opts.max_tokens || 600,
+                    system,
+                    messages: claudeMessages,
+                    temperature: opts.temperature ?? 0.4
+                })
+            });
+            if (!resp.ok) { const errText = await resp.text().catch(() => ''); throw new Error(`API ${resp.status}: ${errText.substring(0, 200)}`); }
+            const data = await resp.json();
+            const content = data?.content?.[0]?.text;
+            if (!content) throw new Error('Empty AI response');
+            ConnectionStatus.setAI('connected');
+            return content;
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('Request timed out (45s)');
+            ConnectionStatus.setAI('error');
+            throw e;
+        } finally { clearTimeout(timeout); }
+    },
+
+    /* ---- Provider-aware dispatcher (routes to Claude or OpenAI) ---- */
+    async _aiChat(messages, opts = {}) {
+        if (this.isUsingClaude() && this.hasClaudeKey()) {
+            return this._claudeChat(messages, opts);
+        }
+        return this._openaiChat(messages, opts);
+    },
+
+    async _aiChatText(messages, opts = {}) {
+        if (this.isUsingClaude() && this.hasClaudeKey()) {
+            return this._claudeChatText(messages, opts);
+        }
+        return this._openaiChatText(messages, opts);
     },
 
     /* ---- Feature 3: Health Insights (overview page) ---- */
@@ -6305,7 +6474,7 @@ CORE PRINCIPLES:
         if (cached) return cached;
         const portfolio = this._buildPortfolioSummary();
         const contextBlock = userContext ? `\n\n--- Pod Lead's Context ---\nThe pod lead has provided this additional context to guide your analysis. Prioritise and tailor your insights accordingly:\n${userContext}\n--- End Context ---` : '';
-        const result = await this._openaiChat([
+        const result = await this._aiChat([
             { role: 'system', content: this._ganeshaContext() + `\n\nYou are a portfolio analyst for Implement AI. Analyse this portfolio data and return JSON with:
 {
   "summary": "2-3 sentence overview of portfolio health, highlighting key wins and concerns",
@@ -6325,7 +6494,7 @@ Be specific with client names and numbers. Focus on actionable insights. Max 5-7
         const cached = this._cacheGet('weekly_' + weekId);
         if (cached) return cached;
         const portfolio = this._buildPortfolioSummary();
-        const result = await this._openaiChatText([
+        const result = await this._aiChatText([
             { role: 'system', content: this._ganeshaContext() + `\n\nYou are a portfolio manager writing an executive weekly narrative for Implement AI. Given this week's data, write 3-4 sentences highlighting: key wins, concerns or risks, and recommended focus areas for next week. Be specific with client names and metrics. Write in British English, professional but concise. Do not use bullet points — write in flowing prose. Apply the Ownership Mindset and Train Philosophy — flag anything that needs immediate action.` },
             { role: 'user', content: portfolio }
         ], { max_tokens: 300 });
@@ -6338,7 +6507,7 @@ Be specific with client names and numbers. Focus on actionable insights. Max 5-7
         const cached = this._cacheGet('prep_' + clientName);
         if (cached) return cached;
         const ctx = this._buildClientContext(clientName);
-        const result = await this._openaiChatText([
+        const result = await this._aiChatText([
             { role: 'system', content: this._commsGuideContext() + `\n\n` + this._ganeshaContext() + `\n\nYou are preparing a Solutions Associate at Implement AI for a client meeting. Follow the IAI Client Communication Excellence Guide STRICTLY — especially the LEAD framework and meeting structure.
 
 Create a meeting prep brief structured as:
@@ -6451,7 +6620,7 @@ TYPE 5 — Follow Up (continuing an existing thread):
             userMsg = `Write a "${typeLabel}" email for this client. IMPORTANT: Consider the recent email thread below — the draft must be relevant to the ongoing conversation and not repeat information already sent.\n\nClient Data:\n${ctx}${lastEmailCtx}\n\n${userContext ? 'Additional context from me: ' + userContext : 'Use the client data to write an appropriate email.'}`;
         }
 
-        const result = await this._openaiChatText([
+        const result = await this._aiChatText([
             { role: 'system', content: this._emailDraftPrompt() },
             { role: 'user', content: userMsg }
         ], { max_tokens: 800 });
@@ -6466,7 +6635,7 @@ TYPE 5 — Follow Up (continuing an existing thread):
         const cached = this._cacheGet(cacheKey);
         if (cached) return cached;
         const portfolio = this._buildPortfolioSummary();
-        const result = await this._openaiChatText([
+        const result = await this._aiChatText([
             { role: 'system', content: this._ganeshaContext() + `\n\nYou are a dashboard assistant for Implement AI. Given the portfolio data below, answer the user's question concisely. Reference specific clients, numbers, and dates. If the data doesn't contain the answer, say so honestly. Write in British English. Keep answers to 2-4 sentences unless a list is clearly needed. Apply GANESHA principles — use ownership language and be specific.` },
             { role: 'user', content: `Portfolio Data:\n${portfolio}\n\nQuestion: ${query}` }
         ], { max_tokens: 400 });
@@ -6485,7 +6654,7 @@ TYPE 5 — Follow Up (continuing an existing thread):
             : this._taskBreakdownPrompt(clientNames);
         const inputCap = isTranscript ? 12000 : 6000;
 
-        const result = await this._openaiChat([
+        const result = await this._aiChat([
             { role: 'system', content: systemPrompt },
             { role: 'user', content: text.substring(0, inputCap) }
         ]);
@@ -6529,14 +6698,14 @@ Be thorough but avoid duplicates. Prefer specific actions over vague summaries.`
 
     async testConnection() {
         try {
-            const result = await this._openaiChat([
+            const result = await this._aiChat([
                 { role: 'system', content: 'Reply with JSON: {"status":"ok"}' },
                 { role: 'user', content: 'ping' }
             ], { max_tokens: 20 });
-            ConnectionStatus.setOpenAI('connected');
-            return { ok: true };
+            ConnectionStatus.setAI('connected');
+            return { ok: true, provider: this.getProvider() };
         } catch (err) {
-            ConnectionStatus.setOpenAI('error');
+            ConnectionStatus.setAI('error');
             return { ok: false, error: err.message };
         }
     }
@@ -14767,7 +14936,7 @@ function openTaskPrompt() {
     if (aiBtn) {
         const available = AITaskAssist.isAvailable();
         aiBtn.disabled = !available;
-        aiBtn.title = available ? 'Use AI to break down tasks or extract actions from transcript' : 'Set OpenAI key and proxy URL in Settings to enable AI Assist';
+        aiBtn.title = available ? 'Use AI to break down tasks or extract actions from transcript' : 'Set AI key and proxy URL in Settings to enable AI Assist';
     }
 
     // Listen for typing — debounced preview
@@ -15421,7 +15590,7 @@ async function aiAssistTasks() {
     const text = textarea.value.trim();
     if (!text) { showToast('Type something first', 'error'); return; }
     if (!AITaskAssist.isAvailable()) {
-        showToast('Set your OpenAI key & proxy in Settings to use AI assist', 'error');
+        showToast('Set your AI key & proxy in Settings to use AI assist', 'error');
         return;
     }
     const btn = document.getElementById('taskAiAssistBtn');
@@ -15446,39 +15615,81 @@ async function aiAssistTasks() {
     }
 }
 
-async function testOpenAI() {
-    const keyInput = document.getElementById('openaiKeyInput');
-    const status = document.getElementById('openaiConnStatus');
-    const key = keyInput?.value?.trim();
-    if (!key) { status.textContent = 'Enter an API key first'; status.style.color = 'var(--rag-red)'; return; }
-    if (testOpenAI._busy) return;
-    testOpenAI._busy = true;
-    const prevKey = AITaskAssist.getKey();
-    AITaskAssist.setKey(key);
-    status.textContent = 'Testing\u2026';
-    status.style.color = 'var(--text-muted)';
-    const result = await AITaskAssist.testConnection();
-    if (result.ok) {
-        status.textContent = '\u2705 Connected to OpenAI';
-        status.style.color = 'var(--rag-green)';
-        showToast('OpenAI connected', 'success');
-    } else {
-        AITaskAssist.setKey(prevKey);
-        status.textContent = '\u274C ' + (result.error || 'Connection failed');
-        status.style.color = 'var(--rag-red)';
-    }
-    testOpenAI._busy = false;
+function setAIProvider(provider) {
+    AITaskAssist.setProvider(provider);
+    document.getElementById('aiProviderClaude')?.classList.toggle('active', provider === 'claude');
+    document.getElementById('aiProviderOpenai')?.classList.toggle('active', provider === 'openai');
+    document.getElementById('aiClaudeSection').style.display = provider === 'claude' ? '' : 'none';
+    document.getElementById('aiOpenaiSection').style.display = provider === 'openai' ? '' : 'none';
+    const status = document.getElementById('aiConnStatus');
+    if (status) { status.textContent = `Switched to ${provider === 'claude' ? 'Claude' : 'OpenAI'}`; status.style.color = 'var(--text-muted)'; }
+    ConnectionStatus.setAI('unknown');
+    updateConnectionIndicator();
 }
 
-function clearOpenAI() {
-    AITaskAssist.clearKey();
-    const keyInput = document.getElementById('openaiKeyInput');
-    const status = document.getElementById('openaiConnStatus');
-    if (keyInput) keyInput.value = '';
-    if (status) { status.textContent = 'Key cleared'; status.style.color = 'var(--text-muted)'; }
-    ConnectionStatus.setOpenAI('no-key');
-    showToast('OpenAI key removed', 'success');
+async function testAIConnection() {
+    const isClaude = AITaskAssist.isUsingClaude();
+    const keyInput = document.getElementById(isClaude ? 'claudeKeyInput' : 'openaiKeyInput');
+    const status = document.getElementById('aiConnStatus');
+    const key = keyInput?.value?.trim();
+    if (!key) { status.textContent = 'Enter an API key first'; status.style.color = 'var(--rag-red)'; return; }
+    if (testAIConnection._busy) return;
+    testAIConnection._busy = true;
+    // Save key
+    if (isClaude) {
+        const prevKey = AITaskAssist.getClaudeKey();
+        AITaskAssist.setClaudeKey(key);
+        status.textContent = 'Testing Claude\u2026';
+        status.style.color = 'var(--text-muted)';
+        const result = await AITaskAssist.testConnection();
+        if (result.ok) {
+            status.textContent = '\u2705 Connected to Claude';
+            status.style.color = 'var(--rag-green)';
+            showToast('Claude connected', 'success');
+        } else {
+            AITaskAssist.setClaudeKey(prevKey);
+            status.textContent = '\u274C ' + (result.error || 'Connection failed');
+            status.style.color = 'var(--rag-red)';
+        }
+    } else {
+        const prevKey = AITaskAssist.getKey();
+        AITaskAssist.setKey(key);
+        status.textContent = 'Testing OpenAI\u2026';
+        status.style.color = 'var(--text-muted)';
+        const result = await AITaskAssist.testConnection();
+        if (result.ok) {
+            status.textContent = '\u2705 Connected to OpenAI';
+            status.style.color = 'var(--rag-green)';
+            showToast('OpenAI connected', 'success');
+        } else {
+            AITaskAssist.setKey(prevKey);
+            status.textContent = '\u274C ' + (result.error || 'Connection failed');
+            status.style.color = 'var(--rag-red)';
+        }
+    }
+    testAIConnection._busy = false;
 }
+
+function clearAIKey() {
+    const isClaude = AITaskAssist.isUsingClaude();
+    if (isClaude) {
+        AITaskAssist.clearClaudeKey();
+        const keyInput = document.getElementById('claudeKeyInput');
+        if (keyInput) keyInput.value = '';
+    } else {
+        AITaskAssist.clearKey();
+        const keyInput = document.getElementById('openaiKeyInput');
+        if (keyInput) keyInput.value = '';
+    }
+    const status = document.getElementById('aiConnStatus');
+    if (status) { status.textContent = 'Key cleared'; status.style.color = 'var(--text-muted)'; }
+    ConnectionStatus.setAI('no-key');
+    showToast(`${isClaude ? 'Claude' : 'OpenAI'} key removed`, 'success');
+}
+
+// Legacy aliases
+async function testOpenAI() { return testAIConnection(); }
+function clearOpenAI() { return clearAIKey(); }
 
 function checkMsPermissions() {
     const statusEl = document.getElementById('msPermStatus');
@@ -16095,7 +16306,7 @@ document.addEventListener('click', (e) => {
 /* ---- AI Weekly Summary for ShareSnapshot ---- */
 async function generateWeeklyAISummary() {
     const btn = document.getElementById('btnAISummary');
-    if (!AITaskAssist.isAvailable()) { showToast('Set OpenAI key in Settings to use AI Summary', 'warning'); return; }
+    if (!AITaskAssist.isAvailable()) { showToast('Set AI key in Settings to use AI Summary', 'warning'); return; }
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="ai-spinner" style="display:inline-block;width:12px;height:12px;border:2px solid rgba(107,48,255,0.2);border-top-color:var(--accent-purple-light);border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:4px;"></span> Generating...'; }
     try {
         const narrative = await AITaskAssist.weeklyInsight();
@@ -17385,10 +17596,20 @@ function showSetup() {
     if (slackProxyInput) slackProxyInput.value = SlackSync.getProxy() || '';
     const slackStatus = document.getElementById('slackConnStatus');
     if (slackStatus) slackStatus.textContent = SLACK_DATA.connected ? `Connected to ${SLACK_DATA.workspace || 'Slack'} — ${Object.keys(SLACK_DATA.clients).length} clients matched` : '';
+    // AI provider toggle + key fields
+    const currentProvider = AITaskAssist.getProvider();
+    document.getElementById('aiProviderClaude')?.classList.toggle('active', currentProvider === 'claude');
+    document.getElementById('aiProviderOpenai')?.classList.toggle('active', currentProvider === 'openai');
+    const aiClaudeSec = document.getElementById('aiClaudeSection');
+    const aiOpenaiSec = document.getElementById('aiOpenaiSection');
+    if (aiClaudeSec) aiClaudeSec.style.display = currentProvider === 'claude' ? '' : 'none';
+    if (aiOpenaiSec) aiOpenaiSec.style.display = currentProvider === 'openai' ? '' : 'none';
+    const claudeKeyInput = document.getElementById('claudeKeyInput');
+    if (claudeKeyInput) claudeKeyInput.value = AITaskAssist.getClaudeKey() || '';
     const openaiKeyInput = document.getElementById('openaiKeyInput');
     if (openaiKeyInput) openaiKeyInput.value = AITaskAssist.getKey() || '';
-    const openaiStatus = document.getElementById('openaiConnStatus');
-    if (openaiStatus && AITaskAssist.hasKey()) openaiStatus.textContent = 'Key saved';
+    const aiStatus = document.getElementById('aiConnStatus');
+    if (aiStatus && AITaskAssist.hasActiveKey()) aiStatus.textContent = `${currentProvider === 'claude' ? 'Claude' : 'OpenAI'} key saved`;
     // Show current pod info
     const podInfo = document.getElementById('currentPodInfo');
     if (podInfo) {
@@ -17510,7 +17731,7 @@ function showSlackSetupGuide() {
         </ol>
 
         <h3 style="font-size:14px;color:var(--accent-purple-light);margin-bottom:8px;">Cloudflare Worker Code</h3>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">This proxy handles Slack + OpenAI API calls (CORS). Copy and deploy.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">This proxy handles Slack + Claude + OpenAI API calls (CORS). Copy and deploy.</p>
         <div style="position:relative;">
             <pre style="background:var(--bg-secondary);border:1px solid var(--border-default);border-radius:8px;padding:14px;font-size:11px;overflow-x:auto;white-space:pre;line-height:1.6;color:var(--text-primary);max-height:300px;overflow-y:auto;"><code>export default {
   async fetch(request) {
@@ -17524,7 +17745,7 @@ function showSlackSetupGuide() {
     const headers = {
       'Access-Control-Allow-Origin': cors,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-OpenAI-Key',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-OpenAI-Key, X-Anthropic-Key',
     };
 
     if (request.method === 'OPTIONS') {
@@ -17536,6 +17757,29 @@ function showSlackSetupGuide() {
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\\//, '');
+
+    // ---- Anthropic (Claude) proxy route ----
+    if (path === 'anthropic/messages') {
+      const apiKey = request.headers.get('X-Anthropic-Key');
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: 'missing_key' }), {
+          status: 401, headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+      const anthropicResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: request.body
+      });
+      return new Response(anthropicResp.body, {
+        status: anthropicResp.status,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
 
     // ---- OpenAI proxy route (whitelisted to chat/completions only) ----
     if (path === 'openai/chat/completions') {
@@ -17642,7 +17886,7 @@ const ConnectionStatus = {
     teams: 'unknown',        // 'connected' | 'syncing' | 'error' | 'no-permission' | 'unknown'
     fireflies: 'unknown',   // 'connected' | 'syncing' | 'error' | 'unknown'
     slack: 'unknown',        // 'connected' | 'syncing' | 'error' | 'unknown'
-    openai: 'unknown',       // 'connected' | 'error' | 'no-key' | 'unknown'
+    ai: 'unknown',            // 'connected' | 'error' | 'no-key' | 'unknown'
 
     setMonday(status) { this.monday = status; updateConnectionIndicator(); },
     setOutlook(status) { this.outlook = status; updateConnectionIndicator(); },
@@ -17650,7 +17894,8 @@ const ConnectionStatus = {
     setTeams(status) { this.teams = status; updateConnectionIndicator(); },
     setFireflies(status) { this.fireflies = status; updateConnectionIndicator(); },
     setSlack(status) { this.slack = status; updateConnectionIndicator(); },
-    setOpenAI(status) { this.openai = status; updateConnectionIndicator(); },
+    setAI(status) { this.ai = status; updateConnectionIndicator(); },
+    setOpenAI(status) { this.ai = status; updateConnectionIndicator(); }, // legacy alias
 
     // Consolidated Microsoft status: best of outlook, calendar, teams
     getMicrosoftStatus() {
@@ -17671,8 +17916,8 @@ const ConnectionStatus = {
         const msIssue = (msStatus === 'error' || msStatus === 'token-expired') && OutlookSync.hasToken();
         const firefliesIssue = this.fireflies === 'error' && FirefliesSync.hasToken();
         const slackIssue = this.slack === 'error' && SlackSync.hasToken();
-        const openaiIssue = this.openai === 'error' && AITaskAssist.hasKey();
-        if (msIssue || firefliesIssue || slackIssue || openaiIssue) return 'issues';
+        const aiIssue = this.ai === 'error' && AITaskAssist.hasActiveKey();
+        if (msIssue || firefliesIssue || slackIssue || aiIssue) return 'issues';
         return 'online';
     },
 
@@ -17695,9 +17940,10 @@ const ConnectionStatus = {
             const sStatus = this.slack === 'connected' ? 'Connected' : this.slack === 'syncing' ? 'Syncing...' : this.slack === 'error' ? 'Failed' : 'Pending';
             parts.push(`Slack: ${sStatus}`);
         }
-        if (AITaskAssist.hasKey()) {
-            const aiStatus = this.openai === 'connected' ? 'Connected' : this.openai === 'error' ? 'Failed' : 'Pending';
-            parts.push(`OpenAI: ${aiStatus}`);
+        if (AITaskAssist.hasActiveKey()) {
+            const providerName = AITaskAssist.isUsingClaude() ? 'Claude' : 'OpenAI';
+            const aiStatus = this.ai === 'connected' ? 'Connected' : this.ai === 'error' ? 'Failed' : 'Pending';
+            parts.push(`AI (${providerName}): ${aiStatus}`);
         }
         return parts.join('\n');
     }
@@ -17740,9 +17986,15 @@ function updateConnectionIndicator() {
     _updateConnRow('connRow-slack', ConnectionStatus.slack, {
         connected: 'Connected', syncing: 'Syncing...', error: 'Failed', unknown: 'Pending'
     }, !SlackSync.hasToken());
-    _updateConnRow('connRow-openai', ConnectionStatus.openai, {
+    // Update AI row — show provider name dynamically
+    const aiRowEl = document.getElementById('connRow-openai');
+    if (aiRowEl) {
+        const nameEl = aiRowEl.querySelector('.conn-svc-name');
+        if (nameEl) nameEl.innerHTML = AITaskAssist.isUsingClaude() ? '&#129504; Claude' : '&#10024; OpenAI';
+    }
+    _updateConnRow('connRow-openai', ConnectionStatus.ai, {
         connected: 'Connected', error: 'Failed', 'no-key': 'No key', unknown: 'Pending'
-    }, !AITaskAssist.hasKey());
+    }, !AITaskAssist.hasActiveKey());
 }
 
 function _updateConnRow(rowId, status, labelMap, hidden) {
