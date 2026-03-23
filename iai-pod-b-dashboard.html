@@ -3502,7 +3502,7 @@ input, textarea, select { font-family: inherit; outline: none; }
                             <button class="toggle-vis" onclick="const i=document.getElementById('claudeKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
                         </div>
                         <div class="setup-hint" style="margin-top:4px;">
-                            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> &#8594; API Keys &#8594; Create key. Uses claude-sonnet-4. Claude is the primary AI brain for this dashboard.
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> &#8594; API Keys &#8594; Create key. Uses claude-haiku-4.5 (~$0.004/call). Claude is the primary AI brain for this dashboard.
                         </div>
                     </div>
                     <div id="aiOpenaiSection" style="display:none;">
@@ -6386,7 +6386,7 @@ CORE PRINCIPLES:
                     'X-Anthropic-Key': key
                 },
                 body: JSON.stringify({
-                    model: opts.model || 'claude-sonnet-4-20250514',
+                    model: opts.model || 'claude-haiku-4-5-20251001',
                     max_tokens: opts.max_tokens || 512,
                     system: system + '\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences.',
                     messages: claudeMessages,
@@ -6430,7 +6430,7 @@ CORE PRINCIPLES:
                 method: 'POST', signal: controller.signal,
                 headers: { 'Content-Type': 'application/json', 'X-Anthropic-Key': key },
                 body: JSON.stringify({
-                    model: opts.model || 'claude-sonnet-4-20250514',
+                    model: opts.model || 'claude-haiku-4-5-20251001',
                     max_tokens: opts.max_tokens || 600,
                     system,
                     messages: claudeMessages,
