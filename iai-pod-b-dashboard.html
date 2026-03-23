@@ -429,6 +429,45 @@ input, textarea, select { font-family: inherit; outline: none; }
     padding: 0 3px;
 }
 .alert-badge.hidden { display: none; }
+
+/* Notification bell */
+.notif-bell { position: relative; }
+.notif-badge {
+    position: absolute; top: -4px; right: -4px;
+    min-width: 16px; height: 16px; border-radius: 8px;
+    background: var(--accent-purple); color: white;
+    font-size: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 3px; animation: notifPulse 2s ease-in-out infinite;
+}
+.notif-badge.hidden { display: none; }
+@keyframes notifPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.notif-panel {
+    position: fixed; top: 48px; right: 12px; width: 360px; max-height: 500px;
+    background: var(--bg-primary); border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg); box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    z-index: 9999; overflow: hidden; display: none;
+}
+.notif-panel.open { display: block; }
+.notif-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border-default);
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+}
+.notif-panel-body { max-height: 400px; overflow-y: auto; padding: 8px; }
+.notif-item {
+    padding: 10px 12px; border-radius: var(--radius-md); cursor: pointer;
+    border-left: 3px solid transparent; margin-bottom: 4px;
+    transition: background 0.15s;
+}
+.notif-item:hover { background: var(--bg-elevated); }
+.notif-item.unread { background: rgba(160,100,255,0.06); border-left-color: var(--accent-purple); }
+.notif-item-title { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.notif-item-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.notif-item-time { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+.notif-item-actions { display: flex; gap: 6px; margin-top: 6px; }
+.notif-item-actions .btn-followup { font-size: 9px; padding: 2px 8px; }
+.notif-empty { text-align: center; padding: 30px; color: var(--text-muted); font-size: 12px; }
 .last-refresh {
     font-size: 11px; color: var(--text-muted); white-space: nowrap;
     display: flex; flex-direction: column; align-items: flex-end; line-height: 1.3;
@@ -3523,6 +3562,18 @@ input, textarea, select { font-family: inherit; outline: none; }
                 </div>
 
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
+                    <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128276; Proactive Notifications</h3>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;">
+                            <input type="checkbox" id="notifEnabledToggle" onchange="toggleNotifications(this.checked)" style="accent-color:var(--accent-purple);">
+                            Enable background monitoring
+                        </label>
+                        <button class="btn-primary" style="font-size:11px;padding:4px 10px;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);" onclick="ProactiveMonitor._requestPermission();showToast('Browser notification permission requested','info');">Enable Desktop Alerts</button>
+                    </div>
+                    <p class="setup-hint" style="margin-top:4px;">Checks every 10 min for: stale contacts, unresponded emails, upcoming meetings, critical health scores, Red RAG, billing gaps, one-sided comms. Desktop alerts for high-priority only.</p>
+                </div>
+
+                <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
                     <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#128225; Connection Mode</h3>
                     <div class="mode-toggle-group" id="modeToggleGroup">
                         <button class="mode-toggle-btn active" data-mode="online" onclick="setConnectionMode('online')">&#9989; Online</button>
@@ -3691,7 +3742,8 @@ input, textarea, select { font-family: inherit; outline: none; }
     </div>
     <div class="nav-actions">
         <input class="search-box" type="text" placeholder="Search clients... ( / )" id="searchBox" oninput="setSearch(this.value)">
-        <button class="btn-icon" id="btnAlerts" onclick="toggleAlerts()" title="Smart Alerts">&#128276;<span class="alert-badge hidden" id="alertBadge">0</span></button>
+        <button class="btn-icon notif-bell" id="btnNotifications" onclick="ProactiveMonitor.togglePanel(event)" title="Proactive Notifications">&#128276;<span class="notif-badge hidden" id="notifBadge">0</span></button>
+        <button class="btn-icon" id="btnAlerts" onclick="toggleAlerts()" title="Smart Alerts">&#9888;<span class="alert-badge hidden" id="alertBadge">0</span></button>
         <button class="btn-icon" id="btnRefresh" onclick="refreshData()" title="Refresh (R)">&#8635;</button>
         <button class="btn-icon" onclick="ShareSnapshot.open()" title="Share Snapshot">&#128228;</button>
         <span class="last-refresh" id="lastRefresh">
@@ -3737,6 +3789,20 @@ input, textarea, select { font-family: inherit; outline: none; }
         <button class="btn-icon" onclick="showSetup()" title="Settings">&#9881;</button>
     </div>
 </nav>
+
+<!-- Notification Panel -->
+<div class="notif-panel" id="notifPanel">
+    <div class="notif-panel-header">
+        <span>&#128276; Notifications</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <button style="font-size:10px;background:none;border:1px solid var(--border-default);border-radius:4px;padding:2px 8px;color:var(--text-muted);cursor:pointer;" onclick="ProactiveMonitor.markAllRead()">Mark all read</button>
+            <button style="font-size:10px;background:none;border:1px solid var(--border-default);border-radius:4px;padding:2px 8px;color:var(--text-muted);cursor:pointer;" onclick="ProactiveMonitor.clearAll()">Clear</button>
+        </div>
+    </div>
+    <div class="notif-panel-body" id="notifPanelBody">
+        <div class="notif-empty">No notifications yet. Monitoring is active.</div>
+    </div>
+</div>
 
 <!-- ======== MAIN APP ======== -->
 <div class="main-content" id="mainContent">
@@ -15717,6 +15783,12 @@ function clearAIKey() {
 async function testOpenAI() { return testAIConnection(); }
 function clearOpenAI() { return clearAIKey(); }
 
+function toggleNotifications(enabled) {
+    ProactiveMonitor.saveSetting('enabled', enabled);
+    if (enabled) { ProactiveMonitor.restart(); showToast('Proactive monitoring enabled', 'success'); }
+    else { ProactiveMonitor.stop(); showToast('Proactive monitoring disabled', 'info'); }
+}
+
 function checkMsPermissions() {
     const statusEl = document.getElementById('msPermStatus');
     if (!statusEl) return;
@@ -17450,6 +17522,9 @@ async function loadData(showOverlay = true) {
             TeamsSync.sync(false);
         }
 
+        // Refresh proactive notifications with new data
+        if (typeof ProactiveMonitor !== 'undefined') ProactiveMonitor.refresh();
+
     } catch (err) {
         ConnectionStatus.setMonday('error');
         showToast(`Data load failed: ${err.message}`, 'error');
@@ -17636,6 +17711,9 @@ function showSetup() {
     if (openaiKeyInput) openaiKeyInput.value = AITaskAssist.getKey() || '';
     const aiStatus = document.getElementById('aiConnStatus');
     if (aiStatus && AITaskAssist.hasActiveKey()) aiStatus.textContent = `${currentProvider === 'claude' ? 'Claude' : 'OpenAI'} key saved`;
+    // Notification toggle
+    const notifToggle = document.getElementById('notifEnabledToggle');
+    if (notifToggle) notifToggle.checked = ProactiveMonitor.isEnabled();
     // Show current pod info
     const podInfo = document.getElementById('currentPodInfo');
     if (podInfo) {
@@ -18345,6 +18423,336 @@ function handleCalendarDataForPod() {
     }
 }
 
+/* ================================================================
+   PROACTIVE MONITOR — Background polling with browser notifications
+   Checks data on interval, fires desktop + in-app notifications
+   for urgent items. No AI usage — pure rule-based checks.
+   ================================================================ */
+const ProactiveMonitor = {
+    _interval: null,
+    _notifications: [],    // { id, type, title, desc, clientName, clientId, ts, read, priority }
+    _lastCheck: 0,
+    _pollMs: 10 * 60 * 1000,  // 10 minutes
+    _permissionGranted: false,
+    _lsKey() { return UserSession.podKey() + '_proactive_notifs'; },
+    _settingsKey() { return UserSession.podKey() + '_proactive_settings'; },
+
+    // ---- Settings ----
+    getSettings() {
+        try { return JSON.parse(localStorage.getItem(this._settingsKey())) || {}; } catch { return {}; }
+    },
+    saveSetting(key, val) {
+        const s = this.getSettings();
+        s[key] = val;
+        localStorage.setItem(this._settingsKey(), JSON.stringify(s));
+    },
+    isEnabled() { return this.getSettings().enabled !== false; }, // default on
+
+    // ---- Lifecycle ----
+    start() {
+        if (!this.isEnabled()) return;
+        this._loadNotifications();
+        this._requestPermission();
+        this._runCheck();
+        this._interval = setInterval(() => this._runCheck(), this._pollMs);
+        this._renderBadge();
+    },
+    stop() {
+        if (this._interval) clearInterval(this._interval);
+        this._interval = null;
+    },
+    restart() {
+        this.stop();
+        this.start();
+    },
+
+    // ---- Browser notification permission ----
+    _requestPermission() {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            this._permissionGranted = true;
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(p => {
+                this._permissionGranted = p === 'granted';
+            });
+        }
+    },
+
+    _sendDesktopNotification(title, body, tag) {
+        if (!this._permissionGranted) return;
+        try {
+            const n = new Notification(title, {
+                body,
+                icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📋</text></svg>',
+                tag: tag || 'iai-' + Date.now(),
+                silent: false,
+                requireInteraction: false
+            });
+            n.onclick = () => { window.focus(); this.togglePanel(); n.close(); };
+            setTimeout(() => n.close(), 8000);
+        } catch (e) { /* notifications may not be supported in context */ }
+    },
+
+    // ---- Persistence ----
+    _loadNotifications() {
+        try { this._notifications = JSON.parse(localStorage.getItem(this._lsKey())) || []; } catch { this._notifications = []; }
+    },
+    _save() {
+        // Keep max 50 notifications
+        if (this._notifications.length > 50) this._notifications = this._notifications.slice(0, 50);
+        localStorage.setItem(this._lsKey(), JSON.stringify(this._notifications));
+    },
+
+    // ---- Core check engine ----
+    _runCheck() {
+        if (getConnectionMode() === 'offline') return;
+        if (!State.clients || State.clients.length === 0) return;
+
+        const now = Date.now();
+        const newAlerts = [];
+
+        // 1. Contact gone stale (>5 days)
+        State.clients.forEach(c => {
+            const lastContact = typeof getEffectiveLastContact === 'function' ? getEffectiveLastContact(c) : null;
+            const days = lastContact && typeof getDaysSinceContact === 'function' ? getDaysSinceContact(lastContact) : null;
+            if (days !== null && days >= 5) {
+                newAlerts.push({
+                    type: 'stale-contact',
+                    title: `${c.name} — No contact in ${days} days`,
+                    desc: `Last contact was ${days} days ago. Consider reaching out.`,
+                    clientName: c.name, clientId: c.id, priority: days >= 10 ? 'high' : 'medium'
+                });
+            }
+        });
+
+        // 2. Unresponded client emails (>48h)
+        Object.entries(EMAIL_DATA.clients || {}).forEach(([name, ed]) => {
+            if (!ed || ed.discontinued) return;
+            const override = typeof EmailActionOverrides !== 'undefined' ? EmailActionOverrides.getStatus(name) : null;
+            if (override === 'done') return;
+            const lastFromClient = ed.emails?.find(e => e.isFromClient);
+            if (lastFromClient) {
+                const hrs = (now - new Date(lastFromClient.date).getTime()) / 3600000;
+                if (hrs >= 48) {
+                    const client = State.clients.find(cl => cl.name === name);
+                    newAlerts.push({
+                        type: 'email-unresponded',
+                        title: `${name} — Email needs response`,
+                        desc: `Client emailed ${Math.round(hrs)}h ago: "${(lastFromClient.subject || '').substring(0, 50)}"`,
+                        clientName: name, clientId: client?.id, priority: hrs >= 96 ? 'high' : 'medium'
+                    });
+                }
+            }
+        });
+
+        // 3. Meeting in next 60 minutes with no prep
+        if (CALENDAR_DATA && CALENDAR_DATA.events) {
+            const soon = new Date(now + 60 * 60000);
+            CALENDAR_DATA.events.forEach(e => {
+                const start = new Date(e.start);
+                const state = typeof CalendarState !== 'undefined' ? CalendarState.getState(e.id) : 'active';
+                if (state === 'cancelled') return;
+                if (start > new Date() && start <= soon) {
+                    newAlerts.push({
+                        type: 'meeting-soon',
+                        title: `Meeting in ${Math.round((start - now) / 60000)} min: ${e.subject}`,
+                        desc: `${new Date(e.start).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} — ${e.location || 'No location'}`,
+                        clientName: null, clientId: null, priority: 'high'
+                    });
+                }
+            });
+        }
+
+        // 4. Health score dropped critically low (<35)
+        State.clients.forEach(c => {
+            const h = State.calcHealth(c);
+            if (h <= 35) {
+                newAlerts.push({
+                    type: 'health-critical',
+                    title: `${c.name} — Health critical (${h}/100)`,
+                    desc: `RAG: ${c.rag}, Billing: ${c.billing}. Needs immediate attention.`,
+                    clientName: c.name, clientId: c.id, priority: 'high'
+                });
+            }
+        });
+
+        // 5. Red RAG clients
+        State.clients.forEach(c => {
+            if (c.rag === 'Red') {
+                newAlerts.push({
+                    type: 'rag-red',
+                    title: `${c.name} — Red RAG status`,
+                    desc: `Client is flagged Red. Review and take action.`,
+                    clientName: c.name, clientId: c.id, priority: 'high'
+                });
+            }
+        });
+
+        // 6. Billing not active (excluding notes-explained)
+        State.clients.forEach(c => {
+            if (c.billing !== 'Yes') {
+                // Check if notes explain billing
+                const notes = typeof NotesManager !== 'undefined' ? NotesManager.get(c.id) : [];
+                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
+                const billingHandled = ['automatic billing', 'auto billing', 'billing model', 'billing arranged',
+                    'billing sorted', 'billing confirmed', 'billing handled', 'billing agreed',
+                    'free trial', 'trial period', 'grace period', 'waived'].some(kw => allText.includes(kw));
+                if (!billingHandled) {
+                    newAlerts.push({
+                        type: 'billing-inactive',
+                        title: `${c.name} — Billing not active`,
+                        desc: `Billing status: ${c.billing || 'Unknown'}. Add a note if this is expected.`,
+                        clientName: c.name, clientId: c.id, priority: 'medium'
+                    });
+                }
+            }
+        });
+
+        // 7. One-sided communication (sent but no response)
+        Object.entries(EMAIL_DATA.clients || {}).forEach(([name, ed]) => {
+            if (!ed || ed.discontinued) return;
+            const sentCount = ed.emails?.filter(e => e.isFromMe).length || 0;
+            const receivedCount = ed.emails?.filter(e => e.isFromClient).length || 0;
+            if (sentCount >= 3 && receivedCount === 0) {
+                const client = State.clients.find(cl => cl.name === name);
+                newAlerts.push({
+                    type: 'one-sided-comms',
+                    title: `${name} — No client response`,
+                    desc: `Sent ${sentCount} emails, received none back. Consider a call.`,
+                    clientName: name, clientId: client?.id, priority: 'medium'
+                });
+            }
+        });
+
+        // Deduplicate — don't re-notify for same type+client
+        const existingKeys = new Set(this._notifications.map(n => n.type + '::' + (n.clientName || '')));
+        const genuinelyNew = newAlerts.filter(a => !existingKeys.has(a.type + '::' + (a.clientName || '')));
+
+        // Add new notifications
+        if (genuinelyNew.length > 0) {
+            genuinelyNew.forEach(a => {
+                this._notifications.unshift({
+                    ...a, id: 'n_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+                    ts: now, read: false
+                });
+            });
+            this._save();
+            this._renderBadge();
+            this._renderPanel();
+
+            // Desktop notifications for high-priority only
+            const highPriority = genuinelyNew.filter(a => a.priority === 'high');
+            if (highPriority.length > 0) {
+                const title = highPriority.length === 1 ? highPriority[0].title : `${highPriority.length} urgent items need attention`;
+                const body = highPriority.length === 1 ? highPriority[0].desc : highPriority.map(a => a.title).join('\n');
+                this._sendDesktopNotification('IAI Dashboard', body, 'iai-urgent');
+            }
+        }
+
+        this._lastCheck = now;
+    },
+
+    // ---- UI ----
+    _renderBadge() {
+        const badge = document.getElementById('notifBadge');
+        if (!badge) return;
+        const unread = this._notifications.filter(n => !n.read).length;
+        badge.textContent = unread;
+        badge.classList.toggle('hidden', unread === 0);
+    },
+
+    _renderPanel() {
+        const body = document.getElementById('notifPanelBody');
+        if (!body) return;
+        if (this._notifications.length === 0) {
+            body.innerHTML = '<div class="notif-empty">No notifications yet. Monitoring is active.</div>';
+            return;
+        }
+        const _aiAvail = AITaskAssist.isAvailable();
+        body.innerHTML = this._notifications.slice(0, 30).map(n => {
+            const ago = this._timeAgo(n.ts);
+            const priorityIcon = n.priority === 'high' ? '&#128308;' : n.priority === 'medium' ? '&#128992;' : '&#128311;';
+            let actions = '';
+            if (n.clientId) {
+                actions += `<a class="btn-followup" onclick="event.stopPropagation();Router.navigate('client/${n.clientId}');ProactiveMonitor.closePanel()">View Client</a>`;
+            }
+            if (_aiAvail && n.clientName && (n.type === 'meeting-soon' || n.type === 'stale-contact')) {
+                actions += `<a class="btn-followup" onclick="event.stopPropagation();openMeetingPrepModal('${(n.clientName||'').replace(/'/g,"\\'")}');ProactiveMonitor.closePanel()">&#128203; Prep</a>`;
+            }
+            if (_aiAvail && n.clientName && (n.type === 'email-unresponded' || n.type === 'one-sided-comms')) {
+                actions += `<a class="btn-followup" onclick="event.stopPropagation();openEmailDraftModal('${(n.clientName||'').replace(/'/g,"\\'")}', 5);ProactiveMonitor.closePanel()">&#8617; Follow Up</a>`;
+            }
+            return `
+            <div class="notif-item ${n.read ? '' : 'unread'}" onclick="ProactiveMonitor.markRead('${n.id}')">
+                <div class="notif-item-title">${priorityIcon} ${n.title}</div>
+                <div class="notif-item-desc">${n.desc}</div>
+                <div class="notif-item-time">${ago}</div>
+                ${actions ? `<div class="notif-item-actions">${actions}</div>` : ''}
+            </div>`;
+        }).join('');
+    },
+
+    _timeAgo(ts) {
+        const mins = Math.round((Date.now() - ts) / 60000);
+        if (mins < 1) return 'Just now';
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        return `${Math.floor(hrs / 24)}d ago`;
+    },
+
+    // ---- Actions ----
+    togglePanel(e) {
+        if (e) e.stopPropagation();
+        const panel = document.getElementById('notifPanel');
+        if (!panel) return;
+        const isOpen = panel.classList.contains('open');
+        if (isOpen) {
+            this.closePanel();
+        } else {
+            panel.classList.add('open');
+            this._renderPanel();
+            setTimeout(() => {
+                document.addEventListener('click', this._outsideClickHandler, { once: true });
+            }, 0);
+        }
+    },
+    closePanel() {
+        const panel = document.getElementById('notifPanel');
+        if (panel) panel.classList.remove('open');
+    },
+    _outsideClickHandler(e) {
+        const panel = document.getElementById('notifPanel');
+        const btn = document.getElementById('btnNotifications');
+        if (panel && !panel.contains(e.target) && btn && !btn.contains(e.target)) {
+            panel.classList.remove('open');
+        }
+    },
+    markRead(id) {
+        const n = this._notifications.find(n => n.id === id);
+        if (n) { n.read = true; this._save(); this._renderBadge(); this._renderPanel(); }
+    },
+    markAllRead() {
+        this._notifications.forEach(n => n.read = true);
+        this._save(); this._renderBadge(); this._renderPanel();
+    },
+    clearAll() {
+        this._notifications = [];
+        this._save(); this._renderBadge(); this._renderPanel();
+    },
+
+    // Force re-check (e.g. after data refresh)
+    refresh() {
+        // Clear stale notifications whose conditions no longer apply
+        this._notifications = this._notifications.filter(n => {
+            const age = Date.now() - n.ts;
+            return age < 24 * 3600000; // expire after 24h
+        });
+        this._save();
+        this._runCheck();
+    }
+};
+
 async function init() {
     ThemeManager.init();
 
@@ -18426,6 +18834,9 @@ async function init() {
         countdownInterval = setInterval(updateCountdown, 1000);
         resetRefreshCountdown();
     }
+
+    // Start proactive monitoring
+    ProactiveMonitor.start();
 }
 
 // Start
