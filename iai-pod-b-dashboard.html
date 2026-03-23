@@ -2782,6 +2782,46 @@ input, textarea, select { font-family: inherit; outline: none; }
     font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 4px 8px; border-radius: 4px;
 }
 .ai-modal-close:hover { color: var(--text-primary); background: var(--bg-elevated); }
+
+/* === Client Action Centre === */
+.action-centre-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (max-width: 768px) { .action-centre-grid { grid-template-columns: 1fr; } }
+.action-centre-card {
+    background: rgba(255,255,255,0.04); border-radius: 10px; padding: 12px 14px;
+    border-left: 3px solid var(--text-muted); cursor: pointer; transition: background 0.15s, transform 0.1s;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.action-centre-card:hover { background: rgba(255,255,255,0.08); transform: translateY(-1px); }
+.action-centre-card.rag-green { border-left-color: var(--rag-green); }
+.action-centre-card.rag-amber { border-left-color: var(--rag-amber); }
+.action-centre-card.rag-red { border-left-color: var(--rag-red); }
+.ac-client-name { font-weight: 600; font-size: 13px; color: var(--text-primary); }
+.ac-status-row { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
+.ac-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+    padding: 0 5px; border-radius: 9px; font-size: 10px; font-weight: 700; }
+.ac-badge.outstanding { background: var(--rag-red); color: #fff; }
+.ac-badge.clear { background: rgba(var(--rag-green-rgb, 76,175,80), 0.2); color: var(--rag-green); }
+.ac-briefing-section { margin-bottom: 14px; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.03); }
+.ac-briefing-section h4 { font-size: 12px; font-weight: 700; margin: 0 0 8px 0; padding-left: 10px; border-left: 3px solid; }
+.ac-briefing-section.outstanding h4 { color: var(--rag-red); border-color: var(--rag-red); }
+.ac-briefing-section.completed h4 { color: var(--rag-green); border-color: var(--rag-green); }
+.ac-briefing-section.contacts h4 { color: var(--rag-amber); border-color: var(--rag-amber); }
+.ac-briefing-section.ai-analysis h4 { color: var(--accent-purple); border-color: var(--accent-purple); }
+.ac-briefing-section ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; color: var(--text-secondary); }
+.ac-briefing-section li { margin-bottom: 2px; }
+.ac-briefing-section li .severity-high { color: var(--rag-red); font-weight: 600; }
+.ac-briefing-section li .severity-medium { color: var(--rag-amber); }
+.ac-quick-actions { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-default); flex-wrap: wrap; }
+.ac-quick-actions button, .ac-quick-actions a { font-size: 11px; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    border: none; font-family: inherit; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.ac-btn-prep { background: var(--accent-purple); color: #fff; }
+.ac-btn-prep:hover { filter: brightness(1.15); }
+.ac-btn-followup { background: transparent; border: 1px solid var(--accent-purple) !important; color: var(--accent-purple); }
+.ac-btn-followup:hover { background: rgba(var(--accent-purple-rgb, 139,92,246), 0.1); }
+.ac-btn-copy { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border-default) !important; }
+.ac-shimmer { height: 60px; border-radius: 8px; background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+    background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+
 .ai-search-bar {
     display: flex; gap: 8px; align-items: center; background: var(--bg-elevated);
     border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 8px 14px;
@@ -6572,7 +6612,7 @@ CORE PRINCIPLES:
 
     /* ---- Provider-aware dispatcher (routes to Claude or OpenAI) ---- */
     // Quality-intensive tasks that should prefer Claude when available
-    _claudePreferredTasks: new Set(['emailDraft', 'weeklyInsight', 'meetingPrep']),
+    _claudePreferredTasks: new Set(['emailDraft', 'weeklyInsight', 'meetingPrep', 'clientAction']),
 
     async _aiChat(messages, opts = {}) {
         const preferClaude = opts._task && this._claudePreferredTasks.has(opts._task);
@@ -6658,6 +6698,34 @@ CRITICAL RULES:
             { role: 'user', content: ctx }
         ], { max_tokens: 600, _task: 'meetingPrep' });
         this._cacheSet('prep_' + clientName, result);
+        return result;
+    },
+
+    /* ---- Feature: Client Action Briefing (Claude) ---- */
+    async clientAction(clientName, snapshotSummary) {
+        const cacheKey = 'action_' + clientName;
+        const cached = this._cacheGet(cacheKey);
+        if (cached) return cached;
+        const ctx = this._buildClientContext(clientName);
+        const result = await this._aiChatText([
+            { role: 'system', content: this._ganeshaContext() + '\n\n' + this._commsGuideContext() + `\n\nYou are a strategic client management advisor for Implement AI. The dashboard has already extracted rule-based data (outstanding items, completed actions, contacts needed). Your job is to provide the STRATEGIC LAYER on top of that data.
+
+Provide a concise analysis in 3 sections (use markdown bold headers):
+
+**Priority Actions** — Rank the most important things to do first for this client. Be specific: name the person to contact, the action to take, and why it matters NOW. Max 3-4 items.
+
+**Strategic Recommendations** — Based on GANESHA principles and the client's current state, what should the pod lead focus on? Consider: expansion opportunities, risk mitigation, relationship strengthening, the Train Philosophy (reliability builds trust). Max 2-3 items.
+
+**Communication Approach** — Given this client's current sentiment and status, advise on tone: Is this a "lead with wins" moment, an "acknowledge and fix" moment, or a "plant seeds for growth" moment? Be specific about which LEAD framework step to emphasise.
+
+RULES:
+- Be direct and actionable — no filler
+- Reference specific client data (agent names, email dates, RAG status)
+- Use British English
+- Keep total response under 250 words` },
+            { role: 'user', content: `${ctx}\n\n--- Rule-based snapshot ---\n${snapshotSummary}` }
+        ], { max_tokens: 500, _task: 'clientAction' });
+        this._cacheSet(cacheKey, result);
         return result;
     },
 
@@ -14054,6 +14122,235 @@ function _slackWeeklyArchiveCheck() {
     }
 }
 
+/* ================================================================
+   CLIENT ACTION CENTRE — Per-client action briefing with AI insights
+   Two layers: rule-based (instant, free) + Claude AI (strategic)
+   ================================================================ */
+const ClientActionCentre = {
+    _briefingCache: {},
+    _CACHE_TTL: 300000, // 5 minutes
+
+    buildClientSnapshot(clientName) {
+        const client = State.clients.find(c => c.name === clientName);
+        if (!client) return { outstanding: [], completed: [], contacts: [], stats: {} };
+
+        const outstanding = [];
+        const completed = [];
+        const contacts = [];
+        const nameLower = clientName.toLowerCase();
+
+        // --- Stats ---
+        const health = State.calcHealth(client);
+        const daysSince = getDaysSinceContact(getEffectiveLastContact(client));
+        const emailStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(clientName) : null;
+        const upcomingMeetings = (CALENDAR_DATA?.events || []).filter(e =>
+            e.subject && e.subject.toLowerCase().includes(nameLower) && new Date(e.start) > new Date()
+        ).length;
+
+        // --- Outstanding: Email status ---
+        const effStatus = emailStatus?.status || emailStatus;
+        if (effStatus === 'needs-response') outstanding.push({ type: 'email', text: 'Email needs response — client is waiting', severity: 'high' });
+        else if (effStatus === 'stale' || effStatus === 'no-recent') outstanding.push({ type: 'email', text: `No recent email contact (${daysSince !== null ? daysSince + 'd' : 'unknown'})`, severity: 'high' });
+        else if (effStatus === 'awaiting') outstanding.push({ type: 'email', text: 'Awaiting client reply', severity: 'medium' });
+
+        // --- Outstanding: Teams stale ---
+        if (effStatus === 'teams-stale' || effStatus === 'teams-followup') outstanding.push({ type: 'teams', text: 'Teams message needs follow-up', severity: 'medium' });
+
+        // --- Outstanding: Billing gap ---
+        if (client.billing !== 'Yes') {
+            const notesText = (typeof NotesManager !== 'undefined' ? NotesManager.get(client.id) : []).map(n => n.text.toLowerCase()).join(' ');
+            const billingExplained = ['automatic billing', 'auto billing', 'billing model', 'free trial', 'grace period', 'waived'].some(kw => notesText.includes(kw));
+            if (!billingExplained) outstanding.push({ type: 'billing', text: 'Billing not confirmed', severity: 'medium' });
+        }
+
+        // --- Outstanding: Update status ---
+        if (client.updateStatus === 'Need Contact') outstanding.push({ type: 'update', text: 'Monday board marked "Need Contact"', severity: 'high' });
+        else if (client.updateStatus === 'Working on it') outstanding.push({ type: 'update', text: 'Update still in progress', severity: 'low' });
+
+        // --- Outstanding: Agent issues ---
+        (client.agents || []).forEach(a => {
+            const stage = (a.stage || '').toLowerCase();
+            if (stage.includes('stalled') || stage.includes('paused') || stage.includes('on hold')) {
+                outstanding.push({ type: 'agent', text: `Agent "${a.name}" is ${a.stage}`, severity: 'medium' });
+            }
+        });
+        if (client.agentCount === 0 && client.aiosDays && parseInt(client.aiosDays) > 14) {
+            outstanding.push({ type: 'agent', text: 'No agents deployed after 14+ AIOS days', severity: 'high' });
+        }
+
+        // --- Outstanding: Open tasks ---
+        if (typeof DashTodo !== 'undefined') {
+            DashTodo._items.filter(t => !t.completed && t.text.toLowerCase().includes(nameLower)).forEach(t => {
+                outstanding.push({ type: 'task', text: `Open task: ${t.text}`, severity: t.priority === 'high' ? 'high' : 'medium' });
+            });
+        }
+
+        // --- Outstanding: Upcoming meeting with no prep ---
+        const nextMeeting = (CALENDAR_DATA?.events || []).find(e =>
+            e.subject && e.subject.toLowerCase().includes(nameLower) && new Date(e.start) > new Date() &&
+            new Date(e.start) < new Date(Date.now() + 86400000 * 2) // within 2 days
+        );
+        if (nextMeeting) {
+            const hasPrepTask = typeof DashTodo !== 'undefined' && DashTodo._items.some(t =>
+                t.completed && t.text.toLowerCase().includes('prep') && t.text.toLowerCase().includes(nameLower)
+            );
+            if (!hasPrepTask) outstanding.push({ type: 'meeting', text: `Meeting "${nextMeeting.subject}" in next 2 days — prep needed`, severity: 'high' });
+        }
+
+        // --- Outstanding: Notes with urgency ---
+        if (typeof NotesManager !== 'undefined') {
+            const notes = NotesManager.get(client.id);
+            notes.forEach(n => {
+                const lower = n.text.toLowerCase();
+                if (['urgent', 'asap', 'critical', 'escalat', 'needs attention'].some(kw => lower.includes(kw))) {
+                    outstanding.push({ type: 'note', text: `Note flagged: "${n.text.substring(0, 60)}${n.text.length > 60 ? '...' : ''}"`, severity: 'high' });
+                }
+            });
+        }
+
+        // --- Completed: Recent emails sent ---
+        const ed = typeof EMAIL_DATA !== 'undefined' ? EMAIL_DATA.clients[clientName] : null;
+        if (ed?.emails) {
+            const weekAgo = new Date(Date.now() - 7 * 86400000);
+            ed.emails.filter(e => e.isFromMe && new Date(e.date) > weekAgo).slice(0, 3).forEach(e => {
+                completed.push({ text: `Sent: ${e.subject || '(no subject)'}`, date: new Date(e.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) });
+            });
+        }
+
+        // --- Completed: Recent tasks done ---
+        if (typeof DashTodo !== 'undefined') {
+            DashTodo._items.filter(t => t.completed && t.text.toLowerCase().includes(nameLower)).slice(0, 3).forEach(t => {
+                completed.push({ text: t.text, date: t.completedAt ? new Date(t.completedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '' });
+            });
+        }
+
+        // --- Contacts needed ---
+        if (effStatus === 'needs-response' || effStatus === 'stale' || effStatus === 'no-recent') {
+            if (client.sponsorEmail) contacts.push({ name: 'Sponsor', email: client.sponsorEmail, reason: 'Primary contact — needs engagement' });
+            else if (client.pocEmail) contacts.push({ name: 'POC', email: client.pocEmail, reason: 'Main point of contact' });
+        }
+        if ((client.agents || []).some(a => (a.stage || '').toLowerCase().includes('stalled')) && client.itContact) {
+            contacts.push({ name: 'IT Contact', email: client.itContact, reason: 'Agent stalled — may need IT support' });
+        }
+        if (client.pocEmail && client.sponsorEmail && effStatus === 'needs-response') {
+            contacts.push({ name: 'POC', email: client.pocEmail, reason: 'Secondary contact for follow-up' });
+        }
+
+        return {
+            outstanding, completed, contacts,
+            stats: { health, rag: client.rag, daysSinceContact: daysSince, emailStatus: effStatus, upcomingMeetings }
+        };
+    },
+
+    _snapshotToSummary(snapshot) {
+        let lines = [];
+        if (snapshot.outstanding.length) {
+            lines.push('Outstanding (' + snapshot.outstanding.length + '):');
+            snapshot.outstanding.forEach(o => lines.push(`- [${o.severity.toUpperCase()}] ${o.text}`));
+        } else { lines.push('No outstanding items.'); }
+        if (snapshot.completed.length) {
+            lines.push('Recently completed:');
+            snapshot.completed.forEach(c => lines.push(`- ${c.text} (${c.date})`));
+        }
+        if (snapshot.contacts.length) {
+            lines.push('Contacts needed:');
+            snapshot.contacts.forEach(c => lines.push(`- ${c.name} (${c.email}): ${c.reason}`));
+        }
+        lines.push(`Stats: Health ${snapshot.stats.health}/100, RAG ${snapshot.stats.rag}, Last contact ${snapshot.stats.daysSinceContact ?? 'N/A'}d ago, ${snapshot.stats.upcomingMeetings} upcoming meetings`);
+        return lines.join('\n');
+    },
+
+    openBriefing(clientName) {
+        document.querySelectorAll('.ai-modal-overlay').forEach(el => el.remove());
+
+        const snapshot = this.buildClientSnapshot(clientName);
+        const esc = clientName.replace(/'/g, "\\'");
+
+        const renderList = (items, emptyMsg) => {
+            if (!items.length) return `<div style="font-size:12px;color:var(--text-muted);padding:4px 0;">${emptyMsg}</div>`;
+            return '<ul>' + items.map(i => {
+                if (i.severity) return `<li><span class="severity-${i.severity}">[${i.severity}]</span> ${i.text}</li>`;
+                if (i.email) return `<li><strong>${i.name}</strong> (${i.email}) — ${i.reason}</li>`;
+                return `<li>${i.text}${i.date ? ` <span style="color:var(--text-muted);">(${i.date})</span>` : ''}</li>`;
+            }).join('') + '</ul>';
+        };
+
+        const overlay = document.createElement('div');
+        overlay.className = 'ai-modal-overlay';
+        overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+        overlay.innerHTML = `<div class="ai-modal" style="max-width:600px;">
+            <button class="ai-modal-close" onclick="this.closest('.ai-modal-overlay').remove()">&times;</button>
+            <h3 style="margin-bottom:4px;">Client Action Centre — ${clientName}</h3>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">
+                Health: ${snapshot.stats.health}/100 | RAG: ${snapshot.stats.rag} | Contact: ${snapshot.stats.daysSinceContact !== null ? snapshot.stats.daysSinceContact + 'd ago' : 'N/A'} | Meetings: ${snapshot.stats.upcomingMeetings}
+            </div>
+
+            <div class="ac-briefing-section outstanding">
+                <h4>Outstanding (${snapshot.outstanding.length})</h4>
+                ${renderList(snapshot.outstanding, 'Nothing outstanding — all clear')}
+            </div>
+            <div class="ac-briefing-section completed">
+                <h4>Completed Recently</h4>
+                ${renderList(snapshot.completed, 'No recent completed items')}
+            </div>
+            <div class="ac-briefing-section contacts">
+                <h4>Communication Needed</h4>
+                ${renderList(snapshot.contacts, 'No immediate contacts needed')}
+            </div>
+
+            <div class="ac-briefing-section ai-analysis" id="acAiSection">
+                <h4>AI Strategic Analysis</h4>
+                <div class="ac-shimmer" id="acAiLoading"></div>
+            </div>
+
+            <div class="ac-quick-actions">
+                <button class="ac-btn-prep" onclick="this.closest('.ai-modal-overlay').remove();openMeetingPrepModal('${esc}')">&#128203; Prep</button>
+                <button class="ac-btn-followup" onclick="this.closest('.ai-modal-overlay').remove();openEmailDraftModal('${esc}', 5)">&#8617; Follow Up</button>
+                <button class="ac-btn-followup" onclick="this.closest('.ai-modal-overlay').remove();openEmailDraftModal('${esc}')">&#128231; Draft Email</button>
+                <button class="ac-btn-copy" id="acCopyBtn" onclick="ClientActionCentre._copyBriefing()">Copy</button>
+            </div>
+        </div>`;
+        document.body.appendChild(overlay);
+
+        // Async: load AI strategic analysis
+        if (AITaskAssist.isAvailable()) {
+            const summary = this._snapshotToSummary(snapshot);
+            AITaskAssist.clientAction(clientName, summary).then(result => {
+                const el = document.getElementById('acAiLoading');
+                if (el) {
+                    el.outerHTML = `<div style="font-size:12px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;" id="acAiContent">${result.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>')}</div>`;
+                }
+            }).catch(() => {
+                const el = document.getElementById('acAiLoading');
+                if (el) el.outerHTML = '<div style="font-size:11px;color:var(--text-muted);">AI analysis unavailable</div>';
+            });
+        } else {
+            const el = document.getElementById('acAiLoading');
+            if (el) el.outerHTML = '<div style="font-size:11px;color:var(--text-muted);">Configure Claude API key in Settings for AI analysis</div>';
+        }
+    },
+
+    _copyBriefing() {
+        const modal = document.querySelector('.ai-modal');
+        if (!modal) return;
+        const text = modal.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.getElementById('acCopyBtn');
+            if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 2000); }
+        });
+    },
+
+    getOutstandingCount(clientName) {
+        const key = 'snapshot_' + clientName;
+        if (this._briefingCache[key] && Date.now() - this._briefingCache[key].ts < this._CACHE_TTL) {
+            return this._briefingCache[key].data.outstanding.length;
+        }
+        const snapshot = this.buildClientSnapshot(clientName);
+        this._briefingCache[key] = { data: snapshot, ts: Date.now() };
+        return snapshot.outstanding.length;
+    },
+};
+
 function renderPlannerPage() {
     const container = document.getElementById('plannerContent');
     if (!container) return;
@@ -14651,6 +14948,47 @@ function renderPlannerPage() {
                 </div>
                 <div id="plannerBody_slack" class="planner-collapsible-body ${PlannerSections.isCollapsed('slack') ? 'collapsed' : ''}">
                     ${cards}
+                </div>
+            </div>`;
+        })()}
+
+        <!-- CLIENT ACTION CENTRE -->
+        ${(() => {
+            const activeClients = (State.clients || []).filter(c => c.name);
+            if (!activeClients.length) return '';
+            // Build snapshots and sort: outstanding desc, then health asc
+            const clientCards = activeClients.map(c => {
+                const count = ClientActionCentre.getOutstandingCount(c.name);
+                const health = State.calcHealth(c);
+                const daysSince = getDaysSinceContact(getEffectiveLastContact(c));
+                const effStatus = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
+                const statusLabel = effStatus?.status || effStatus || '';
+                return { name: c.name, rag: c.rag, health, count, daysSince, statusLabel };
+            }).sort((a, b) => b.count - a.count || a.health - b.health);
+            const totalOutstanding = clientCards.reduce((s, c) => s + c.count, 0);
+            const ragClass = r => r === 'Green' ? 'rag-green' : r === 'Amber' ? 'rag-amber' : r === 'Red' ? 'rag-red' : '';
+            const statusColor = s => s === 'needs-response' ? 'var(--rag-red)' : s === 'stale' || s === 'no-recent' ? 'var(--rag-amber)' : s === 'awaiting' ? 'var(--text-muted)' : 'var(--rag-green)';
+            const grid = clientCards.map(c => `
+                <div class="action-centre-card ${ragClass(c.rag)}" onclick="ClientActionCentre.openBriefing('${c.name.replace(/'/g, "\\'")}')">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span class="ac-client-name">${c.name}</span>
+                        ${c.count > 0 ? `<span class="ac-badge outstanding">${c.count}</span>` : `<span class="ac-badge clear">&#10003;</span>`}
+                    </div>
+                    <div class="ac-status-row">
+                        <span>Health: ${c.health}</span>
+                        <span style="color:${statusColor(c.statusLabel)};">${c.statusLabel ? c.statusLabel.replace(/-/g, ' ') : 'no data'}</span>
+                        <span>${c.daysSince !== null ? c.daysSince + 'd ago' : 'no contact'}</span>
+                    </div>
+                </div>
+            `).join('');
+            return `<div class="planner-section">
+                <div class="planner-section-title">
+                    &#129504; Client Action Centre
+                    <span class="section-count">${totalOutstanding} outstanding across ${activeClients.length} clients</span>
+                    <span class="collapse-toggle" id="plannerToggle_actionCentre" onclick="PlannerSections.toggle('actionCentre')">${PlannerSections.isCollapsed('actionCentre') ? '▸' : '▾'}</span>
+                </div>
+                <div id="plannerBody_actionCentre" class="planner-collapsible-body ${PlannerSections.isCollapsed('actionCentre') ? 'collapsed' : ''}">
+                    <div class="action-centre-grid">${grid}</div>
                 </div>
             </div>`;
         })()}
