@@ -6545,7 +6545,7 @@ CORE PRINCIPLES:
                     'X-Anthropic-Key': key
                 },
                 body: JSON.stringify({
-                    model: opts.model || 'claude-sonnet-4-6-20250514',
+                    model: opts.model || 'claude-sonnet-4-6',
                     max_tokens: opts.max_tokens || 512,
                     system: system + '\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences.',
                     messages: claudeMessages,
@@ -6589,7 +6589,7 @@ CORE PRINCIPLES:
                 method: 'POST', signal: controller.signal,
                 headers: { 'Content-Type': 'application/json', 'X-Anthropic-Key': key },
                 body: JSON.stringify({
-                    model: opts.model || 'claude-sonnet-4-6-20250514',
+                    model: opts.model || 'claude-sonnet-4-6',
                     max_tokens: opts.max_tokens || 600,
                     system,
                     messages: claudeMessages,
