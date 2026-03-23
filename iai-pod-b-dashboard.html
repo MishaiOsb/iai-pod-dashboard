@@ -7253,12 +7253,16 @@ const OutlookSync = {
 
                 if (fromMatchesClient || sentToClient) {
                     const isFromMe = fromAddr?.toLowerCase() === myEmail;
+                    // Check if user was only CC'd (not in TO)
+                    const toAddrs = (msg.toRecipients || []).map(r => r.emailAddress?.address?.toLowerCase()).filter(Boolean);
+                    const isCcOnly = !isFromMe && !toAddrs.includes(myEmail);
                     matched.push({
                         subject: msg.subject || '(No subject)',
                         from: fromAddr || 'unknown',
                         date: msg.receivedDateTime,
                         isFromClient: fromMatchesClient && !isFromMe,
                         isFromMe,
+                        isCcOnly,
                         webLink: msg.webLink || null
                     });
                 }
@@ -12163,12 +12167,39 @@ function isAutoReply(email) {
 }
 
 /**
+ * Detects billing/payment/finance emails that are not relevant to the pod lead.
+ */
+function isBillingEmail(email) {
+    if (!email) return false;
+    const subject = (email.subject || '').toLowerCase();
+    const body = (email.body || email.preview || '').toLowerCase();
+    const text = subject + ' ' + body;
+    const billingPatterns = [
+        'card added', 'card on file', 'credit card', 'debit card', 'payment method',
+        'billing information', 'billing details', 'invoice', 'payment confirmation',
+        'payment received', 'payment processed', 'payment failed', 'payment due',
+        'subscription renewal', 'subscription payment', 'direct debit',
+        'bank transfer', 'wire transfer', 'remittance', 'account balance',
+        'overdue payment', 'outstanding balance', 'payment reminder',
+        'card ending in', 'card expir', 'update your payment',
+        'billing address', 'billing contact', 'finance department',
+        'accounts payable', 'accounts receivable'
+    ];
+    return billingPatterns.some(p => text.includes(p));
+}
+
+/**
  * Returns the most recent email from the client (isFromClient === true),
- * skipping auto-replies / out-of-office messages.
+ * skipping auto-replies, billing emails, and CC-only emails.
  */
 function getLastEmailFromClient(emailEntry) {
     if (!emailEntry || !emailEntry.emails) return null;
-    return emailEntry.emails.find(e => e.isFromClient === true && !isAutoReply(e)) || null;
+    return emailEntry.emails.find(e =>
+        e.isFromClient === true &&
+        !isAutoReply(e) &&
+        !isBillingEmail(e) &&
+        !e.isCcOnly
+    ) || null;
 }
 
 /**
