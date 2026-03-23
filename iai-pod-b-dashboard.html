@@ -13972,6 +13972,23 @@ function renderPlannerPage() {
         return mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60 ? mins%60 + 'm' : ''}` : `${mins}m`;
     }
 
+    const _aiAvail = AITaskAssist.isAvailable();
+
+    // ---- Match calendar event to client ----
+    function matchEventToClient(event) {
+        const subj = (event.subject || '').toLowerCase();
+        const clients = State.clients || [];
+        // Try full name match first, then first word
+        for (const c of clients) {
+            if (subj.includes(c.name.toLowerCase())) return c.name;
+        }
+        for (const c of clients) {
+            const firstWord = c.name.toLowerCase().split(' ')[0];
+            if (firstWord.length >= 3 && subj.includes(firstWord)) return c.name;
+        }
+        return null;
+    }
+
     // ---- TODAY'S CALENDAR ----
     const todayEvents = getEventsForDate(todayStr);
 
@@ -13999,6 +14016,11 @@ function renderPlannerPage() {
                 </div>`;
         }
 
+        const matchedClient = matchEventToClient(e);
+        const prepBtn = (_aiAvail && matchedClient && state !== 'cancelled')
+            ? `<button class="btn-followup" onclick="event.stopPropagation();openMeetingPrepModal('${matchedClient.replace(/'/g,"\\'")}')" title="Generate AI meeting prep for ${matchedClient}" style="font-size:10px;padding:3px 10px;margin-left:4px;">&#128203; Prep</button>`
+            : '';
+
         return `
         <div class="calendar-event-card ${stateClass}">
             <div class="cal-time-block">
@@ -14006,7 +14028,7 @@ function renderPlannerPage() {
                 <div class="cal-duration">${calcDuration(e.start, e.end)}</div>
             </div>
             <div class="cal-event-info">
-                <div class="cal-event-subject">${e.subject} ${statusBadge}</div>
+                <div class="cal-event-subject">${e.subject} ${statusBadge} ${prepBtn}</div>
                 <div class="cal-event-meta">
                     <span>&#128100; ${e.organizer.split('@')[0]}</span>
                     <span>&#128205; ${e.location || 'No location'}</span>
@@ -14271,7 +14293,6 @@ function renderPlannerPage() {
             f.effectiveStatus === 'awaiting';
     });
 
-    const _aiAvail = AITaskAssist.isAvailable();
     const todayEmailHTML = todayFollowUps.length > 0 ? todayFollowUps.map(f => `
         <div class="email-followup-item">
             <div class="email-followup-icon ${f.iconClass}">${f.icon}</div>
@@ -14348,11 +14369,16 @@ function renderPlannerPage() {
             const state = CalendarState.getState(e.id);
             const weekClass = state === 'completed' ? 'we-completed' : state === 'cancelled' ? 'we-cancelled' : '';
             const label = state === 'completed' ? 'Done' : state === 'cancelled' ? 'Cancelled' : 'Meeting';
+            const weekClient = matchEventToClient(e);
+            const weekPrepBtn = (_aiAvail && weekClient && state !== 'cancelled')
+                ? `<a class="btn-followup" onclick="event.stopPropagation();openMeetingPrepModal('${weekClient.replace(/'/g,"\\'")}')" style="font-size:9px;padding:2px 8px;">&#128203; Prep</a>`
+                : '';
             return `
             <div class="week-event-item ${weekClass}">
                 <span class="week-event-time">${formatTime(e.start)}</span>
                 <span class="week-event-title">${e.subject}</span>
                 <span class="week-event-type meeting">${label}</span>
+                ${weekPrepBtn}
             </div>`;
         }).join('');
 
