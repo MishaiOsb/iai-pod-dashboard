@@ -3610,7 +3610,7 @@ input, textarea, select { font-family: inherit; outline: none; }
                         </label>
                         <button class="btn-primary" style="font-size:11px;padding:4px 10px;background:var(--bg-elevated);color:var(--text-primary);border:1px solid var(--border-default);" onclick="ProactiveMonitor._requestPermission();showToast('Browser notification permission requested','info');">Enable Desktop Alerts</button>
                     </div>
-                    <p class="setup-hint" style="margin-top:4px;">Checks every 10 min for: stale contacts, unresponded emails, upcoming meetings, critical health scores, Red RAG, billing gaps, one-sided comms. Desktop alerts for high-priority only.</p>
+                    <p class="setup-hint" style="margin-top:4px;">Checks every 10 min for: stale contacts, unresponded emails, upcoming meetings, critical health scores, Red RAG, one-sided comms. Desktop alerts for high-priority only.</p>
                 </div>
 
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
@@ -10533,28 +10533,7 @@ const State = {
             }
 
             // Missing billing for non-pilot clients (skip if notes explain billing situation)
-            if (c.billing === 'No' && c.plan !== 'AIOS Pilot' && c.plan !== 'Free Demo') {
-                const billingExplained = notesExplain(c.id, [
-                    'automatic billing', 'auto billing', 'auto-billing', 'autobill',
-                    'billed automatically', 'billing model', 'billing arranged',
-                    'billing sorted', 'billing confirmed', 'billing pending',
-                    'billing setup', 'billing set up', 'new billing',
-                    'free trial', 'trial period', 'grace period',
-                    'no billing', 'waived', 'complimentary',
-                    '30 day', '30-day', 'after 30', 'invoicing',
-                    'payment plan', 'billing handled', 'billing agreed'
-                ]);
-                if (!billingExplained) {
-                    this.alerts.push({
-                        type: 'info',
-                        icon: '&#128179;',
-                        title: `${c.name} - Billing not active`,
-                        desc: `${c.plan} plan but billing is set to No`,
-                        clientId: c.id,
-                        timestamp: c.updatedAt,
-                    });
-                }
-            }
+            // Billing alerts excluded — not this user's department
 
             // Zero agents deployed (skip if notes explain)
             if (c.agentCount === 0) {
@@ -14156,12 +14135,7 @@ const ClientActionCentre = {
         // --- Outstanding: Teams stale ---
         if (effStatus === 'teams-stale' || effStatus === 'teams-followup') outstanding.push({ type: 'teams', text: 'Teams message needs follow-up', severity: 'medium' });
 
-        // --- Outstanding: Billing gap ---
-        if (client.billing !== 'Yes') {
-            const notesText = (typeof NotesManager !== 'undefined' ? NotesManager.get(client.id) : []).map(n => n.text.toLowerCase()).join(' ');
-            const billingExplained = ['automatic billing', 'auto billing', 'billing model', 'free trial', 'grace period', 'waived'].some(kw => notesText.includes(kw));
-            if (!billingExplained) outstanding.push({ type: 'billing', text: 'Billing not confirmed', severity: 'medium' });
-        }
+        // --- Billing: excluded from notifications (not this user's department) ---
 
         // --- Outstanding: Update status ---
         if (client.updateStatus === 'Need Contact') outstanding.push({ type: 'update', text: 'Monday board marked "Need Contact"', severity: 'high' });
@@ -14348,6 +14322,13 @@ const ClientActionCentre = {
         const snapshot = this.buildClientSnapshot(clientName);
         this._briefingCache[key] = { data: snapshot, ts: Date.now() };
         return snapshot.outstanding.length;
+    },
+
+    refresh() {
+        this._briefingCache = {};
+        AITaskAssist._cache = {};
+        showToast('Refreshing Action Centre...', 'info');
+        renderPlannerPage();
     },
 };
 
@@ -14985,6 +14966,7 @@ function renderPlannerPage() {
                 <div class="planner-section-title">
                     &#129504; Client Action Centre
                     <span class="section-count">${totalOutstanding} outstanding across ${activeClients.length} clients</span>
+                    <button onclick="ClientActionCentre.refresh()" style="margin-left:8px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:6px;padding:2px 10px;font-size:11px;color:var(--text-secondary);cursor:pointer;font-family:inherit;" title="Refresh action centre data">&#8635; Refresh</button>
                     <span class="collapse-toggle" id="plannerToggle_actionCentre" onclick="PlannerSections.toggle('actionCentre')">${PlannerSections.isCollapsed('actionCentre') ? '▸' : '▾'}</span>
                 </div>
                 <div id="plannerBody_actionCentre" class="planner-collapsible-body ${PlannerSections.isCollapsed('actionCentre') ? 'collapsed' : ''}">
@@ -18993,24 +18975,8 @@ const ProactiveMonitor = {
             }
         });
 
-        // 6. Billing not active (excluding notes-explained)
-        State.clients.forEach(c => {
-            if (c.billing !== 'Yes') {
-                // Check if notes explain billing
-                const notes = typeof NotesManager !== 'undefined' ? NotesManager.get(c.id) : [];
-                const allText = notes.map(n => n.text.toLowerCase()).join(' ');
-                const billingHandled = ['automatic billing', 'auto billing', 'billing model', 'billing arranged',
-                    'billing sorted', 'billing confirmed', 'billing handled', 'billing agreed',
-                    'free trial', 'trial period', 'grace period', 'waived'].some(kw => allText.includes(kw));
-                if (!billingHandled) {
-                    newAlerts.push({
-                        type: 'billing-inactive',
-                        title: `${c.name} — Billing not active`,
-                        desc: `Billing status: ${c.billing || 'Unknown'}. Add a note if this is expected.`,
-                        clientName: c.name, clientId: c.id, priority: 'medium'
-                    });
-                }
-            }
+        // 6. Billing alerts excluded — not this user's department
+        // (previously checked billing status, removed per user request)
         });
 
         // 7. One-sided communication (sent but no response)
