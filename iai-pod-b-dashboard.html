@@ -6545,7 +6545,7 @@ CORE PRINCIPLES:
                     'X-Anthropic-Key': key
                 },
                 body: JSON.stringify({
-                    model: opts.model || 'claude-haiku-4-5-20251001',
+                    model: opts.model || 'claude-sonnet-4-20250514',
                     max_tokens: opts.max_tokens || 512,
                     system: system + '\n\nIMPORTANT: Respond with valid JSON only. No markdown, no code fences.',
                     messages: claudeMessages,
@@ -6589,7 +6589,7 @@ CORE PRINCIPLES:
                 method: 'POST', signal: controller.signal,
                 headers: { 'Content-Type': 'application/json', 'X-Anthropic-Key': key },
                 body: JSON.stringify({
-                    model: opts.model || 'claude-haiku-4-5-20251001',
+                    model: opts.model || 'claude-sonnet-4-20250514',
                     max_tokens: opts.max_tokens || 600,
                     system,
                     messages: claudeMessages,
@@ -6769,7 +6769,9 @@ TYPE 4 — Proactive Update: Connect to their business goals → Current status 
 
 TYPE 5 — Follow Up: MUST reference and continue the last thread. Acknowledge what they raised OR chase what we sent. Lead with substance, never "just checking in". 3-6 sentences.
 
-**OUTPUT FORMAT:**
+**OUTPUT FORMAT — CRITICAL:**
+Output ONLY the email. No analysis, no rationale, no markdown headers, no "## Draft" sections, no bullet points explaining your reasoning. Just the email itself, ready to copy and send:
+
 Subject: IAI x [Client Name]: [Specific Topic]
 To: [client email]  CC: neo@implementai.io [add relevant IAI CCs from context]
 
@@ -6777,7 +6779,9 @@ Hello [First Name],
 
 [Body — max 200 words, short paragraphs of 2-3 sentences, natural flow]
 
-Regards`;
+Regards
+
+Do your analysis internally but NEVER show it. The user wants a clean, ready-to-send email — nothing else.`;
     },
 
     async emailDraft(clientName, emailType, userContext, isFollowUp) {
