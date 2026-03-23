@@ -3531,8 +3531,8 @@ input, textarea, select { font-family: inherit; outline: none; }
                 <div style="border-top:1px solid var(--border-default);margin:14px 0 12px;padding-top:14px;">
                     <h3 style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">&#129504; AI Engine</h3>
                     <div style="display:flex;gap:6px;margin-bottom:12px;">
-                        <button class="mode-toggle-btn" id="aiProviderClaude" data-provider="claude" onclick="setAIProvider('claude')" style="flex:1;font-size:12px;padding:6px 10px;">&#129504; Claude (Default)</button>
-                        <button class="mode-toggle-btn" id="aiProviderOpenai" data-provider="openai" onclick="setAIProvider('openai')" style="flex:1;font-size:12px;padding:6px 10px;">&#10024; OpenAI (Fallback)</button>
+                        <button class="mode-toggle-btn" id="aiProviderClaude" data-provider="claude" onclick="setAIProvider('claude')" style="flex:1;font-size:12px;padding:6px 10px;">&#129504; Claude for All</button>
+                        <button class="mode-toggle-btn" id="aiProviderOpenai" data-provider="openai" onclick="setAIProvider('openai')" style="flex:1;font-size:12px;padding:6px 10px;">&#10024; Smart Mix (Default)</button>
                     </div>
                     <div id="aiClaudeSection">
                         <div class="setup-input-group">
@@ -3541,7 +3541,7 @@ input, textarea, select { font-family: inherit; outline: none; }
                             <button class="toggle-vis" onclick="const i=document.getElementById('claudeKeyInput');i.type=i.type==='password'?'text':'password'" title="Show/Hide">&#128065;</button>
                         </div>
                         <div class="setup-hint" style="margin-top:4px;">
-                            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> &#8594; API Keys &#8594; Create key. Uses claude-haiku-4.5 (~$0.004/call). Claude is the primary AI brain for this dashboard.
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent-purple-light);">Anthropic Console</a> &#8594; API Keys &#8594; Create key. Claude Haiku 4.5 is used for email drafts, meeting prep, and weekly reports (quality-critical). OpenAI handles everything else.
                         </div>
                     </div>
                     <div id="aiOpenaiSection" style="display:none;">
@@ -6056,8 +6056,8 @@ const AITaskAssist = {
     hasClaudeKey()   { return !!this.getClaudeKey(); },
     clearClaudeKey() { localStorage.removeItem(this._claudeSk()); },
 
-    // Provider selection — default Claude
-    getProvider()  { return localStorage.getItem(this._providerSk()) || 'claude'; },
+    // Provider selection — default OpenAI (Claude used automatically for quality tasks)
+    getProvider()  { return localStorage.getItem(this._providerSk()) || 'openai'; },
     setProvider(p) { localStorage.setItem(this._providerSk(), p); this._cache = {}; },
     isUsingClaude() { return this.getProvider() === 'claude'; },
 
@@ -6517,7 +6517,14 @@ CORE PRINCIPLES:
     },
 
     /* ---- Provider-aware dispatcher (routes to Claude or OpenAI) ---- */
+    // Quality-intensive tasks that should prefer Claude when available
+    _claudePreferredTasks: new Set(['emailDraft', 'weeklyInsight', 'meetingPrep']),
+
     async _aiChat(messages, opts = {}) {
+        const preferClaude = opts._task && this._claudePreferredTasks.has(opts._task);
+        if (preferClaude && this.hasClaudeKey()) {
+            return this._claudeChat(messages, opts);
+        }
         if (this.isUsingClaude() && this.hasClaudeKey()) {
             return this._claudeChat(messages, opts);
         }
@@ -6525,6 +6532,10 @@ CORE PRINCIPLES:
     },
 
     async _aiChatText(messages, opts = {}) {
+        const preferClaude = opts._task && this._claudePreferredTasks.has(opts._task);
+        if (preferClaude && this.hasClaudeKey()) {
+            return this._claudeChatText(messages, opts);
+        }
         if (this.isUsingClaude() && this.hasClaudeKey()) {
             return this._claudeChatText(messages, opts);
         }
@@ -6563,7 +6574,7 @@ Be specific with client names and numbers. Focus on actionable insights. Max 5-7
         const result = await this._aiChatText([
             { role: 'system', content: this._ganeshaContext() + `\n\nYou are a portfolio manager writing an executive weekly narrative for Implement AI. Given this week's data, write 3-4 sentences highlighting: key wins, concerns or risks, and recommended focus areas for next week. Be specific with client names and metrics. Write in British English, professional but concise. Do not use bullet points — write in flowing prose. Apply the Ownership Mindset and Train Philosophy — flag anything that needs immediate action.` },
             { role: 'user', content: portfolio }
-        ], { max_tokens: 300 });
+        ], { max_tokens: 300, _task: 'weeklyInsight' });
         this._cacheSet('weekly_' + weekId, result);
         return result;
     },
@@ -6591,7 +6602,7 @@ CRITICAL RULES:
 - Meeting should fit 25-30 min structure: Opening → Wins → Results → Recommendations → Client Input → Close
 - Be specific with the client's actual data. Write in British English. Use markdown with bold headers.` },
             { role: 'user', content: ctx }
-        ], { max_tokens: 600 });
+        ], { max_tokens: 600, _task: 'meetingPrep' });
         this._cacheSet('prep_' + clientName, result);
         return result;
     },
@@ -6689,7 +6700,7 @@ TYPE 5 — Follow Up (continuing an existing thread):
         const result = await this._aiChatText([
             { role: 'system', content: this._emailDraftPrompt() },
             { role: 'user', content: userMsg }
-        ], { max_tokens: 800 });
+        ], { max_tokens: 800, _task: 'emailDraft' });
         return result;
     },
 
