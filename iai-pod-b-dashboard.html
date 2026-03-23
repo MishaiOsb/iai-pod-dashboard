@@ -6334,7 +6334,7 @@ CORE PRINCIPLES:
     _buildClientContext(clientName) {
         const c = (State.clients || []).find(cl => cl.name === clientName);
         if (!c) return `Client: ${clientName}\nNo data available.`;
-        const parts = [`Client: ${c.name}`, `Plan: ${c.plan}`, `RAG: ${c.rag}`, `Billing: ${c.billing}`, `Health: ${State.calcHealth(c)}/100`, `Agents: ${c.agentCount} (${c.agentStage || 'N/A'})`, `AIOS Days: ${c.aiosDays || 'N/A'}`];
+        const parts = [`Client: ${c.name}`, `Plan: ${c.plan}`, `RAG: ${c.rag}`, `Health: ${State.calcHealth(c)}/100`, `Agents: ${c.agentCount} (${c.agentStage || 'N/A'})`, `AIOS Days: ${c.aiosDays || 'N/A'}`];
         if (c.summary) parts.push(`Summary: ${c.summary}`);
         // Email status
         const es = typeof getEffectiveEmailStatus === 'function' ? getEffectiveEmailStatus(c.name) : null;
@@ -6400,9 +6400,8 @@ CORE PRINCIPLES:
         const amber = clients.filter(c => c.rag === 'Amber').length;
         const red = clients.filter(c => c.rag === 'Red').length;
         const avgHealth = Math.round(clients.reduce((s,c) => s + State.calcHealth(c), 0) / total);
-        const billingActive = clients.filter(c => c.billing === 'Yes').length;
         const totalAgents = clients.reduce((s,c) => s + (c.agentCount || 0), 0);
-        const lines = [`Portfolio: ${total} clients | RAG: ${green}G ${amber}A ${red}R | Avg Health: ${avgHealth}/100 | Billing: ${billingActive}/${total} | Agents: ${totalAgents}`];
+        const lines = [`Portfolio: ${total} clients | RAG: ${green}G ${amber}A ${red}R | Avg Health: ${avgHealth}/100 | Agents: ${totalAgents}`];
         // Per-client summary
         clients.forEach(c => {
             const h = State.calcHealth(c);
@@ -6412,7 +6411,7 @@ CORE PRINCIPLES:
             // Include pod lead's notes for this client
             const clientNotes = typeof NotesManager !== 'undefined' ? NotesManager.get(c.id) : [];
             const notesStr = clientNotes.length > 0 ? ', notes: ' + clientNotes.slice(0, 5).map(n => '"' + n.text.substring(0, 80) + '"').join('; ') : '';
-            lines.push(`- ${c.name}: ${c.rag} RAG, Health ${h}, ${c.plan}, ${c.agentCount} agents, billing=${c.billing}, email=${es}${days !== null ? ', last contact ' + days + 'd ago' : ''}${notesStr}`);
+            lines.push(`- ${c.name}: ${c.rag} RAG, Health ${h}, ${c.plan}, ${c.agentCount} agents, email=${es}${days !== null ? ', last contact ' + days + 'd ago' : ''}${notesStr}`);
         });
         // Overdue tasks
         const allTodos = typeof DashTodo !== 'undefined' ? DashTodo._items || [] : [];
@@ -6652,7 +6651,7 @@ CORE PRINCIPLES:
   "alerts": [{"client": "name", "issue": "brief description", "severity": "high|medium|low"}],
   "recommendations": ["specific actionable recommendation 1", "recommendation 2", "recommendation 3"]
 }
-Be specific with client names and numbers. Focus on actionable insights. Max 5-7 alerts, max 3-5 recommendations. Your alerts feed directly into the dashboard's Smart Alerts system, so make them specific and actionable. Consider ALL available data: RAG status, health scores, billing, email status, contact recency, Teams/Slack activity, upcoming meetings, overdue tasks, and the pod lead's notes. CRITICAL: The pod lead's notes are ground truth — they override raw data. If a note says billing is handled (e.g. "automatic billing", "new billing model"), do NOT flag billing issues for that client. If a note says a client is paused or on hold, do NOT flag contact gaps. Always read and respect notes before generating alerts. Flag risks the rule-based system might miss, such as clients with declining engagement patterns, clients who need upselling, or combinations of factors that suggest trouble.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
+Be specific with client names and numbers. Focus on actionable insights. Max 5-7 alerts, max 3-5 recommendations. Your alerts feed directly into the dashboard's Smart Alerts system, so make them specific and actionable. Consider ALL available data: RAG status, health scores, email status, contact recency, Teams/Slack activity, upcoming meetings, overdue tasks, and the pod lead's notes. CRITICAL: NEVER mention billing in any alerts, recommendations, or summary — billing is handled by a different department and is not this user's responsibility. Ignore all billing data entirely. The pod lead's notes are ground truth — they override raw data. If a note says a client is paused or on hold, do NOT flag contact gaps. Always read and respect notes before generating alerts. Flag risks the rule-based system might miss, such as clients with declining engagement patterns, clients who need upselling, or combinations of factors that suggest trouble.${userContext ? ' The pod lead has also provided additional context — use it to prioritise and focus your analysis.' : ''}` },
             { role: 'user', content: portfolio + contextBlock }
         ], { max_tokens: 800 });
         this._cacheSet(cacheKey, result);
