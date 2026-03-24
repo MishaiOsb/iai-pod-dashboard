@@ -16516,10 +16516,14 @@ const ChangeTracker = {
     _snapshot(clients) {
         const snap = {};
         clients.forEach(c => {
+            const breakdown = State.calcHealthBreakdown(c);
+            const factorSnap = {};
+            breakdown.factors.forEach(f => { factorSnap[f.name] = { points: f.points, detail: f.detail, max: f.max }; });
             snap[c.id] = {
                 name: c.name,
                 rag: c.rag,
-                health: State.calcHealth(c),
+                health: breakdown.total,
+                healthFactors: factorSnap,
                 billing: c.billing,
                 updateStatus: c.updateStatus,
                 plan: c.plan,
@@ -16575,12 +16579,35 @@ const ChangeTracker = {
                 const newVal = f.computed ? (cur[f.key] ?? '') : (cur[f.key] ?? '');
                 // Compare as strings for consistency
                 if (String(oldVal) !== String(newVal)) {
-                    diffs.push({
+                    const diff = {
                         field: f.label,
                         oldVal: f.format(oldVal),
                         newVal: f.format(newVal),
                         direction: f.direction(oldVal, newVal),
-                    });
+                    };
+                    // If health score changed, attach factor breakdown
+                    if (f.key === 'health' && old.healthFactors && cur.healthFactors) {
+                        const factorDiffs = [];
+                        const allKeys = new Set([...Object.keys(old.healthFactors), ...Object.keys(cur.healthFactors)]);
+                        allKeys.forEach(fk => {
+                            const op = old.healthFactors[fk]?.points ?? 0;
+                            const np = cur.healthFactors[fk]?.points ?? 0;
+                            if (op !== np) {
+                                const delta = np - op;
+                                factorDiffs.push({
+                                    name: fk,
+                                    oldPts: op,
+                                    newPts: np,
+                                    delta,
+                                    detail: cur.healthFactors[fk]?.detail || old.healthFactors[fk]?.detail || '',
+                                });
+                            }
+                        });
+                        if (factorDiffs.length > 0) {
+                            diff.healthFactors = factorDiffs.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+                        }
+                    }
+                    diffs.push(diff);
                 }
             });
 
@@ -16756,7 +16783,13 @@ const ChangeTracker = {
             if (ch.field === 'New Client' || ch.field === 'Client Removed') {
                 return `<span class="cs-item">${ch.field} ${icon}</span>`;
             }
-            return `<span class="cs-item">${ch.field}: ${ch.oldVal} <span class="cs-arrow">&#8594;</span> ${ch.newVal} ${icon}</span>`;
+            let reason = '';
+            if (ch.field === 'Health Score' && ch.healthFactors && ch.healthFactors.length > 0) {
+                const top = ch.healthFactors[0]; // biggest mover
+                const sign = top.delta > 0 ? '+' : '';
+                reason = ` <span style="font-size:10px;color:var(--text-muted);">(${top.name} ${sign}${top.delta})</span>`;
+            }
+            return `<span class="cs-item">${ch.field}: ${ch.oldVal} <span class="cs-arrow">&#8594;</span> ${ch.newVal} ${icon}${reason}</span>`;
         }).join('');
         const extra = changes.length > 4 ? `<span class="cs-item">+${changes.length - 4} more</span>` : '';
         return `<div class="change-summary-strip">${items}${extra}</div>`;
@@ -16771,12 +16804,28 @@ const ChangeTracker = {
             if (ch.field === 'New Client' || ch.field === 'Client Removed') {
                 return `<div class="rc-item"><span class="rc-field">${ch.field}</span><span class="rc-new ${dirClass}">${ch.newVal || ch.oldVal}</span></div>`;
             }
+            let factorHtml = '';
+            if (ch.field === 'Health Score' && ch.healthFactors && ch.healthFactors.length > 0) {
+                const factorItems = ch.healthFactors.map(f => {
+                    const sign = f.delta > 0 ? '+' : '';
+                    const color = f.delta > 0 ? 'var(--rag-green)' : f.delta < 0 ? 'var(--rag-red)' : 'var(--text-muted)';
+                    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0 2px 16px;font-size:11px;">
+                        <span style="color:${color};font-weight:600;min-width:35px;text-align:right;">${sign}${f.delta}</span>
+                        <span style="color:var(--text-primary);font-weight:500;">${f.name}</span>
+                        <span style="color:var(--text-muted);">${f.detail}</span>
+                    </div>`;
+                }).join('');
+                factorHtml = `<div style="margin:4px 0 6px 0;padding:6px 0;border-top:1px solid rgba(255,255,255,0.06);">
+                    <div style="font-size:10px;color:var(--text-muted);padding-left:16px;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">What changed:</div>
+                    ${factorItems}
+                </div>`;
+            }
             return `<div class="rc-item">
                 <span class="rc-field">${ch.field}</span>
                 <span class="rc-old">${ch.oldVal}</span>
                 <span class="rc-arrow">&#8594;</span>
                 <span class="rc-new ${dirClass}">${ch.newVal}</span>
-            </div>`;
+            </div>${factorHtml}`;
         }).join('');
         return `<div class="recent-changes-card">
             <h4>&#9889; Recent Changes Detected</h4>
