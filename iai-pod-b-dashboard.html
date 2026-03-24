@@ -8636,13 +8636,15 @@ const FirefliesSync = {
     async fetchTranscripts() {
         const token = this.getToken();
         if (!token) throw new Error('No Fireflies token');
+        const proxy = SlackSync._normalizeProxy(SlackSync.getProxy());
+        if (!proxy) throw new Error('No proxy URL configured — Fireflies requires the Cloudflare proxy');
         const query = `query { transcripts(limit: 10) {
             id title date organizer_email participants
             summary { short_summary keywords action_items overview shorthand_bullet notes }
         }}`;
-        const resp = await fetch('https://api.fireflies.ai/graphql', {
+        const resp = await fetch(proxy + '/fireflies/graphql', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json', 'X-Fireflies-Token': token },
             body: JSON.stringify({ query })
         });
         if (!resp.ok) throw new Error(`Fireflies API ${resp.status}`);
@@ -18559,7 +18561,7 @@ function showSlackSetupGuide() {
     const headers = {
       'Access-Control-Allow-Origin': cors,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-OpenAI-Key, X-Anthropic-Key',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Slack-Token, X-OpenAI-Key, X-Anthropic-Key, X-Fireflies-Token',
     };
 
     if (request.method === 'OPTIONS') {
@@ -18591,6 +18593,28 @@ function showSlackSetupGuide() {
       });
       return new Response(anthropicResp.body, {
         status: anthropicResp.status,
+        headers: { ...headers, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // ---- Fireflies proxy route ----
+    if (path === 'fireflies/graphql') {
+      const ffToken = request.headers.get('X-Fireflies-Token');
+      if (!ffToken) {
+        return new Response(JSON.stringify({ error: 'missing_token' }), {
+          status: 401, headers: { ...headers, 'Content-Type': 'application/json' }
+        });
+      }
+      const ffResp = await fetch('https://api.fireflies.ai/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + ffToken
+        },
+        body: request.body
+      });
+      return new Response(ffResp.body, {
+        status: ffResp.status,
         headers: { ...headers, 'Content-Type': 'application/json' }
       });
     }
