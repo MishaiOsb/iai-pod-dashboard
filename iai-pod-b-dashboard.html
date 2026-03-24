@@ -10139,6 +10139,32 @@ const MondayAPI = {
             columnValues: JSON.stringify(columnValues),
         });
     },
+
+    async createSubitem(parentItemId, name, columnValues = {}) {
+        const hasColumns = Object.keys(columnValues).length > 0;
+        const q = hasColumns
+            ? `mutation ($parentId: ID!, $name: String!, $columnValues: JSON!) {
+                create_subitem(parent_item_id: $parentId, item_name: $name, column_values: $columnValues) {
+                    id name column_values { id type text value }
+                }
+            }`
+            : `mutation ($parentId: ID!, $name: String!) {
+                create_subitem(parent_item_id: $parentId, item_name: $name) {
+                    id name column_values { id type text value }
+                }
+            }`;
+        const vars = { parentId: String(parentItemId), name };
+        if (hasColumns) vars.columnValues = JSON.stringify(columnValues);
+        const data = await this.query(q, vars);
+        return data.create_subitem;
+    },
+
+    async deleteSubitem(subitemId) {
+        const q = `mutation ($itemId: ID!) {
+            delete_item(item_id: $itemId) { id }
+        }`;
+        return await this.query(q, { itemId: String(subitemId) });
+    },
 };
 
 /* ================================================================
@@ -13321,12 +13347,27 @@ function agentStageClass(stage) {
 
 function buildAgentCardsSection(client) {
     const agents = client.agents || [];
-    if (agents.length === 0) {
-        return `<div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
-            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">&#129302; Deployed Agents (0)</h3>
-            <p style="font-size:12px;color:var(--text-muted);font-style:italic;">No agents configured as subitems in monday.com</p>
-        </div>`;
-    }
+    const stageOptions = ['Building', 'Ready', 'Onboarding', 'Live', 'Production', 'Stuck'].map(s =>
+        `<option value="${s}">${s}</option>`
+    ).join('');
+
+    const addAgentForm = `<div class="agent-add-form" id="agentAddForm_${client.id}" style="display:none;margin-top:14px;padding:14px;background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--radius-md);">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <input type="text" id="agentName_${client.id}" placeholder="Agent name" style="padding:8px 10px;background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;">
+            <select id="agentStage_${client.id}" style="padding:8px 10px;background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;">
+                <option value="" disabled selected>Stage</option>
+                ${stageOptions}
+            </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <input type="text" id="agentPlatform_${client.id}" placeholder="Platform (optional)" style="padding:8px 10px;background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;">
+            <input type="text" id="agentDesc_${client.id}" placeholder="Description (optional)" style="padding:8px 10px;background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-size:12px;">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button onclick="document.getElementById('agentAddForm_${client.id}').style.display='none'" style="padding:6px 14px;background:transparent;border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-muted);font-size:11px;cursor:pointer;">Cancel</button>
+            <button onclick="addAgentToClient('${client.id}')" style="padding:6px 14px;background:var(--brand-purple);border:none;border-radius:var(--radius-md);color:white;font-size:11px;cursor:pointer;font-weight:600;">Add Agent</button>
+        </div>
+    </div>`;
 
     const cards = agents.map(a => {
         const cls = agentStageClass(a.stage);
@@ -13337,10 +13378,14 @@ function buildAgentCardsSection(client) {
                 return `<div class="agent-detail-row"><span class="detail-label">${label}</span><span class="detail-value">${val}</span></div>`;
             }).join('');
 
-        return `<div class="agent-card stage-${cls}" onclick="this.classList.toggle('expanded')">
+        return `<div class="agent-card stage-${cls}" onclick="if(!event.target.closest('.agent-delete-btn'))this.classList.toggle('expanded')">
             <div class="agent-card-header">
                 <span class="agent-card-name">${a.name}</span>
-                <span class="agent-stage-badge ${cls}">${a.stage}</span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span class="agent-stage-badge ${cls}">${a.stage}</span>
+                    <button class="agent-delete-btn" onclick="event.stopPropagation();removeAgentFromClient('${client.id}','${a.id}','${a.name.replace(/'/g,"\\'")}')" title="Remove agent" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;line-height:1;opacity:0.5;transition:all 0.15s ease;"
+                        onmouseover="this.style.opacity='1';this.style.color='var(--danger-red)'" onmouseout="this.style.opacity='0.5';this.style.color='var(--text-muted)'">&times;</button>
+                </div>
             </div>
             <div class="agent-card-meta">
                 ${a.platform ? `<span>&#128187; ${a.platform}</span>` : ''}
@@ -13363,10 +13408,88 @@ function buildAgentCardsSection(client) {
     return `<div style="background:var(--card-bg);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:20px;margin-bottom:24px;">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
             <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0;">&#129302; Deployed Agents (${agents.length})</h3>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">${pills}</div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                ${pills}
+                <button onclick="document.getElementById('agentAddForm_${client.id}').style.display=document.getElementById('agentAddForm_${client.id}').style.display==='none'?'block':'none'" style="padding:4px 10px;background:var(--brand-purple);border:none;border-radius:var(--radius-md);color:white;font-size:11px;cursor:pointer;font-weight:600;">+ Add Agent</button>
+            </div>
         </div>
+        ${addAgentForm}
+        ${agents.length === 0 ? '<p style="font-size:12px;color:var(--text-muted);font-style:italic;">No agents configured yet. Click + Add Agent to create one.</p>' : ''}
         <div class="agent-card-grid">${cards}</div>
     </div>`;
+}
+
+async function addAgentToClient(clientId) {
+    const nameEl = document.getElementById('agentName_' + clientId);
+    const stageEl = document.getElementById('agentStage_' + clientId);
+    const platformEl = document.getElementById('agentPlatform_' + clientId);
+    const descEl = document.getElementById('agentDesc_' + clientId);
+    const name = (nameEl?.value || '').trim();
+    const stage = stageEl?.value || '';
+    if (!name) { showToast('Agent name is required', 'warning'); nameEl?.focus(); return; }
+    if (!stage) { showToast('Please select a stage', 'warning'); stageEl?.focus(); return; }
+
+    const btn = document.querySelector(`#agentAddForm_${clientId} button:last-child`);
+    if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
+
+    try {
+        // Build column values — stage goes to the status column
+        const columnValues = {};
+        // The stage column ID is 'color_mkynkxhs' based on subitem parsing
+        columnValues['color_mkynkxhs'] = { label: stage };
+
+        const result = await MondayAPI.createSubitem(clientId, name, columnValues);
+        if (result && result.id) {
+            // Update local state
+            const client = State.clients.find(c => c.id === clientId);
+            if (client) {
+                if (!client.agents) client.agents = [];
+                client.agents.push({
+                    id: result.id,
+                    name: result.name || name,
+                    stage: stage,
+                    platform: platformEl?.value || '',
+                    description: descEl?.value || '',
+                    link: '',
+                    date: '',
+                    allColumns: {},
+                });
+                client.agentCount = client.agents.length;
+                // Re-derive agentStage
+                const stages = [...new Set(client.agents.map(a => a.stage))];
+                client.agentStage = stages.length === 1 ? stages[0] : 'Mixed';
+            }
+            showToast(`Agent "${name}" added to monday.com`, 'success');
+            // Re-render client detail
+            if (State.selectedId === clientId) renderClientFullPage(clientId);
+        }
+    } catch (err) {
+        console.error('Failed to add agent:', err);
+        showToast('Failed to add agent: ' + (err.message || 'API error'), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Add Agent'; }
+    }
+}
+
+async function removeAgentFromClient(clientId, agentId, agentName) {
+    if (!confirm(`Remove agent "${agentName}"? This will delete it from monday.com.`)) return;
+
+    try {
+        await MondayAPI.deleteSubitem(agentId);
+        // Update local state
+        const client = State.clients.find(c => c.id === clientId);
+        if (client && client.agents) {
+            client.agents = client.agents.filter(a => a.id !== agentId);
+            client.agentCount = client.agents.length;
+            const stages = [...new Set(client.agents.map(a => a.stage).filter(Boolean))];
+            client.agentStage = stages.length === 1 ? stages[0] : stages.length > 1 ? 'Mixed' : 'Unknown';
+        }
+        showToast(`Agent "${agentName}" removed`, 'success');
+        if (State.selectedId === clientId) renderClientFullPage(clientId);
+    } catch (err) {
+        console.error('Failed to remove agent:', err);
+        showToast('Failed to remove agent: ' + (err.message || 'API error'), 'error');
+    }
 }
 
 function renderAgentsOverview() {
