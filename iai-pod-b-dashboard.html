@@ -955,6 +955,9 @@ input, textarea, select { font-family: inherit; outline: none; }
 .agent-card.stage-ready { border-left-color: #9cd326; }
 .agent-card.stage-building { border-left-color: #784bd1; }
 .agent-card.stage-stuck { border-left-color: #df2f4a; }
+.agent-card.stage-backlog { border-left-color: #c4c4c4; }
+.agent-card.stage-paused { border-left-color: #ff9868; }
+.agent-card.stage-cancelled { border-left-color: #757575; }
 .agent-card-header {
     display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
 }
@@ -971,7 +974,12 @@ input, textarea, select { font-family: inherit; outline: none; }
 .agent-stage-badge.ready { background: rgba(156,211,38,0.15); color: #9cd326; }
 .agent-stage-badge.building { background: rgba(120,75,209,0.15); color: #784bd1; }
 .agent-stage-badge.stuck { background: rgba(223,47,74,0.15); color: #df2f4a; }
+.agent-stage-badge.backlog { background: rgba(196,196,196,0.15); color: #c4c4c4; }
+.agent-stage-badge.paused { background: rgba(255,152,104,0.15); color: #ff9868; }
+.agent-stage-badge.cancelled { background: rgba(117,117,117,0.15); color: #757575; text-decoration: line-through; }
 .agent-stage-badge.unknown { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+.agent-stage-select { font-size:10px; font-weight:700; padding:3px 8px; border-radius:12px; text-transform:uppercase; letter-spacing:0.5px; border:1px solid var(--border-default); background:var(--bg-elevated); color:var(--text-primary); cursor:pointer; appearance:none; -webkit-appearance:none; outline:none; }
+.agent-stage-select:focus { border-color:var(--brand-purple); box-shadow:0 0 0 2px rgba(107,48,255,0.2); }
 .agent-card-meta {
     display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--text-secondary);
 }
@@ -13334,6 +13342,8 @@ function buildSlackMessagesSection(clientName) {
     </div>`;
 }
 
+const AGENT_STAGES = ['Backlog', 'Building', 'Ready', 'Onboarding', 'Live', 'Production', 'Stuck', 'Paused', 'Cancelled'];
+
 function agentStageClass(stage) {
     const s = (stage || '').toLowerCase();
     if (s === 'live') return 'live';
@@ -13342,12 +13352,43 @@ function agentStageClass(stage) {
     if (s === 'ready') return 'ready';
     if (s === 'building') return 'building';
     if (s === 'stuck') return 'stuck';
+    if (s === 'backlog') return 'backlog';
+    if (s === 'paused') return 'paused';
+    if (s === 'cancelled') return 'cancelled';
     return 'unknown';
+}
+
+async function updateAgentStage(clientId, agentId, newStage) {
+    try {
+        // Update Monday.com subitem status column
+        const q = `mutation ($itemId: ID!, $columnId: String!, $value: JSON!) {
+            change_column_value(item_id: $itemId, column_id: $columnId, value: $value) { id }
+        }`;
+        await MondayAPI.query(q, {
+            itemId: String(agentId),
+            columnId: 'color_mkynkxhs',
+            value: JSON.stringify({ label: newStage }),
+        });
+
+        // Update local state
+        const client = State.clients.find(c => c.id === clientId);
+        if (client && client.agents) {
+            const agent = client.agents.find(a => a.id === agentId);
+            if (agent) agent.stage = newStage;
+            const stages = [...new Set(client.agents.map(a => a.stage).filter(Boolean))];
+            client.agentStage = stages.length === 1 ? stages[0] : stages.length > 1 ? 'Mixed' : 'Unknown';
+        }
+        showToast(`Stage updated to "${newStage}"`, 'success');
+        if (State.selectedId === clientId) renderClientFullPage(clientId);
+    } catch (err) {
+        console.error('Failed to update agent stage:', err);
+        showToast('Failed to update stage: ' + (err.message || 'API error'), 'error');
+    }
 }
 
 function buildAgentCardsSection(client) {
     const agents = client.agents || [];
-    const stageOptions = ['Building', 'Ready', 'Onboarding', 'Live', 'Production', 'Stuck'].map(s =>
+    const stageOptions = AGENT_STAGES.map(s =>
         `<option value="${s}">${s}</option>`
     ).join('');
 
@@ -13378,11 +13419,17 @@ function buildAgentCardsSection(client) {
                 return `<div class="agent-detail-row"><span class="detail-label">${label}</span><span class="detail-value">${val}</span></div>`;
             }).join('');
 
-        return `<div class="agent-card stage-${cls}" onclick="if(!event.target.closest('.agent-delete-btn'))this.classList.toggle('expanded')">
+        const stageOpts = AGENT_STAGES.map(s =>
+            `<option value="${s}" ${s === a.stage ? 'selected' : ''}>${s}</option>`
+        ).join('');
+
+        return `<div class="agent-card stage-${cls}" onclick="if(!event.target.closest('.agent-stage-select')&&!event.target.closest('.agent-delete-btn'))this.classList.toggle('expanded')">
             <div class="agent-card-header">
                 <span class="agent-card-name">${a.name}</span>
                 <div style="display:flex;align-items:center;gap:6px;">
-                    <span class="agent-stage-badge ${cls}">${a.stage}</span>
+                    <select class="agent-stage-select agent-stage-badge ${cls}" onchange="event.stopPropagation();updateAgentStage('${client.id}','${a.id}',this.value)" title="Change stage">
+                        ${stageOpts}
+                    </select>
                     <button class="agent-delete-btn" onclick="event.stopPropagation();removeAgentFromClient('${client.id}','${a.id}','${a.name.replace(/'/g,"\\'")}')" title="Remove agent" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;line-height:1;opacity:0.5;transition:all 0.15s ease;"
                         onmouseover="this.style.opacity='1';this.style.color='var(--danger-red)'" onmouseout="this.style.opacity='0.5';this.style.color='var(--text-muted)'">&times;</button>
                 </div>
@@ -13521,6 +13568,9 @@ function renderAgentsOverview() {
     const rows = allAgents.map(a => {
         const cls = agentStageClass(a.stage);
         const ragC = a.clientRag === 'Green' ? '#00c875' : a.clientRag === 'Amber' ? '#fdab3d' : a.clientRag === 'Red' ? '#df2f4a' : '#666';
+        const stageOpts = AGENT_STAGES.map(s =>
+            `<option value="${s}" ${s === a.stage ? 'selected' : ''}>${s}</option>`
+        ).join('');
         return `<tr data-stage="${a.stage}">
             <td>
                 <a style="color:var(--brand-purple);cursor:pointer;font-weight:600;text-decoration:none;" onclick="Router.navigate('client/${a.clientId}')">
@@ -13528,7 +13578,7 @@ function renderAgentsOverview() {
                 </a>
             </td>
             <td style="font-weight:600;">${a.name}</td>
-            <td><span class="agent-stage-badge ${cls}">${a.stage}</span></td>
+            <td><select class="agent-stage-select agent-stage-badge ${cls}" onchange="updateAgentStage('${a.clientId}','${a.id}',this.value).then(()=>renderAgentsOverview())">${stageOpts}</select></td>
             <td>${a.platform || '--'}</td>
             <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(a.description || '').replace(/"/g, '&quot;')}">${a.description || '--'}</td>
             <td>${a.date || '--'}</td>
